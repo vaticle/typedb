@@ -116,11 +116,13 @@ public abstract class TraversalVertex<EDGE extends TraversalEdge<?, ?>, PROPERTI
         public static class Thing extends Properties {
 
             private boolean hasIID;
+            private boolean hasEqualityPredicate;
             private final Set<Label> types;
             private final Set<Predicate.Value<?>> predicates;
 
             public Thing() {
                 hasIID = false;
+                hasEqualityPredicate = false;
                 types = new HashSet<>();
                 predicates = new HashSet<>();
             }
@@ -141,11 +143,16 @@ public abstract class TraversalVertex<EDGE extends TraversalEdge<?, ?>, PROPERTI
                 this.types.addAll(types);
             }
 
+            public boolean hasEqualityPredicate() {
+                return hasEqualityPredicate;
+            }
+
             public Set<Predicate.Value<?>> predicates() {
                 return predicates;
             }
 
             public void predicate(Predicate.Value<?> predicate) {
+                if (predicate.operator().isEquality()) hasEqualityPredicate = true;
                 predicates.add(predicate);
             }
 

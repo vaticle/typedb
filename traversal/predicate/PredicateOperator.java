@@ -44,7 +44,7 @@ public abstract class PredicateOperator {
         else throw TypeDBException.of(ILLEGAL_STATE);
     }
 
-    boolean isEquality() { return false; }
+    public boolean isEquality() { return false; }
 
     boolean isSubString() { return false; }
 
@@ -86,7 +86,7 @@ public abstract class PredicateOperator {
         abstract Equality reflection();
 
         @Override
-        boolean isEquality() { return true; }
+        public boolean isEquality() { return true; }
 
         @Override
         Equality asEquality() { return this; }
