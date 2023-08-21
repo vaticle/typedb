@@ -666,7 +666,12 @@ public abstract class Concludable extends Resolvable<Conjunction> implements Alp
 
         @Override
         public Set<Constraint> concludableConstraints() {
-            return new HashSet<>(Unifier.Builder.constantPredicateConstraints(values));
+            if (values.isEmpty()) {
+                assert attribute.isa().isPresent();
+                return set(attribute.isa().get());
+            } else {
+                return new HashSet<>(Unifier.Builder.constantPredicateConstraints(values));
+            }
         }
 
         public ThingVariable attribute() {

@@ -74,7 +74,7 @@ public class RealQueriesTest {
 
         benchmark.assertAnswerCountCorrect();
         benchmark.assertRunningTime(1000);
-        benchmark.assertCounters(500, 8, 15, 18, 80);
+        benchmark.assertCounters(500, 8, 18, 23, 46);
     }
 
     @Test
@@ -92,7 +92,7 @@ public class RealQueriesTest {
 
         benchmark.assertAnswerCountCorrect();
         benchmark.assertRunningTime(1500);
-        benchmark.assertCounters(500, 251, 448, 460, 2650);
+        benchmark.assertCounters(500, 251, 448, 450, 1600);
     }
 
     @Test

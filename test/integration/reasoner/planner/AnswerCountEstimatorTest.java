@@ -58,8 +58,6 @@ public class AnswerCountEstimatorTest {
     private static CoreSession session;
     private static CoreTransaction transaction;
 
-    private static final boolean FANCY_PROJECTION_IS_IMPLEMENTED = false;
-
     @Before
     public void setUp() throws IOException {
         Util.resetDirectory(dataDir);
@@ -87,7 +85,6 @@ public class AnswerCountEstimatorTest {
                 "$p3 isa person;" +
                 "$m1 isa man, has first-name \"m1_f\", has last-name \"m1_l\";" +
                 "$m2 isa man, has first-name \"m2_f\";" +
-
                 "(member: $p1, member: $p2, member: $p3) isa household;" +
                 "(member: $m1) isa household;" +
 
@@ -200,7 +197,7 @@ public class AnswerCountEstimatorTest {
             ResolvableConjunction conjunction = ResolvableConjunction.of(resolvedConjunction("{ $m isa man, has name $n; $p isa! person, has $n; }", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("m", "p")));
-            assertEquals(4.0, answers);
+            assertEquals(2.0, answers);
         }
 
         {
@@ -300,7 +297,7 @@ public class AnswerCountEstimatorTest {
         {   // Value constraint, unifies with rule
             ResolvableConjunction conjunction = ResolvableConjunction.of(resolvedConjunction("{ $p has name $n; $n \"Dave\"; }", transaction.logic()));
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("p", "n")));
-            assertEquals(2.0, answers);
+            assertEquals(10.0/6.0, answers, 0.01);
         }
 
         {   // Value constraint, doesn't unify with rule
@@ -369,7 +366,7 @@ public class AnswerCountEstimatorTest {
                     "}", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("x", "z")));
-            assertEquals(9.0, answers); // TODO: 9 because it's currently at local, disconnected estimates.
+            assertEquals(3.0, answers);
         }
 
         {   // Will work with only the relation-roleplayer and no sibling roleplayer co-constraints
@@ -379,7 +376,7 @@ public class AnswerCountEstimatorTest {
                     "}", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("x", "z")));
-            assertEquals(25.0, answers); // TODO: 25 because it's currently at local, disconnected estimates.
+            assertEquals(36.0/5.0, answers,0.01);
         }
 
         {   // Requires sibling roleplayer co-constraints
@@ -389,7 +386,7 @@ public class AnswerCountEstimatorTest {
                     "}", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("x", "y", "z")));
-            assertEquals(36.0, answers); // {x} (or {x,y}) and {y,z} (or {z}) is each covered by the estimate for symmetric-friendship -> 6 * 6 = 36
+            assertEquals(36.0/5.0, answers,0.01);
         }
     }
 
@@ -412,25 +409,21 @@ public class AnswerCountEstimatorTest {
             ResolvableConjunction conjunction = ResolvableConjunction.of(resolvedConjunction("{(first: $p1, second: $p2, third: $p3) isa one-hop-friends; }", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("p1", "p2", "p3")));
-            assertEquals(9.0, answers);
+            assertEquals(3.0, answers);
         }
 
-        {   // Works without fancy projection
+        {
             ResolvableConjunction conjunction = ResolvableConjunction.of(resolvedConjunction("{ (first: $p1) isa one-hop-friends; }", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("p1")));
             assertEquals(3.0, answers);
         }
 
-        {   // Needs fancy projection
+        {
             ResolvableConjunction conjunction = ResolvableConjunction.of(resolvedConjunction("{ (first: $p1, second: $p2, third: $p3) isa one-hop-friends; }", transaction.logic()));
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("p1")));
-            if (AnswerCountEstimatorTest.FANCY_PROJECTION_IS_IMPLEMENTED) {
-                assertEquals(3.0, answers);
-            } else {
-                assertEquals(5.0, answers); // type-constraint = 5 is used - the inferredAnswerCount is 9
-            }
+            assertEquals(3.0, answers);
         }
     }
 
@@ -493,7 +486,7 @@ public class AnswerCountEstimatorTest {
 
             double answers = answerCountEstimator.estimateAnswers(conjunction, getVariablesByName(conjunction.pattern(), set("host", "guest")));
 
-            assertEquals(9.0, answers);
+            assertEquals(3.0, answers); // We assume all of them succeed?
         }
     }
 

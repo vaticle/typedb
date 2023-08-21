@@ -72,7 +72,7 @@ public class BasicTest {
 
         benchmark.assertAnswerCountCorrect();
         benchmark.assertRunningTime(500);
-        benchmark.assertCounters(10, NACCESS, NACCESS + 1, NACCESS + 1, 3 * NACCESS);
+        benchmark.assertCounters(10, NACCESS, 2, 2, 3 * NACCESS);
     }
 
     @Test
@@ -249,6 +249,6 @@ public class BasicTest {
 
         benchmark.assertAnswerCountCorrect();
         benchmark.assertRunningTime(3500);
-        benchmark.assertCounters(25, NOBJECTS * NOBJECTS, NOBJECTS * NOBJECTS + 2, NOBJECTS * NOBJECTS + 2, 13572);
+        benchmark.assertCounters(35, NOBJECTS * NOBJECTS, NOBJECTS * NOBJECTS + 2, NOBJECTS * NOBJECTS + 2, 13572);
     }
 }

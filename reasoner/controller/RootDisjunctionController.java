@@ -26,7 +26,6 @@ import com.vaticle.typedb.core.reasoner.processor.reactive.Reactive.Stream;
 import com.vaticle.typedb.core.reasoner.processor.reactive.RootSink;
 import com.vaticle.typedb.core.traversal.common.Modifiers;
 
-import java.util.HashSet;
 import java.util.function.Supplier;
 
 public class RootDisjunctionController
@@ -48,7 +47,7 @@ public class RootDisjunctionController
 
     @Override
     public void initialise() {
-        disjunction.conjunctions().forEach(conjunction -> planner().plan(conjunction, new HashSet<>()));
+        planner().planRoot(disjunction);
         setUpUpstreamControllers();
         getOrCreateProcessor(new ConceptMap());
     }

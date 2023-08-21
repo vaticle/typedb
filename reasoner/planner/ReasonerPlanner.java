@@ -25,6 +25,7 @@ import com.vaticle.typedb.core.logic.Rule;
 import com.vaticle.typedb.core.logic.resolvable.Concludable;
 import com.vaticle.typedb.core.logic.resolvable.Resolvable;
 import com.vaticle.typedb.core.logic.resolvable.ResolvableConjunction;
+import com.vaticle.typedb.core.logic.resolvable.ResolvableDisjunction;
 import com.vaticle.typedb.core.logic.resolvable.Unifier;
 import com.vaticle.typedb.core.pattern.variable.Variable;
 import com.vaticle.typedb.core.reasoner.controller.ConcludableController;
@@ -72,22 +73,28 @@ public abstract class ReasonerPlanner {
         return boundVars.containsAll(dependencies.get(resolvable));
     }
 
-    public void plan(ResolvableConjunction conjunction, Set<Variable> mode) {
+    public void planAllDependencies(Concludable concludable, Set<Variable> mode) {
+        triggeredCalls(concludable, estimateableVariables(mode), null)
+            .forEach(callMode -> plan(callMode));
+    }
+
+    public void planRoot(ResolvableConjunction conjunction) {
         long start = System.nanoTime();
-        plan(new CallMode(conjunction, estimateableVariables(mode)));
+        plan(new CallMode(conjunction, new HashSet<>()));
         perfCounters.timePlanning.add(System.nanoTime() - start);
     }
 
-    public void planAllDependencies(Concludable concludable, Set<Variable> mode) {
-        triggeredCalls(concludable, estimateableVariables(mode), null)
-                .forEach(callMode -> plan(callMode));
+    public void planRoot(ResolvableDisjunction disjunction) {
+        long start = System.nanoTime();
+        disjunction.conjunctions().forEach(conjunction -> plan(new CallMode(conjunction, new HashSet<>())));
+        perfCounters.timePlanning.add(System.nanoTime() - start);
     }
 
     public Plan getPlan(ResolvableConjunction conjunction, Set<Variable> mode) {
         return getPlan(new CallMode(conjunction, estimateableVariables(mode)));
     }
 
-    synchronized void plan(CallMode callMode) {
+    protected synchronized void plan(CallMode callMode) {
         if (planCache.getIfPresent(callMode) == null) {
             planCache.put(callMode, computePlan(callMode));
         }

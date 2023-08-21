@@ -169,7 +169,7 @@ public class ReasonerSteps {
         }
     }
 
-    @Then("verify answer size is: {number}")
+    @Then("verify answer size is: {int}")
     public void verify_answer_size(int expectedAnswers) {
         assertEquals(String.format("Expected [%d] answers, but got [%d]", expectedAnswers, answers.size()),
                      expectedAnswers, answers.size());

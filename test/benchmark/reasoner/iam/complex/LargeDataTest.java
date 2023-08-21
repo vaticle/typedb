@@ -110,6 +110,6 @@ public class LargeDataTest {
 
         benchmark.assertAnswerCountCorrect();
         benchmark.assertRunningTime(2500);
-        benchmark.assertCounters(500, 500, 1000, 1750, 11750);
+        benchmark.assertCounters(500, 500, 1000, 1215, 7000);
     }
 }

@@ -178,7 +178,7 @@ public class OrderingCoster {
             } else if (res.isNegated()) {
                 estimate = iterate(res.asNegated().disjunction().conjunctions()).map(conj -> {
                     Set<Variable> conjVariables = estimateableVariables(conj.pattern().variables());
-                    Set<Variable> commonVars = Collections.intersection(conjVariables, resVars);
+                    Set<Variable> commonVars = Collections.intersection(conjVariables, conjunctionNode.conjunction().pattern().variables());
                     double numerator = singleCallEstimatorForMode.answerEstimate(commonVars);
                     double denominator = answerCountEstimator.estimateAnswers(conj, commonVars);
                     double scalingFactor = (denominator == 0) ? 0 : Math.min(1.0, numerator / denominator);

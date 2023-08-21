@@ -17,6 +17,7 @@
  */
 package com.vaticle.typedb.core.reasoner.planner;
 
+import com.vaticle.typedb.common.collection.Collections;
 import com.vaticle.typedb.common.collection.Pair;
 import com.vaticle.typedb.core.common.exception.TypeDBException;
 import com.vaticle.typedb.core.common.parameters.Label;
@@ -31,15 +32,17 @@ import com.vaticle.typedb.core.logic.resolvable.Retrievable;
 import com.vaticle.typedb.core.logic.resolvable.Unifier;
 import com.vaticle.typedb.core.pattern.constraint.Constraint;
 import com.vaticle.typedb.core.pattern.constraint.thing.HasConstraint;
+import com.vaticle.typedb.core.pattern.constraint.thing.IIDConstraint;
+import com.vaticle.typedb.core.pattern.constraint.thing.IsConstraint;
 import com.vaticle.typedb.core.pattern.constraint.thing.IsaConstraint;
 import com.vaticle.typedb.core.pattern.constraint.thing.PredicateConstraint;
 import com.vaticle.typedb.core.pattern.constraint.thing.RelationConstraint;
 import com.vaticle.typedb.core.pattern.constraint.thing.ThingConstraint;
 import com.vaticle.typedb.core.pattern.variable.ThingVariable;
-import com.vaticle.typedb.core.pattern.variable.TypeVariable;
 import com.vaticle.typedb.core.pattern.variable.Variable;
 import com.vaticle.typedb.core.reasoner.planner.ConjunctionGraph.ConjunctionNode;
 import com.vaticle.typedb.core.traversal.common.Identifier;
+import com.vaticle.typeql.lang.common.TypeQLToken;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -48,15 +51,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.Set;
 
-import static com.vaticle.typedb.common.collection.Collections.intersection;
 import static com.vaticle.typedb.common.collection.Collections.list;
 import static com.vaticle.typedb.common.collection.Collections.set;
+import static com.vaticle.typedb.core.common.exception.ErrorMessage.Internal.ILLEGAL_STATE;
 import static com.vaticle.typedb.core.common.exception.ErrorMessage.Internal.UNSUPPORTED_OPERATION;
 import static com.vaticle.typedb.core.common.iterator.Iterators.iterate;
-import static com.vaticle.typedb.core.reasoner.planner.RecursivePlanner.estimateableVariables;
 
 public class AnswerCountEstimator {
     private final LogicManager logicMgr;
@@ -118,84 +120,51 @@ public class AnswerCountEstimator {
     public static class IncrementalEstimator {
         private final ConjunctionModel conjunctionModel;
         private final LocalModelFactory localModelFactory;
-        private final Map<LocalModel, Pair<Double, Optional<Variable>>> modelScale;
         private final Map<Variable, Double> minVariableEstimate;
-        private final Map<Variable, Set<LocalModel>> affectedModels;
+        private final Map<Variable, Set<LocalModel.EdgeEstimate.Directed>> outgoingEdges;
 
         private IncrementalEstimator(ConjunctionModel conjunctionModel, LocalModelFactory localModelFactory, Set<Variable> initialBounds) {
             this.conjunctionModel = conjunctionModel;
             this.localModelFactory = localModelFactory;
-            this.modelScale = new HashMap<>();
             this.minVariableEstimate = new HashMap<>();
-            initialBounds.forEach(v -> this.minVariableEstimate.put(v, 1.0));
-            this.affectedModels = new HashMap<>();
+            this.outgoingEdges = new HashMap<>();
+            initialBounds.forEach(v -> {
+                this.minVariableEstimate.put(v, 1.0);
+                this.outgoingEdges.put(v, new HashSet<>());
+            });
         }
 
         public void extend(Resolvable<?> resolvable) {
-            assert conjunctionModel.conjunctionNode.resolvables().contains(resolvable);
             Map<Variable, Double> improvedVariableEstimates = new HashMap<>();
-            List<LocalModel> models = conjunctionModel.modelsForResolvable(resolvable);
-            iterate(models).flatMap(model -> iterate(model.variables)).forEachRemaining(v -> affectedModels.computeIfAbsent(v, v1 -> new HashSet<>()));
+            List<LocalModel> models = iterate(conjunctionModel.modelsForResolvable(resolvable)).map(LocalModel::clone).toList();
 
-            iterate(models).filter(model -> model.variables.size() == 1).forEachRemaining(model -> {
-                Variable v = iterate(model.variables).next();
-                double newEstimate = model.estimateAnswers(model.variables);
-                if (newEstimate < minVariableEstimate.getOrDefault(v, Double.MAX_VALUE)) {
-                    improvedVariableEstimates.merge(v, newEstimate, Math::min);
-                } // Optimisation: Single variable models can only improve estimates once.
-            });
+            iterate(models).flatMap(model -> iterate(model.vertices))
+                    .forEachRemaining(vertex -> outgoingEdges.computeIfAbsent(vertex.variable, v -> new HashSet<>()));
+            iterate(models).flatMap(model -> iterate(model.edges))
+                    .forEachRemaining(edge -> {
+                        outgoingEdges.get(edge.directed[0].from()).add(edge.directed[0]);
+                        outgoingEdges.get(edge.directed[1].from()).add(edge.directed[1]);
+                    });
 
-            iterate(models).filter(model -> model.variables.size() > 1).forEachRemaining(model -> {
-                model.variables.forEach(v -> affectedModels.get(v).add(model));
-                modelScale.put(model, new Pair<>(1.0, Optional.empty()));
-                Map<Variable, Double> scaledEstimates = applyScaling(model);
-                scaledEstimates.forEach((k, v) -> improvedVariableEstimates.merge(k, v, Math::min));
+            iterate(models).flatMap(model -> iterate(model.vertices)).forEachRemaining(vertexEstimate -> {
+                // We need to consider improved connectivity as a cause for propagation too.
+                improvedVariableEstimates.merge(vertexEstimate.variable,
+                        Math.min(minVariableEstimate.getOrDefault(vertexEstimate.variable, Double.MAX_VALUE), vertexEstimate.estimate),
+                        Math::min);
             });
 
             propagate(improvedVariableEstimates);
-            // Lazy-fix: Give variables not included in any constraint a pessimistic estimate (Inaccuracy: We don't consider inferred values)
-            iterate(estimateableVariables(resolvable.variables())).filter(v -> !minVariableEstimate.containsKey(v))
-                    .forEachRemaining(v -> minVariableEstimate.put(v, (double) localModelFactory.countPersistedThingsMatchingType(v.asThing())));
         }
 
-        private Map<Variable, Double> applyScaling(LocalModel model) {
-            Map<Variable, Double> improvedVariableEstimates = new HashMap<>();
-            Pair<Double, Optional<Variable>> scale = modelScale.get(model);
-            double bestScaler = scale.first();
-            Variable bestScalingVar = scale.second().orElse(null);
-            // Find scaling factor
-            for (Variable v : model.variables) {
-                double ans = (double) Math.max(1, model.estimateAnswers(set(v)));
-                if (minVariableEstimate.containsKey(v) && minVariableEstimate.get(v) / ans < bestScaler) {
-                    bestScaler = minVariableEstimate.get(v) / ans;
-                    bestScalingVar = v;
-                } else if (ans < minVariableEstimate.getOrDefault(v, Double.MAX_VALUE)) {
-                    improvedVariableEstimates.put(v, ans);
-                }
-            }
-            // Find cascading effects of scaling on other vars (to propagate)
-            if (bestScalingVar != null) {
-                modelScale.put(model, new Pair<>(bestScaler, Optional.of(bestScalingVar)));
-                for (Variable v : model.variables) {
-                    if (v == bestScalingVar) continue;
-                    double newEstimate = scaledEstimate(model, modelScale.get(model), set(v));
-                    if (newEstimate < minVariableEstimate.getOrDefault(v, Double.MAX_VALUE)) {
-                        improvedVariableEstimates.merge(v, newEstimate, Math::min);
-                    }
-                }
-            }
-            return improvedVariableEstimates;
-        }
-
-        private void propagate(Map<Variable, Double> minVarUpdates) {
-            int maxIters = Math.max(1, 2 * modelScale.size()); // TODO: Ignoring small changes can force early convergence
-            Map<Variable, Double> updatesToApply = minVarUpdates;
+        private void propagate(Map<Variable, Double> firstUpdatesToApply) {
+            int maxIters = Math.max(1, 2 * (firstUpdatesToApply.size() + minVariableEstimate.size()));
+            Map<Variable, Double> updatesToApply = firstUpdatesToApply;
             while (!updatesToApply.isEmpty() && maxIters > 0) {
-                assert iterate(updatesToApply.entrySet()).allMatch(update -> update.getValue() < minVariableEstimate.getOrDefault(update.getKey(), Double.MAX_VALUE));
+                assert iterate(updatesToApply.entrySet()).allMatch(update -> update.getValue() <= minVariableEstimate.getOrDefault(update.getKey(), Double.MAX_VALUE));
                 minVariableEstimate.putAll(updatesToApply);
                 Map<Variable, Double> improvedVariableEstimates = new HashMap<>();
-                iterate(updatesToApply.keySet()).flatMap(v -> iterate(this.affectedModels.get(v))).distinct().forEachRemaining(model -> {
-                    Map<Variable, Double> scaledEstimates = applyScaling(model);
+                iterate(updatesToApply.keySet()).forEachRemaining(variable -> {
+                    Map<Variable, Double> scaledEstimates = applyScaling(variable);
                     scaledEstimates.forEach((k, v) -> improvedVariableEstimates.merge(k, v, Math::min));
                 });
                 updatesToApply = improvedVariableEstimates;
@@ -203,29 +172,96 @@ public class AnswerCountEstimator {
             }
         }
 
-        public double answerEstimate(Set<Variable> variables) {
-            List<LocalModel> relevantModels = iterate(modelScale.keySet())
-                    .filter(model -> iterate(model.variables).anyMatch(variables::contains))
-                    .toList();
-
-            Map<Variable, CoverElement> cover = new HashMap<>();
-            iterate(variables).forEachRemaining(v -> cover.put(v, new CoverElement(minVariableEstimate.get(v))));
-
-            Map<LocalModel, Pair<Set<Variable>, Double>> scaledEstimates = new HashMap<>();
-            relevantModels.forEach(model -> {
-                Set<Variable> modelledVars = intersection(model.variables, variables);
-                scaledEstimates.put(model, new Pair<>(modelledVars, scaledEstimate(model, modelScale.get(model), variables)));
+        private Map<Variable, Double> applyScaling(Variable from) {
+            Map<Variable, Double> cascadingEffects = new HashMap<>();
+            Double newFromEstimate = minVariableEstimate.get(from);
+            outgoingEdges.get(from).forEach(edge -> {
+                edge.scaleDownFrom(newFromEstimate);
+                double delta = (minVariableEstimate.get(edge.to()) - edge.toEstimate());
+                if ( delta > 0.1 && delta / minVariableEstimate.get(edge.to()) > 0.01) { // Ignore reductions less than 1%
+                    cascadingEffects.put(edge.to(), edge.toEstimate());
+                }
             });
-            relevantModels.sort(Comparator.comparing(model -> scaledEstimates.get(model).second()));
-            for (LocalModel model : relevantModels) {
-                if (scaledEstimates.get(model).second() < answerEstimateFromCover(scaledEstimates.get(model).first(), cover)) {
-                    CoverElement coverElement = new CoverElement(scaledEstimates.get(model).second());
-                    scaledEstimates.get(model).first().forEach(v -> cover.put(v, coverElement));
+            return cascadingEffects;
+        }
+
+        public double answerEstimate(Set<Variable> variables) {
+            Set<Variable> estimateableVariables = ReasonerPlanner.estimateableVariables(variables);
+            if (estimateableVariables.isEmpty()) return 1;
+            Set<Variable> remainingVars = new HashSet<>(estimateableVariables);
+            double estimate = 1.0;
+            while (!remainingVars.isEmpty()) {
+                Variable start = remainingVars.stream().findAny().get();
+                // Question: Does the tree which minimises the answer count for all variables also minimise it for the queried variables?
+                // Ideally we'd figure out how to do the projection first, and then estimation should just be finding the MST.
+                Map<Variable, Set<LocalModel.EdgeEstimate.Directed>> mdst = findTree(remainingVars, start);
+                estimate *= minVariableEstimate.get(start) * effectiveConnectivityFromTree(estimateableVariables, mdst, start, 1.0, null).first();
+            }
+            return estimate;
+        }
+
+        private Map<Variable, Set<LocalModel.EdgeEstimate.Directed>> findTree(Set<Variable> remainingQueryVars, Variable start) {
+            Map<Variable, Set<LocalModel.EdgeEstimate.Directed>> tree = new HashMap<>();
+            tree.put(start, new HashSet<>());
+            remainingQueryVars.remove(start);
+            PriorityQueue<LocalModel.EdgeEstimate.Directed> fringe = new PriorityQueue<>(Comparator.comparing(LocalModel.EdgeEstimate.Directed::connectivity));
+            fringe.addAll(outgoingEdges.get(start));
+            while (!fringe.isEmpty()) {
+                LocalModel.EdgeEstimate.Directed topEdge = fringe.poll();
+                Variable nextVar = topEdge.to();
+
+                if (tree.containsKey(nextVar)) continue;
+                tree.put(nextVar, new HashSet<>());
+                remainingQueryVars.remove(nextVar);
+                tree.get(topEdge.from()).add(topEdge);
+
+                fringe.addAll(outgoingEdges.get(nextVar));
+            }
+            return tree;
+        }
+
+        // Returns connectivity, upper-bound for connectivity
+        // Something with the adaptive minVariableEstimate and the way we upper bound is being non-deterministic.
+        private Pair<Double, Double> effectiveConnectivityFromTree(Set<Variable> queryVariables, Map<Variable, Set<LocalModel.EdgeEstimate.Directed>> tree, Variable at, double inputConnectivity, LocalModel.EdgeEstimate.Directed incomingEdge) {
+            double upperBound = queryVariables.contains(at) ? minVariableEstimate.get(at) : 1.0;
+            double connectivity = inputConnectivity;
+
+            Set<LocalModel.EdgeEstimate.Directed> relevantEdges = new HashSet<>();
+
+            for (LocalModel.EdgeEstimate.Directed edge : tree.get(at)) {
+                Pair<Double, Double> branchEstimate = effectiveConnectivityFromTree(queryVariables, tree, edge.to(), Math.min(minVariableEstimate.get(edge.to()), edge.connectivity()), edge);
+                if (branchEstimate != null) {
+                    connectivity *= branchEstimate.first();
+                    upperBound *= branchEstimate.second();
+                    relevantEdges.add(edge);
                 }
             }
 
-            assert !variables.isEmpty() || answerEstimateFromCover(variables, cover) == 1;
-            return Math.round(Math.ceil(answerEstimateFromCover(variables, cover)));
+            boolean isRelevantBranch = queryVariables.contains(at) || relevantEdges.size() > 0;
+            if (!isRelevantBranch) return null;
+
+            // Correct for repeated role-players
+            if (at.isThing() && at.asThing().relation().isPresent()) {
+                if (incomingEdge != null) relevantEdges.add(incomingEdge.reversed());
+
+                Set<Set<LocalModel.EdgeEstimate.Directed>> groupedEdges = iterate(relevantEdges).map(LocalModel.EdgeEstimate.Directed::sameRoleTypeSet).distinct()
+                        .map(sameRoleTypeSet -> Collections.intersection(sameRoleTypeSet, relevantEdges)).toSet();
+
+                for (Set<LocalModel.EdgeEstimate.Directed> toCorrect : groupedEdges) {
+                    if (toCorrect.size() > 1) {
+                        double permutations = 1;
+                        double nPowerN = 1;
+                        for (int i = 1; i <= toCorrect.size(); i++) {
+                            permutations *= i;
+                            nPowerN *= toCorrect.size();
+                        }
+                        connectivity *= (permutations / nPowerN);
+                    }
+                }
+            }
+
+            connectivity = Math.min(connectivity, upperBound);
+            return new Pair<>(connectivity, upperBound);
         }
 
         public double answerSetSize() {
@@ -233,41 +269,12 @@ public class AnswerCountEstimator {
             return answerEstimate(minVariableEstimate.keySet());
         }
 
-        private static double scaledEstimate(LocalModel model, Pair<Double, Optional<Variable>> scale, Set<Variable> estimateVariables) {
-            assert scale.second().isPresent() || scale.first() == 1.0;
-            Set<Variable> variables = new HashSet<>();
-            iterate(estimateVariables).filter(model.variables::contains).forEachRemaining(variables::add);
-            double ans = model.estimateAnswers(variables);
-            if (scale.second().isPresent()) {
-                assert scale.first() <= 1.0;
-                variables.add(scale.second().get());
-                double scaledAns = scale.first() * model.estimateAnswers(variables);
-                ans = Math.min(ans, scaledAns);
-            }
-            return ans;
-        }
-
-        private static double answerEstimateFromCover(Set<Variable> variables, Map<Variable, CoverElement> coverMap) {
-            double estimate = iterate(variables).map(coverMap::get).distinct()
-                    .map(coverElement -> coverElement.estimate).reduce(1.0, (x, y) -> x * y);
-            return Math.round(Math.ceil(estimate));
-        }
-
         public IncrementalEstimator clone() {
             // initialbounds = set() is ok, the next steps will take care of it.
             IncrementalEstimator cloned = new IncrementalEstimator(conjunctionModel, localModelFactory, set());
             cloned.minVariableEstimate.putAll(this.minVariableEstimate);
-            cloned.modelScale.putAll(this.modelScale);
-            this.affectedModels.forEach((k, v) -> cloned.affectedModels.put(k, new HashSet<>(v)));
+            this.outgoingEdges.forEach((k, v) -> cloned.outgoingEdges.put(k, new HashSet<>(v)));
             return cloned;
-        }
-
-        private static class CoverElement {
-            private final double estimate;
-
-            private CoverElement(double estimate) {
-                this.estimate = estimate;
-            }
         }
     }
 
@@ -317,7 +324,7 @@ public class AnswerCountEstimator {
                     .forEachRemaining(negated -> models.put(negated, buildModelsForNegated(negated)));
             // Should we recurse into the acyclic dependencies? Don't think so - Would over-constrain
             iterate(conjunctionNode.cyclicConcludables())
-                    .forEachRemaining(concludable -> models.put(concludable, buildVariableModelsForConcludable(concludable)));
+                    .forEachRemaining(concludable -> models.put(concludable, buildVariableModelsForCyclicConcludable(concludable)));
 
             assert !iterate(conjunctionNode.resolvables()).filter(resolvable -> !models.containsKey(resolvable)).hasNext();
             return new ConjunctionModel(conjunctionNode, models, false);
@@ -351,10 +358,8 @@ public class AnswerCountEstimator {
                     .toList();
         }
 
-        private List<LocalModel> buildVariableModelsForConcludable(Concludable concludable) {
-            List<LocalModel> models = new ArrayList<>();
-            iterate(concludable.variables()).filter(Variable::isThing).map(v -> localModelFactory.modelForVariable(v, null)).forEachRemaining(models::add);
-            return models;
+        private List<LocalModel> buildVariableModelsForCyclicConcludable(Concludable concludable) {
+            return list(localModelFactory.variableModelForCyclicConcludable(concludable));
         }
 
         private LocalModel buildConstraintModel(Constraint constraint, @Nullable Concludable correspondingConcludable) {
@@ -366,9 +371,15 @@ public class AnswerCountEstimator {
                     return localModelFactory.modelForRelation(asThingConstraint.asRelation(), correspondingConcludable);
                 } else if (asThingConstraint.isIsa()) {
                     return localModelFactory.modelForIsa(asThingConstraint.asIsa(), correspondingConcludable);
-                } else if (asThingConstraint.isPredicate() && asThingConstraint.asPredicate().predicate().isValueIdentity()) {
-                    return localModelFactory.modelForValue(asThingConstraint.asPredicate(), correspondingConcludable);
-                } else throw TypeDBException.of(UNSUPPORTED_OPERATION);
+                } else if (asThingConstraint.isIID()) {
+                    return localModelFactory.modelForIID(asThingConstraint.asIID());
+                } else if (asThingConstraint.isPredicate()) {
+                    return localModelFactory.modelForPredicate(asThingConstraint.asPredicate(), correspondingConcludable);
+                } else if (asThingConstraint.isIs()) {
+                    return localModelFactory.modelForIs(asThingConstraint.asIs(), correspondingConcludable);
+                } else throw TypeDBException.of(ILLEGAL_STATE);
+            } else if (constraint.isValue()) {
+                return new LocalModel(new HashSet<>(localModelFactory.variableModelsBasedOnType(new HashSet<>(constraint.asValue().variables()), null)), set());
             } else throw TypeDBException.of(UNSUPPORTED_OPERATION);
         }
 
@@ -379,192 +390,123 @@ public class AnswerCountEstimator {
         }
 
         private boolean isModellable(Constraint constraint) {
-            return constraint.isThing() &&
-                    (constraint.asThing().isRelation() || constraint.asThing().isHas() || constraint.asThing().isIsa() ||
-                            (constraint.asThing().isPredicate() && constraint.asThing().asPredicate().predicate().isValueIdentity()));
+            return constraint.isThing() || constraint.isValue();
         }
     }
 
-    private static abstract class LocalModel {
+    private static class LocalModel {
 
-        final Set<Variable> variables;
+        private final Set<VariableEstimate> vertices;
+        private final Set<EdgeEstimate> edges;
 
-        private LocalModel(Set<Variable> variables) {
-            this.variables = variables;
+        protected LocalModel(Set<VariableEstimate> vertices, Set<EdgeEstimate> edges) {
+            this.vertices = vertices;
+            this.edges = edges;
+
+            Map<Variable, Double> vertexEstimates = new HashMap<>();
+            this.vertices.forEach(vertex -> vertexEstimates.put(vertex.variable, vertex.estimate));
+            this.edges.forEach(edge -> {
+                edge.setEstimates(vertexEstimates.get(edge.vars[0]), vertexEstimates.get(edge.vars[1]));
+            });
         }
 
-        abstract double estimateAnswers(Set<Variable> variableFilter);
+        public LocalModel clone() {
+            Map<EdgeEstimate, EdgeEstimate> clonedEdgeMap = new HashMap<>();
+            Map<Set<EdgeEstimate.Directed>, Set<EdgeEstimate.Directed>> clonedSameRoleTypeSet = new HashMap<>();
 
-        public boolean isRelation() {
-            return false;
-        }
-
-        public boolean isHas() {
-            return false;
-        }
-
-        public boolean isIsa() {
-            return false;
-        }
-
-        public boolean isVariable() {
-            return false;
-        }
-
-        private abstract static class StaticModel extends LocalModel {
-            private final double staticEstimate;
-
-            private StaticModel(Set<Variable> variables, double staticEstimate) {
-                super(variables);
-                this.staticEstimate = staticEstimate;
-            }
-
-            @Override
-            double estimateAnswers(Set<Variable> variableFilter) {
-                return staticEstimate;
-            }
-        }
-
-        private static class RelationModel extends LocalModel {
-            private final RelationConstraint relation;
-            private final Map<Label, Long> rolePlayerEstimates;
-            private final Map<ThingVariable, Long> typeMaximums;
-            private final double relationTypeEstimate;
-            private final Map<ThingVariable, Label> rolePlayerTypes;
-
-            private RelationModel(RelationConstraint relation, double relationTypeEstimate,
-                                  Map<ThingVariable, Long> typeMaximums, Map<Label, Long> rolePlayerEstimates) {
-                super(iterate(relation.variables()).filter(Variable::isThing).toSet());
-                this.relation = relation;
-                this.relationTypeEstimate = relationTypeEstimate;
-                this.rolePlayerEstimates = rolePlayerEstimates;
-                this.typeMaximums = typeMaximums;
-                this.rolePlayerTypes = new HashMap<>();
-
-                relation.players().forEach(player -> {
-                    // Inaccuracy: null is a valid role-type, but two unspecified roles are not necessarily interchangable.
-                    TypeVariable roleType = player.roleType().isPresent() ? player.roleType().get() : null;
-                    this.rolePlayerTypes.put(player.player(), getRoleType(player));
+            iterate(edges).forEachRemaining(edge -> clonedSameRoleTypeSet.computeIfAbsent(edge.sameRoleTypeSet, s -> new HashSet<>()));
+            iterate(edges).forEachRemaining(edge -> clonedEdgeMap.put(edge, new EdgeEstimate(edge.vars[0], edge.vars[1], edge.nEdges, clonedSameRoleTypeSet.get(edge.sameRoleTypeSet))));
+            iterate(edges).forEachRemaining(edge -> {
+                iterate(edge.sameRoleTypeSet).forEachRemaining(directed -> {
+                    EdgeEstimate.Directed clonedEdge = clonedEdgeMap.get(directed.undirected()).edgeStarting(directed.from());
+                    clonedSameRoleTypeSet.get(edge.sameRoleTypeSet).add(clonedEdge);
                 });
+            });
+
+            return new LocalModel(vertices, iterate(clonedEdgeMap.values()).toSet());
+        }
+
+        private static class VariableEstimate {
+            private final Variable variable;
+            private final double estimate;
+
+            private VariableEstimate(Variable variable, double estimate) {
+                this.variable = variable;
+                this.estimate = estimate;
+            }
+        }
+
+        private static class EdgeEstimate {
+            private final Variable[] vars;
+            private final Directed[] directed;
+            private final Set<Directed> sameRoleTypeSet;
+
+            private double nEdges;
+            private double[] nodeEstimates;
+
+            private EdgeEstimate(Variable v1, Variable v2, double nEdges) {
+                this(v1, v2, nEdges, set());
             }
 
-            static Label getRoleType(RelationConstraint.RolePlayer player) {
-                if (player.roleType().isPresent() && player.roleType().get().label().isPresent()) {
-                    return player.roleType().get().label().get().properLabel();
-                } else if (player.inferredRoleTypes().size() == 1) return iterate(player.inferredRoleTypes()).next();
-                else return null;
+            private EdgeEstimate(Variable v1, Variable v2, double nEdges, Set<EdgeEstimate.Directed> sameRoleTypeSet) {
+                vars = new Variable[]{v1, v2};
+                this.nEdges = nEdges;
+                this.directed = new Directed[]{new Directed(0), new Directed(1)};
+                this.sameRoleTypeSet = sameRoleTypeSet;
             }
 
-            public boolean isRelation() {
-                return true;
+            private void setEstimates(double v1Estimate, double v2Estimate) {
+                this.nodeEstimates = new double[]{v1Estimate, v2Estimate};
             }
 
-            @Override
-            double estimateAnswers(Set<Variable> variableFilter) {
-                double singleRelationEstimate = 1L;
-                Map<Label, Integer> queriedRolePlayerCounts = new HashMap<>();
-                double typeBasedUpperBound = 1L;
-                for (Variable v : variableFilter) {
-                    if (v.isThing() && rolePlayerTypes.containsKey(v.asThing())) {
-                        Label role = this.rolePlayerTypes.get(v);
-                        queriedRolePlayerCounts.put(role, 1 + queriedRolePlayerCounts.getOrDefault(role, 0));
-                        typeBasedUpperBound *= typeMaximums.get(v);
-                    }
+            private Directed edgeStarting(Variable from) {
+                return from == vars[0] ? directed[0] : directed[1];
+            }
+
+            private class Directed {
+                private final int idx;
+                private final int other;
+
+                private Directed(int idx) {
+                    this.idx = idx;
+                    this.other = 1 - idx;
+                }
+                private EdgeEstimate undirected() { return EdgeEstimate.this; }
+
+                Directed reversed() {
+                    return directed[other];
                 }
 
-                double typeBasedUpperBoundFromRelations = relationTypeEstimate;
-                if (relationTypeEstimate > 0) {
-                    for (Label key : queriedRolePlayerCounts.keySet()) {
-                        assert rolePlayerEstimates.containsKey(key);
-                        long avgRolePlayers = Double.valueOf(Math.ceil((double) rolePlayerEstimates.get(key) / relationTypeEstimate)).longValue();
-                        singleRelationEstimate *= nPermuteKforSmallK(avgRolePlayers, queriedRolePlayerCounts.get(key));
-                        typeBasedUpperBoundFromRelations *= nPermuteKforSmallK(avgRolePlayers, queriedRolePlayerCounts.get(key));
-                    }
+                Variable from() {
+                    return vars[idx];
                 }
 
-                // How do you correctly query $q($x) from $r($a, $b) ?
-                if (variableFilter.contains(relation.owner()))
-                    typeBasedUpperBound = typeBasedUpperBoundFromRelations; // We need the type based upper bound for the relationEstimate too
+                Variable to() {
+                    return vars[other];
+                }
 
-                return Math.min(typeBasedUpperBound, Double.valueOf(Math.ceil(relationTypeEstimate * singleRelationEstimate)).doubleValue());
-            }
+                double fromEstimate() {
+                    return nodeEstimates[idx];
+                }
 
-            private double nPermuteKforSmallK(long n, long k) {
-                assert n >= k;
-                n = Math.max(n, k); // Guard against 0. (Although 0 is the right answer it's not useful)
-                double ans = 1;
-                for (int i = 0; i < k; i++) ans *= n - i;
-                return ans;
-            }
+                double toEstimate() {
+                    return nodeEstimates[other];
+                }
 
-            @Override
-            public String toString() {
-                return "RelationModel[" + relation.toString() + "]";
-            }
-        }
+                double connectivity() {
+                    return fromEstimate() != 0 ? (nEdges / fromEstimate()) : 0;
+                }
 
-        private static class HasModel extends LocalModel {
-            private final HasConstraint has;
-            private final double hasEdgeEstimate;
-            private final double ownerEstimate;
-            private final double attributeEstimate;
+                void scaleDownFrom(double newFromEstimate) {
+                    if (newFromEstimate >= fromEstimate()) return;
+                    nEdges = fromEstimate() != 0 ? (newFromEstimate / fromEstimate() * nEdges) : 0;
+                    nodeEstimates[idx] = newFromEstimate;
+                    nodeEstimates[other] = Math.min(nodeEstimates[other], nEdges);
+                }
 
-            private HasModel(HasConstraint has, double hasEdgeEstimate, double ownerEstimate, double attributeEstimate) {
-                super(set(has.owner(), has.attribute()));
-                this.has = has;
-                this.hasEdgeEstimate = hasEdgeEstimate;
-                this.ownerEstimate = ownerEstimate;
-                this.attributeEstimate = attributeEstimate;
-            }
-
-            public boolean isHas() {
-                return true;
-            }
-
-            @Override
-            double estimateAnswers(Set<Variable> variableFilter) {
-                double answerEstimate = 1;
-                if (variableFilter.contains(has.owner())) answerEstimate *= ownerEstimate;
-                if (variableFilter.contains(has.attribute())) answerEstimate *= attributeEstimate;
-                return Math.min(answerEstimate, this.hasEdgeEstimate);
-            }
-
-            @Override
-            public String toString() {
-                return "HasModel[" + has.toString() + "]";
-            }
-        }
-
-        private static class IsaModel extends StaticModel {
-            private final IsaConstraint isa;
-
-            private IsaModel(IsaConstraint isa, double estimate) {
-                super(set(isa.owner()), estimate);
-                this.isa = isa;
-            }
-
-            public boolean isIsa() {
-                return true;
-            }
-
-            @Override
-            public String toString() {
-                return "IsaModel[" + isa.toString() + "]";
-            }
-        }
-
-        private static class VariableModel extends StaticModel {
-            private VariableModel(Set<Variable> variables, double estimate) {
-                super(variables, estimate);
-            }
-
-            public boolean isVariable() {
-                return true;
-            }
-
-            @Override
-            public String toString() {
-                return "VariableModel[" + iterate(variables).next() + "=" + estimateAnswers(set()) + "]";
+                public Set<EdgeEstimate.Directed> sameRoleTypeSet() {
+                    return sameRoleTypeSet;
+                }
             }
         }
     }
@@ -578,13 +520,9 @@ public class AnswerCountEstimator {
             this.graphMgr = graphMgr;
         }
 
-        private LocalModel.RelationModel modelForRelation(RelationConstraint relationConstraint, @Nullable Concludable correspondingConcludable) {
-            // Assumes role-players are evenly distributed.
-            // Small inaccuracy: We double count duplicate roles (r:$a, r:$b)
-            // counts the case where r:$a=r:$b, which TypeDB wouldn't return
+        private LocalModel modelForRelation(RelationConstraint relationConstraint, @Nullable Concludable correspondingConcludable) {
+            // May have oversimplified this compared to 2.17.0
             Set<RelationConstraint.RolePlayer> rolePlayers = relationConstraint.players();
-            Map<Label, Long> rolePlayerEstimates = new HashMap<>();
-            Map<Label, Integer> rolePlayerCounts = new HashMap<>();
 
             Map<ThingVariable, Long> typeMaximums = new HashMap<>();
             double typeBasedUpperBound = 1L;
@@ -593,8 +531,7 @@ public class AnswerCountEstimator {
                 typeBasedUpperBound *= typeMaximums.get(rp.player());
             }
 
-            double persistedRelationEstimate = countPersistedThingsMatchingType(relationConstraint.owner());
-            // TODO: Can improve estimate by collecting List<List<LocalModel>> from the triggered rules and doing sum(costCover).
+            long persistedRelationEstimate = countPersistedThingsMatchingType(relationConstraint.owner());
             double inferredRelationsEstimate = 0L;
             if (correspondingConcludable != null) {
                 List<Variable> constrainedVars = new ArrayList<>();
@@ -606,24 +543,29 @@ public class AnswerCountEstimator {
             }
 
             inferredRelationsEstimate = Math.min(inferredRelationsEstimate, typeBasedUpperBound - persistedRelationEstimate);
+            long inferredRelationsEstimateRounded = Double.valueOf(Math.ceil(inferredRelationsEstimate)).longValue();
 
+            Map<Variable, LocalModel.VariableEstimate> variableEstimates = new HashMap<>();
+            Map<RelationConstraint.RolePlayer, Long> roleEdges = new HashMap<>();
             for (RelationConstraint.RolePlayer rp : rolePlayers) {
-                Label key = LocalModel.RelationModel.getRoleType(rp);
-                rolePlayerCounts.put(key, rolePlayerCounts.getOrDefault(key, 0) + 1);
-                if (!rolePlayerEstimates.containsKey(key)) {
-                    rolePlayerEstimates.put(key, countPersistedRolePlayers(rp));
-                }
+                roleEdges.put(rp, countPersistedRolePlayers(rp) + inferredRelationsEstimateRounded);
+                variableEstimates.put(rp.player(), new LocalModel.VariableEstimate(rp.player(), Math.min(typeMaximums.get(rp.player()), roleEdges.get(rp))));
             }
+            variableEstimates.put(relationConstraint.owner(), new LocalModel.VariableEstimate(relationConstraint.owner(), persistedRelationEstimate + inferredRelationsEstimate));
 
-            for (Label key : rolePlayerCounts.keySet()) {
-                rolePlayerEstimates.put(key, rolePlayerEstimates.get(key) +
-                        rolePlayerCounts.get(key) * Double.valueOf(Math.ceil(inferredRelationsEstimate)).longValue());
-            }
+            Map<Label, Set<LocalModel.EdgeEstimate.Directed>> sameRoleTypeSet = new HashMap<>();
+            Set<LocalModel.EdgeEstimate> edges = new HashSet<>();
+            roleEdges.forEach((rp, edgeEstimate) -> {
+                Set<LocalModel.EdgeEstimate.Directed> sameRolePlayerEdges = sameRoleTypeSet.computeIfAbsent(getRoleType(rp), lbl -> new HashSet<>());
+                LocalModel.EdgeEstimate edge = new LocalModel.EdgeEstimate(relationConstraint.owner(), rp.player(), edgeEstimate, sameRolePlayerEdges);
+                edges.add(edge);
+                sameRolePlayerEdges.add(edge.edgeStarting(relationConstraint.owner()));
+            });
 
-            return new LocalModel.RelationModel(relationConstraint, inferredRelationsEstimate + persistedRelationEstimate, typeMaximums, rolePlayerEstimates);
+            return new LocalModel(new HashSet<>(variableEstimates.values()), edges);
         }
 
-        private LocalModel.HasModel modelForHas(HasConstraint hasConstraint, @Nullable Concludable correspondingConcludable) {
+        private LocalModel modelForHas(HasConstraint hasConstraint, @Nullable Concludable correspondingConcludable) {
             double hasEdgeEstimate = countPersistedHasEdges(hasConstraint.owner().inferredTypes(), hasConstraint.attribute().inferredTypes());
             double ownerEstimate = countPersistedThingsMatchingType(hasConstraint.owner());
             double attributeEstimate = countPersistedThingsMatchingType(hasConstraint.attribute());
@@ -631,37 +573,96 @@ public class AnswerCountEstimator {
                 hasEdgeEstimate += estimateInferredAnswerCount(correspondingConcludable, set(hasConstraint.owner(), hasConstraint.attribute()));
                 attributeEstimate += attributesCreatedByHasWithIsa(correspondingConcludable);
                 if (attributeEstimate != 0 && ownerEstimate < hasEdgeEstimate / attributeEstimate) {
+                    // Try to handle inferred owners
                     boolean rulesConcludeOwner = iterate(hasConstraint.owner().inferredTypes()).flatMap(ownerType -> iterate(answerCountEstimator.logicMgr.rulesConcluding(ownerType))).hasNext();
                     if (rulesConcludeOwner) ownerEstimate = hasEdgeEstimate / attributeEstimate;
                 }
             }
-            return new LocalModel.HasModel(hasConstraint, hasEdgeEstimate, ownerEstimate, attributeEstimate);
+            ownerEstimate = Math.min(ownerEstimate, hasEdgeEstimate);
+            attributeEstimate = Math.min(attributeEstimate, hasEdgeEstimate);
+            return new LocalModel(
+                    set(
+                            new LocalModel.VariableEstimate(hasConstraint.owner(), ownerEstimate),
+                            new LocalModel.VariableEstimate(hasConstraint.attribute(), attributeEstimate)),
+                    set(
+                            new LocalModel.EdgeEstimate(hasConstraint.owner(), hasConstraint.attribute(), hasEdgeEstimate)
+                    ));
         }
 
-        private LocalModel.IsaModel modelForIsa(IsaConstraint isaConstraint, @Nullable Concludable correspondingConcludable) {
+        private LocalModel modelForIsa(IsaConstraint isaConstraint, @Nullable Concludable correspondingConcludable) {
             ThingVariable owner = isaConstraint.owner();
             double estimate = countPersistedThingsMatchingType(owner);
             if (correspondingConcludable != null) {
                 estimate += estimateInferredAnswerCount(correspondingConcludable, set(owner));
             }
-            return new LocalModel.IsaModel(isaConstraint, estimate);
+            return new LocalModel(set(new LocalModel.VariableEstimate(owner, estimate)), set());
         }
 
-        public LocalModel modelForValue(PredicateConstraint asValue, @Nullable Concludable correspondingConcludable) {
-            if (asValue.predicate().isValueIdentity()) {
-                return new LocalModel.VariableModel(set(asValue.owner()), 1L);
-            } else throw TypeDBException.of(UNSUPPORTED_OPERATION);
-        }
-
-        private LocalModel.VariableModel modelForVariable(Variable v, @Nullable Concludable concludable) {
-            double persistedAnswerCount = countPersistedThingsMatchingType(v.asThing());
-            double inferredAnswerCount = 0;
-            if (concludable != null) {
-                inferredAnswerCount = (concludable.isHas() || concludable.isAttribute()) ?
-                        attributesCreatedByHasWithIsa(concludable) :
-                        estimateInferredAnswerCount(concludable, set(v));
+        public LocalModel modelForPredicate(PredicateConstraint predicateConstraint, @Nullable Concludable correspondingConcludable) {
+            if (predicateConstraint.predicate().isValueIdentity()) {
+                return new LocalModel(set(new LocalModel.VariableEstimate(predicateConstraint.owner(), 1.0)), set());
+            } else {
+                List<LocalModel.VariableEstimate> variableModels = variableModelsBasedOnType(predicateConstraint.variables(), correspondingConcludable);
+                if ( predicateConstraint.predicate().isThingVar() && predicateConstraint.predicate().predicate().equals(TypeQLToken.Predicate.Equality.EQ)) {
+                    double betterEstimate = Math.min(variableModels.get(0).estimate, variableModels.get(1).estimate);
+                    return new LocalModel(
+                            set(
+                                    new LocalModel.VariableEstimate(variableModels.get(0).variable, betterEstimate),
+                                    new LocalModel.VariableEstimate(variableModels.get(1).variable, betterEstimate)
+                            ),
+                            set(
+                                    new LocalModel.EdgeEstimate(variableModels.get(0).variable, variableModels.get(1).variable, betterEstimate)
+                            )
+                    );
+                } else {
+                    return new LocalModel(new HashSet<>(variableModels), set());
+                }
             }
-            return new LocalModel.VariableModel(set(v), persistedAnswerCount + inferredAnswerCount);
+        }
+
+        public LocalModel modelForIID(IIDConstraint iidConstraint) {
+            return new LocalModel(set(new LocalModel.VariableEstimate(iidConstraint.owner(), 1.0)), set());
+        }
+
+        public LocalModel modelForIs(IsConstraint isConstraint, @Nullable Concludable correspondingConcludable) {
+            List<LocalModel.VariableEstimate> variableModels = variableModelsBasedOnType(isConstraint.variables(), correspondingConcludable);
+            double betterEstimate = Math.min(variableModels.get(0).estimate, variableModels.get(1).estimate);
+            return new LocalModel(
+                    set(
+                            new LocalModel.VariableEstimate(variableModels.get(0).variable, betterEstimate),
+                            new LocalModel.VariableEstimate(variableModels.get(1).variable, betterEstimate)
+                    ),
+                    set(
+                            new LocalModel.EdgeEstimate(variableModels.get(0).variable, variableModels.get(1).variable, 1)
+                    )
+            );
+        }
+
+        public LocalModel variableModelForCyclicConcludable(Concludable correspondingConcludable) {
+            List<LocalModel.VariableEstimate> vertices = variableModelsBasedOnType(correspondingConcludable.variables(), correspondingConcludable);
+
+            Set<LocalModel.EdgeEstimate> edges = new HashSet<>();
+            if (correspondingConcludable.isHas()) {
+                assert vertices.size() == 2;
+                edges.add(new LocalModel.EdgeEstimate(vertices.get(0).variable, vertices.get(1).variable, vertices.get(0).estimate * vertices.get(1).estimate));
+            } else if (correspondingConcludable.isRelation()) {
+                Variable relationVar = correspondingConcludable.asRelation().relation().owner();
+                LocalModel.VariableEstimate relationEstimate = iterate(vertices).filter(vertex -> vertex.variable == relationVar).next();
+                vertices.remove(relationEstimate);
+
+                double fullyConnectedUpperBound = iterate(vertices).map(vertex -> vertex.estimate).reduce(1.0, (x, y) -> x * y);
+                for (LocalModel.VariableEstimate vertex : vertices) {
+                    edges.add(new LocalModel.EdgeEstimate(relationVar, vertex.variable, fullyConnectedUpperBound));
+                }
+                List<LocalModel.VariableEstimate> oldVertices = vertices;
+                vertices = new ArrayList<>();
+                vertices.add(new LocalModel.VariableEstimate(relationVar, fullyConnectedUpperBound));
+                iterate(oldVertices)
+                        .map(oldEstimate -> new LocalModel.VariableEstimate(oldEstimate.variable, Math.min(fullyConnectedUpperBound, oldEstimate.estimate)))
+                        .forEachRemaining(vertices::add);
+            }
+
+            return new LocalModel(new HashSet<>(vertices), edges);
         }
 
         private double estimateInferredAnswerCount(Concludable concludable, Set<Variable> variableFilter) {
@@ -696,7 +697,7 @@ public class AnswerCountEstimator {
 
                             // All possible combinations (of non-recursive players) assumes full-connectivity, producing an unrealistically large/worst-case estimate.
                             // Instead, we model each role-player as being recursively related to sqrt(|r_i|) instances of each other role-player r_i.
-                            double rootOfAll = Math.max(1.0, Math.sqrt(iterate(estimateForRecursivePlayer.values()).reduce(1.0, (x,y) -> x * y)));
+                            double rootOfAll = Math.max(1.0, Math.sqrt(iterate(estimateForRecursivePlayer.values()).reduce(1.0, (x, y) -> x * y)));
                             double recursivelyConnectedEstimate = iterate(estimateForRecursivePlayer.values()).map(x -> rootOfAll * Math.max(1.0, Math.sqrt(x))).reduce(0.0, Double::sum);
 
                             double estimateForNonRecursivePlayers = answerCountEstimator.estimateAnswers(conditionBranch.conjunction(), nonRecursivePlayers);
@@ -710,6 +711,29 @@ public class AnswerCountEstimator {
             }
 
             return inferredEstimate;
+        }
+
+        private List<LocalModel.VariableEstimate> variableModelsBasedOnType(Set<Variable> variables, @Nullable Concludable correspondingConcludable) {
+            List<LocalModel.VariableEstimate> variableModels = new ArrayList<>();
+            iterate(variables).filter(Variable::isThing).map(Variable::asThing)
+                    .forEachRemaining(variable -> {
+                        double estimate = countPersistedThingsMatchingType(variable);
+                        if (correspondingConcludable != null && (
+                                (correspondingConcludable.isHas() && variable.equals(correspondingConcludable.asHas().attribute())) ||
+                                        (correspondingConcludable.isAttribute() && variable.equals(correspondingConcludable.asAttribute().attribute()))
+                        )) {
+                            estimate += attributesCreatedByHasWithIsa(correspondingConcludable);
+                        }
+                        variableModels.add(new LocalModel.VariableEstimate(variable, estimate));
+                    });
+            return variableModels;
+        }
+
+        private static Label getRoleType(RelationConstraint.RolePlayer player) {
+            if (player.roleType().isPresent() && player.roleType().get().label().isPresent()) {
+                return player.roleType().get().label().get().properLabel();
+            } else if (player.inferredRoleTypes().size() == 1) return iterate(player.inferredRoleTypes()).next();
+            else return null;
         }
 
         private long attributesCreatedByHasWithIsa(Concludable concludable) {
