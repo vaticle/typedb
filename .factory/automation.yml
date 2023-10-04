@@ -188,7 +188,7 @@ build:
 #        branch: master
       command: |
         export DEPLOY_BREW_TOKEN=$REPO_GITHUB_TOKEN DEPLOY_BREW_USERNAME=$REPO_GITHUB_USERNAME DEPLOY_BREW_EMAIL=$REPO_GITHUB_EMAIL
-        bazel run --define version=$(cat VERSION) //:deploy-brew -- snapshot
+        bazel run --define version=$(git rev-parse HEAD) //:deploy-brew -- snapshot
 #    test-deployment-apt-x86_64:
 #      image: vaticle-ubuntu-22.04 # use LTS for apt tests
 #      filter:
