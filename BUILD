@@ -257,7 +257,6 @@ deploy_brew(
         "//:checksum-mac-arm64": "{sha256-arm64}",
         "//:checksum-mac-x86_64": "{sha256-x86_64}",
     },
-    version_file = "//:VERSION"
 )
 
 assemble_apt(
