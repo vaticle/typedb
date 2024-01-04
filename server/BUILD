@@ -255,8 +255,8 @@ deploy_artifact(
     target = ":assemble-linux-arm64-targz",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-server-linux-arm64-{version}.tar.gz",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -264,8 +264,8 @@ deploy_artifact(
     target = ":assemble-linux-x86_64-targz",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-server-linux-x86_64-{version}.tar.gz",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -273,8 +273,8 @@ deploy_artifact(
     target = ":assemble-mac-arm64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-server-mac-arm64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -282,8 +282,8 @@ deploy_artifact(
     target = ":assemble-mac-x86_64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-server-mac-x86_64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -291,8 +291,8 @@ deploy_artifact(
     target = ":assemble-windows-x86_64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-server-windows-x86_64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 checkstyle_test(

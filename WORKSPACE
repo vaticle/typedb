@@ -105,6 +105,12 @@ github_deps()
 load("@vaticle_bazel_distribution//pip:deps.bzl", pip_deps = "deps")
 pip_deps()
 
+# Load @vaticle_bazel_distribution_cloudsmith
+load("@vaticle_bazel_distribution//common/cloudsmith:deps.bzl", cloudsmith_deps = "deps")
+cloudsmith_deps()
+load("@vaticle_bazel_distribution_cloudsmith//:requirements.bzl", install_cloudsmith_deps = "install_deps")
+install_cloudsmith_deps()
+
 ######################################
 # Load @vaticle_dependencies//distribution/docker #
 ######################################

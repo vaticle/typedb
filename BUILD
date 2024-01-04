@@ -167,8 +167,8 @@ deploy_artifact(
     target = ":assemble-linux-arm64-targz",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-all-linux-arm64-{version}.tar.gz",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -176,8 +176,8 @@ deploy_artifact(
     target = ":assemble-linux-x86_64-targz",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-all-linux-x86_64-{version}.tar.gz",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -185,8 +185,8 @@ deploy_artifact(
     target = ":assemble-mac-arm64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-all-mac-arm64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -194,8 +194,8 @@ deploy_artifact(
     target = ":assemble-mac-x86_64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-all-mac-x86_64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 deploy_artifact(
@@ -203,8 +203,8 @@ deploy_artifact(
     target = ":assemble-windows-x86_64-zip",
     artifact_group = "vaticle_typedb",
     artifact_name = "typedb-all-windows-x86_64-{version}.zip",
-    release = deployment['artifact.release'],
-    snapshot = deployment['artifact.snapshot'],
+    release = deployment['cloudsmith.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
 )
 
 assemble_versioned(
@@ -306,8 +306,8 @@ assemble_apt(
 deploy_apt(
     name = "deploy-apt-x86_64",
     target = ":assemble-linux-x86_64-apt",
-    snapshot = deployment['apt.snapshot'],
-    release = deployment['apt.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
+    release = deployment['cloudsmith.release'],
 )
 
 targz_edit(
@@ -340,8 +340,8 @@ assemble_apt(
 deploy_apt(
     name = "deploy-apt-arm64",
     target = ":assemble-linux-arm64-apt",
-    snapshot = deployment['apt.snapshot'],
-    release = deployment['apt.release'],
+    snapshot = deployment['cloudsmith.snapshot'],
+    release = deployment['cloudsmith.release'],
 )
 
 release_validate_deps(
