@@ -38,9 +38,9 @@ import static org.junit.Assert.assertTrue;
 
 public class AptTest {
     private static final Logger LOG = LoggerFactory.getLogger(AptTest.class);
-    private static final String aptSnapshot = "https://repo.vaticle.com/repository/apt-snapshot/";
-    private static final String aptRelease = "https://repo.vaticle.com/repository/apt/";
-    private static final String pubkey1 = "8F3DA4B5E9AEF44C";
+    private static final String aptSnapshot = "https://repo.typedb.com/public/public-snapshot/deb/ubuntu";
+    private static final String aptRelease = "https://repo.typedb.com/public/public-release/deb/ubuntu";
+    private static final String pubkey1 = "17507562824cfdcc";
     private static final String pubkey2 = "https://cli-assets.heroku.com/apt/release.key";
     private static final String pubkey3 = "https://dl.google.com/linux/linux_signing_key.pub";
     private static final Path versionFile = Paths.get("VERSION");
