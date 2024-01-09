@@ -157,8 +157,8 @@ build:
         branch: [master, development]
       dependencies: [test-assembly-linux-targz]
       command: |
-        export DEPLOY_ARTIFACT_USERNAME=$REPO_VATICLE_USERNAME
-        export DEPLOY_ARTIFACT_PASSWORD=$REPO_VATICLE_PASSWORD
+        export DEPLOY_ARTIFACT_USERNAME=$REPO_TYPEDB_USERNAME
+        export DEPLOY_ARTIFACT_PASSWORD=$REPO_TYPEDB_PASSWORD
         bazel run @vaticle_dependencies//tool/bazelinstall:remote_cache_setup.sh
         bazel run --define version=$(git rev-parse HEAD) //server:deploy-linux-arm64-targz -- snapshot
         bazel run --define version=$(git rev-parse HEAD) //server:deploy-linux-x86_64-targz -- snapshot
@@ -177,8 +177,8 @@ build:
         branch: [master, development]
       dependencies: [test-assembly-linux-targz]
       command: |
-        export DEPLOY_APT_USERNAME=$REPO_VATICLE_USERNAME
-        export DEPLOY_APT_PASSWORD=$REPO_VATICLE_PASSWORD
+        export DEPLOY_APT_USERNAME=$REPO_TYPEDB_USERNAME
+        export DEPLOY_APT_PASSWORD=$REPO_TYPEDB_PASSWORD
         bazel run @vaticle_dependencies//tool/bazelinstall:remote_cache_setup.sh
         bazel run --define version=$(git rev-parse HEAD) //:deploy-apt-x86_64 -- snapshot
         bazel run --define version=$(git rev-parse HEAD) //:deploy-apt-arm64 -- snapshot
@@ -238,8 +238,8 @@ release:
         branch: master
       dependencies: [deploy-github]
       command: |
-        export DEPLOY_APT_USERNAME=$REPO_VATICLE_USERNAME
-        export DEPLOY_APT_PASSWORD=$REPO_VATICLE_PASSWORD
+        export DEPLOY_APT_USERNAME=$REPO_TYPEDB_USERNAME
+        export DEPLOY_APT_PASSWORD=$REPO_TYPEDB_PASSWORD
         bazel run @vaticle_dependencies//tool/bazelinstall:remote_cache_setup.sh
         bazel run --define version=$(cat VERSION) //:deploy-apt-x86_64 -- release
         bazel run --define version=$(cat VERSION) //:deploy-apt-arm64 -- release
@@ -261,8 +261,8 @@ release:
         branch: master
       dependencies: [deploy-github]
       command: |
-        export DEPLOY_ARTIFACT_USERNAME=$REPO_VATICLE_USERNAME
-        export DEPLOY_ARTIFACT_PASSWORD=$REPO_VATICLE_PASSWORD
+        export DEPLOY_ARTIFACT_USERNAME=$REPO_TYPEDB_USERNAME
+        export DEPLOY_ARTIFACT_PASSWORD=$REPO_TYPEDB_PASSWORD
         bazel run @vaticle_dependencies//tool/bazelinstall:remote_cache_setup.sh
         bazel run --define version=$(cat VERSION) //server:deploy-linux-arm64-targz -- release
         bazel run --define version=$(cat VERSION) //server:deploy-linux-x86_64-targz -- release
