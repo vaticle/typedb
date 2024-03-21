@@ -29,77 +29,77 @@ use std::sync::atomic::Ordering::SeqCst;
 /// It is the responsibility of the thread that updates the sync_bits (and possibly overflow) to update sync_bits in the u128.
 /// Other threads can return (UW+1)(LW) if sync_bits(LW) < sync_bits(UW);  (UW)(LW) otherwise
 pub struct AtomicU128 {
-    ub_sync: u128,
-    lb: AtomicU64,
+    uw_sync: u128,
+    lw: AtomicU64,
 }
 
 const SYNC_MASK: u64 = 0xff00000000000000;
-const UB_MASK: u128 = 0xffffffffffffffff_0000000000000000;
-const UB_INCREMENT: u128 = 0x0000000000000001_0000000000000000;
+const UW_MASK: u128 = 0xffffffffffffffff_0000000000000000;
+const UW_INCREMENT: u128 = 0x0000000000000001_0000000000000000;
 
 impl AtomicU128 {
 
     pub fn new(from: u128) -> AtomicU128 {
         AtomicU128 {
-            ub_sync: from,
-            lb: AtomicU64::new((from as u64) & u64::MAX)
+            uw_sync: from,
+            lw: AtomicU64::new((from as u64) & u64::MAX)
         }
     }
 
     #[inline]
-    fn ub_outdated(ub_sync: u128, lb: u64) -> bool {
-        (lb & SYNC_MASK) < ((ub_sync as u64) & SYNC_MASK)
+    fn uw_outdated(uw_sync: u128, lw: u64) -> bool {
+        (lw & SYNC_MASK) < ((uw_sync as u64) & SYNC_MASK)
     }
 
     #[inline]
-    fn compose(ub_sync: u128, lb: u64) -> u128 {
-        (ub_sync & UB_MASK) | (lb as u128)
+    fn compose(uw_sync: u128, lw: u64) -> u128 {
+        (uw_sync & UW_MASK) | (lw as u128)
     }
 
     pub fn get(&self) -> u128 {
-        let ub_read = self.ub_sync;
-        let lb_read  = self.lb.load(SeqCst);
-        let ub_increment = if Self::ub_outdated(ub_read, lb_read) {UB_INCREMENT} else { 0 };
-        Self::compose(ub_read + ub_increment, lb_read)
+        let uw_read = self.uw_sync;
+        let lw_read  = self.lw.load(SeqCst);
+        let uw_increment = if Self::uw_outdated(uw_read, lw_read) { UW_INCREMENT } else { 0 };
+        Self::compose(uw_read + uw_increment, lw_read)
     }
 
     pub fn add_and_get(&mut self, increment: u32) -> u128 {
-        let ub_read = self.ub_sync;
-        let lb_before_add = self.lb.fetch_add(increment as u64, SeqCst);
-        let lb_after_add = u64::wrapping_add(lb_before_add, increment as u64);
-        let ub_increment = if Self::ub_outdated(ub_read, lb_after_add) {UB_INCREMENT} else { 0 };
-        let updated_sync_bits: bool = (lb_after_add & SYNC_MASK) != (lb_before_add & SYNC_MASK);
+        let uw_read = self.uw_sync;
+        let lw_before_add = self.lw.fetch_add(increment as u64, SeqCst);
+        let lw_after_add = u64::wrapping_add(lw_before_add, increment as u64);
+        let uw_increment = if Self::uw_outdated(uw_read, lw_after_add) { UW_INCREMENT } else { 0 };
+        let updated_sync_bits: bool = (lw_after_add & SYNC_MASK) != (lw_before_add & SYNC_MASK);
 
         if updated_sync_bits {
-            self.ub_sync = ((ub_read & UB_MASK) + ub_increment) | (lb_after_add as u128);
-            Self::compose(self.ub_sync, lb_after_add)
+            self.uw_sync = ((uw_read & UW_MASK) + uw_increment) | (lw_after_add as u128);
+            Self::compose(self.uw_sync, lw_after_add)
         } else {
-            Self::compose(ub_read + ub_increment, lb_after_add)
+            Self::compose(uw_read + uw_increment, lw_after_add)
         }
     }
 
     pub fn compare_and_exchange_incremented(&mut self, current : u128, increment: u32) -> Result<u128, u128> {
-        /// The LB is good enough to see if the change went through.
+        /// The LW is good enough to see if the change went through.
         let updated: u128 = current + increment as u128;
-        let lb_cas_result = self.lb.compare_exchange(current as u64, updated as u64, SeqCst, SeqCst);
-        let ub_read = self.ub_sync; // Current could have been anything. Do not rely on it.
-        match lb_cas_result {
-            Ok(lb_current) => {
+        let lw_cas_result = self.lw.compare_exchange(current as u64, updated as u64, SeqCst, SeqCst);
+        let uw_read = self.uw_sync; // Current could have been anything. Do not rely on it.
+        match lw_cas_result {
+            Ok(lw_current) => {
                 /// Ensure all of current did match, not just LB
-                let ub_increment = if Self::ub_outdated(ub_read, lb_current) {UB_INCREMENT} else { 0 };
-                let composed = Self::compose(ub_read + ub_increment, lb_current);
+                let uw_increment = if Self::uw_outdated(uw_read, lw_current) { UW_INCREMENT } else { 0 };
+                let composed = Self::compose(uw_read + uw_increment, lw_current);
                 if composed == current { Ok(composed) } else {Err(composed) }
             },
-            Err(lb_swapped) => {
-                let ub_increment = if Self::ub_outdated(ub_read, lb_swapped) {UB_INCREMENT} else { 0 };
-                Err(Self::compose(ub_read + ub_increment, lb_swapped))
+            Err(lw_swapped) => {
+                let uw_increment = if Self::uw_outdated(uw_read, lw_swapped) { UW_INCREMENT } else { 0 };
+                Err(Self::compose(uw_read + uw_increment, lw_swapped))
             }
         }
     }
 }
 
 pub mod tests {
-    use crate::atomic_u128::{AtomicU128, UB_INCREMENT};
+    use crate::atomic_u128::{AtomicU128, UW_INCREMENT};
 
     #[test]
     fn test_create_readback() {
@@ -143,11 +143,11 @@ pub mod tests {
     }
 
     #[test]
-    fn test_compare_and_exchange_incremented__fail_on_ub() {
+    fn test_compare_and_exchange_incremented__fail_on_uw() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let mut t = AtomicU128::new(from);
-        let ret = t.compare_and_exchange_incremented(from + UB_INCREMENT, increment);
+        let ret = t.compare_and_exchange_incremented(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
     }
 }
