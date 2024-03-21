@@ -79,20 +79,24 @@ impl AtomicU128 {
     }
 
     pub fn compare_and_exchange_incremented(&mut self, current : u128, increment: u32) -> Result<u128, u128> {
-        /// The LW is good enough to see if the change went through.
-        let updated: u128 = current + increment as u128;
-        let lw_cas_result = self.lw.compare_exchange(current as u64, updated as u64, SeqCst, SeqCst);
-        let uw_read = self.uw_sync; // Current could have been anything. Do not rely on it.
-        match lw_cas_result {
-            Ok(lw_current) => {
-                /// Ensure all of current did match, not just LB
-                let uw_increment = if Self::uw_outdated(uw_read, lw_current) { UW_INCREMENT } else { 0 };
-                let composed = Self::compose(uw_read + uw_increment, lw_current);
-                if composed == current { Ok(composed) } else {Err(composed) }
-            },
-            Err(lw_swapped) => {
-                let uw_increment = if Self::uw_outdated(uw_read, lw_swapped) { UW_INCREMENT } else { 0 };
-                Err(Self::compose(uw_read + uw_increment, lw_swapped))
+        // Check if UW matches.
+        // TODO: Figure out how to check UW without accessing lw.
+        let actual_current = self.get();
+
+        if actual_current != current {
+            return Err(actual_current);
+        } else {
+            let updated: u128 = current + increment as u128;
+            let lw_cas_result = self.lw.compare_exchange(current as u64, updated as u64, SeqCst, SeqCst);
+            match lw_cas_result {
+                Ok(lw_swapped) => {
+                    debug_assert_eq!(lw_swapped, actual_current as u64);
+                    Ok(current)
+                },
+                Err(lw_swapped) => {
+                    let uw_increment = if Self::uw_outdated(actual_current, lw_swapped) { UW_INCREMENT } else { 0 };
+                    Err(Self::compose(actual_current + uw_increment, lw_swapped))
+                }
             }
         }
     }
