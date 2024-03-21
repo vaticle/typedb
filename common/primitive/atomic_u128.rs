@@ -117,6 +117,7 @@ pub mod tests {
         let sum = t.add_and_get(increment);
         // println!("exp:{:#18x}_{:#18x}\nact:{:#18x}_{:#18x}", (expected >> 64), expected as u64, (sum >> 64) , sum as u64);
         assert_eq!(expected, sum);
+        assert_eq!(expected, t.get());
     }
 
     #[test]
@@ -140,6 +141,7 @@ pub mod tests {
 
         let ret = t.compare_and_exchange_incremented(from, 0x1234);
         assert_eq!(Err(expected_ret), ret);
+        assert_eq!(expected_ret, t.get());
     }
 
     #[test]
@@ -149,5 +151,6 @@ pub mod tests {
         let mut t = AtomicU128::new(from);
         let ret = t.compare_and_exchange_incremented(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
+        assert_eq!(from, t.get());
     }
 }
