@@ -86,7 +86,9 @@ impl AtomicU128 {
         let uw_match_if_lw_match = ((uw_read & UW_MASK) + uw_increment) == (current & UW_MASK);
 
         // Can `uw_match_if_lw_match` be true if lw(current) = lw(self) but uw(current) != uw(self) ? No.
-        // Trying to show this should contradict that self.uw_sync cannot be ahead of self.lw.
+        //      Trying to show this should contradict that self.uw_sync cannot be ahead of self.lw.
+        // Can `uw_match_if_lw_match` be false, but the true value be equal to current? Also, No.
+        //      Sketch: Assume lw match, full match iff uw_match_if_lw_match is true.
 
         if uw_match_if_lw_match {
             let updated: u128 = current + increment as u128;
