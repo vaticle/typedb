@@ -57,7 +57,7 @@ impl AtomicU128 {
         (uw_sync & UW_MASK) | (lw as u128)
     }
 
-    pub fn get(&self) -> u128 {
+    pub fn load(&self) -> u128 {
         let uw_read = self.uw_sync.get();
         let lw_read  = self.lw.load(SeqCst);
         let uw_increment = if Self::uw_outdated(uw_read, lw_read) { UW_INCREMENT } else { 0 };
@@ -108,7 +108,7 @@ impl AtomicU128 {
             }
         } else {
             // If uw don't match, attempting a swap would write the wrong state to lw
-            Err(self.get())
+            Err(self.load())
         }
     }
 }
@@ -121,7 +121,7 @@ mod tests {
     fn test_create_readback() {
         let from = 0x0123456789abcdef_0123456789abcdef;
         let t = AtomicU128::new(from);
-        assert_eq!(from, t.get());
+        assert_eq!(from, t.load());
     }
 
     #[test]
@@ -132,7 +132,7 @@ mod tests {
         let t = AtomicU128::new(from);
         let sum = t.add_fetch(increment);
         assert_eq!(expected, sum);
-        assert_eq!(expected, t.get());
+        assert_eq!(expected, t.load());
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod tests {
         let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from, increment);
         assert_eq!(Ok(from), ret);
-        assert_eq!(expected_updated, t.get());
+        assert_eq!(expected_updated, t.load());
     }
 
     #[test]
@@ -156,7 +156,7 @@ mod tests {
 
         let ret = t.compare_fetch_add(from, 0x1234);
         assert_eq!(Err(expected_ret), ret);
-        assert_eq!(expected_ret, t.get());
+        assert_eq!(expected_ret, t.load());
     }
 
     #[test]
@@ -166,6 +166,6 @@ mod tests {
         let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
-        assert_eq!(from, t.get());
+        assert_eq!(from, t.load());
     }
 }
