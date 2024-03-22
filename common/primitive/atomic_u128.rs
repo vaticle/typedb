@@ -129,7 +129,7 @@ mod tests {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected = from + increment as u128;
-        let mut t = AtomicU128::new(from);
+        let t = AtomicU128::new(from);
         let sum = t.add_fetch(increment);
         assert_eq!(expected, sum);
         assert_eq!(expected, t.get());
@@ -140,18 +140,18 @@ mod tests {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected_updated = from + increment as u128;
-        let mut t = AtomicU128::new(from);
+        let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from, increment);
         assert_eq!(Ok(from), ret);
         assert_eq!(expected_updated, t.get());
     }
 
     #[test]
-    fn compare_fetch_add__failure() {
+    fn compare_fetch_add_failure() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected_ret = from + increment as u128;
-        let mut t = AtomicU128::new(from);
+        let t = AtomicU128::new(from);
         t.add_fetch(increment);
 
         let ret = t.compare_fetch_add(from, 0x1234);
@@ -160,10 +160,10 @@ mod tests {
     }
 
     #[test]
-    fn compare_fetch_add__fail_on_uw() {
+    fn compare_fetch_add_fail_on_uw() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
-        let mut t = AtomicU128::new(from);
+        let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
         assert_eq!(from, t.get());
