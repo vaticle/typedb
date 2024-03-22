@@ -34,9 +34,9 @@ pub struct AtomicU128 {
     lw: AtomicU64,
 }
 
-const SYNC_MASK: u64 = 0xff00000000000000;
-const UW_MASK: u128 = 0xffffffffffffffff_0000000000000000;
-const UW_INCREMENT: u128 = 0x0000000000000001_0000000000000000;
+const SYNC_MASK: u64 = 0xff00_0000_0000_0000;
+const UW_MASK: u128 = 0xffff_ffff_ffff_ffff__0000_0000_0000_0000;
+const UW_INCREMENT: u128 = 0x0000_0000_0000_0001__0000000000000000;
 
 impl AtomicU128 {
 
@@ -119,15 +119,15 @@ mod tests {
 
     #[test]
     fn test_create_readback() {
-        let from = 0x0123456789abcdef_0123456789abcdef;
+        let from = 0x0123_4567_89ab_cdef__0123_4567_89ab_cdef;
         let t = AtomicU128::new(from);
         assert_eq!(from, t.load());
     }
 
     #[test]
     fn add_fetch() {
-        let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
-        let increment: u32 = 0x11111111;
+        let from: u128 = 0x0123_4567_89ab_cdef__ffff_ffff_fedb_ca98;
+        let increment: u32 = 0x1111_1111;
         let expected = from + increment as u128;
         let t = AtomicU128::new(from);
         let sum = t.add_fetch(increment);
@@ -137,8 +137,8 @@ mod tests {
 
     #[test]
     fn compare_fetch_add() {
-        let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
-        let increment: u32 = 0x11111111;
+        let from: u128 = 0x0123_4567_89ab_cdef__ffff_ffff_fedb_ca98;
+        let increment: u32 = 0x1111_1111;
         let expected_updated = from + increment as u128;
         let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from, increment);
@@ -148,8 +148,8 @@ mod tests {
 
     #[test]
     fn compare_fetch_add_failure() {
-        let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
-        let increment: u32 = 0x11111111;
+        let from: u128 = 0x0123_4567_89ab_cdef__ffff_ffff_fedb_ca98;
+        let increment: u32 = 0x1111_1111;
         let expected_ret = from + increment as u128;
         let t = AtomicU128::new(from);
         t.add_fetch(increment);
@@ -161,8 +161,8 @@ mod tests {
 
     #[test]
     fn compare_fetch_add_fail_on_uw() {
-        let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
-        let increment: u32 = 0x11111111;
+        let from: u128 = 0x0123_4567_89ab_cdef__ffff_ffff_fedb_ca98;
+        let increment: u32 = 0x1111_1111;
         let t = AtomicU128::new(from);
         let ret = t.compare_fetch_add(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
