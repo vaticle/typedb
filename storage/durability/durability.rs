@@ -28,6 +28,7 @@ use primitive::u80::U80;
 use serde::{Deserialize, Serialize};
 
 pub mod wal;
+pub mod sequence_number;
 
 pub type Result<T> = std::result::Result<T, DurabilityError>;
 
@@ -75,61 +76,6 @@ pub trait DurabilityRecord: Sized {
     const RECORD_NAME: &'static str;
     fn serialise_into(&self, writer: &mut impl Write) -> bincode::Result<()>;
     fn deserialize_from(reader: &mut impl Read) -> bincode::Result<Self>;
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct SequenceNumber {
-    number: U80,
-}
-
-impl fmt::Display for SequenceNumber {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SeqNr[{}]", self.number.number())
-    }
-}
-
-impl SequenceNumber {
-    pub const MAX: Self = Self { number: U80::MAX };
-
-    pub fn new(number: U80) -> Self {
-        Self { number }
-    }
-
-    pub fn next(&self) -> Self {
-        Self { number: self.number + U80::new(1) }
-    }
-
-    pub fn previous(&self) -> Self {
-        Self { number: self.number - U80::new(1) }
-    }
-
-    pub fn number(&self) -> U80 {
-        self.number
-    }
-
-    pub fn serialise_be_into(&self, bytes: &mut [u8]) {
-        assert_eq!(bytes.len(), U80::BYTES);
-        let number_bytes = self.number.to_be_bytes();
-        bytes.copy_from_slice(&number_bytes)
-    }
-
-    pub fn to_be_bytes(&self) -> [u8; U80::BYTES] {
-        self.number.to_be_bytes()
-    }
-
-    pub fn invert(&self) -> Self {
-        Self { number: U80::MAX - self.number }
-    }
-
-    pub const fn serialised_len() -> usize {
-        U80::BYTES
-    }
-}
-
-impl From<u128> for SequenceNumber {
-    fn from(value: u128) -> Self {
-        Self::new(U80::new(value))
-    }
 }
 
 pub trait Sequencer {
