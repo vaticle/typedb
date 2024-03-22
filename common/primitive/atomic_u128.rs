@@ -115,7 +115,7 @@ impl AtomicU128 {
 
 #[cfg(test)]
 mod tests {
-    use crate::atomic_u128::{AtomicU128, UW_INCREMENT};
+    use super::{AtomicU128, UW_INCREMENT};
 
     #[test]
     fn test_create_readback() {
