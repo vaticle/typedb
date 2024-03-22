@@ -98,7 +98,7 @@ impl AtomicU128 {
             match lw_cas_result {
                 Ok(lw_swapped) => {
                     debug_assert_eq!(lw_swapped, current as u64);
-                    // BUG: uw_sync needs to be updated
+                    self.uw_sync.replace(updated);
                     Ok(current)
                 },
                 Err(lw_swapped) => {
