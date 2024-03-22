@@ -15,6 +15,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::Cell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 
@@ -29,7 +30,7 @@ use std::sync::atomic::Ordering::SeqCst;
 /// It is the responsibility of the thread that updates the sync_bits (and possibly overflow) to update sync_bits in the u128.
 /// Other threads can return (UW+1)(LW) if sync_bits(LW) < sync_bits(UW);  (UW)(LW) otherwise
 pub struct AtomicU128 {
-    uw_sync: u128,
+    uw_sync: Cell<u128>,
     lw: AtomicU64,
 }
 
@@ -39,10 +40,10 @@ const UW_INCREMENT: u128 = 0x0000000000000001_0000000000000000;
 
 impl AtomicU128 {
 
-    pub fn new(from: u128) -> AtomicU128 {
+    pub fn new(from: u128) -> Self {
         AtomicU128 {
-            uw_sync: from,
-            lw: AtomicU64::new((from as u64) & u64::MAX)
+            uw_sync: Cell::new(from),
+            lw: AtomicU64::new(from as u64)
         }
     }
 
@@ -57,30 +58,31 @@ impl AtomicU128 {
     }
 
     pub fn get(&self) -> u128 {
-        let uw_read = self.uw_sync;
+        let uw_read = self.uw_sync.get();
         let lw_read  = self.lw.load(SeqCst);
         let uw_increment = if Self::uw_outdated(uw_read, lw_read) { UW_INCREMENT } else { 0 };
         Self::compose(uw_read + uw_increment, lw_read)
     }
 
-    pub fn add_and_get(&mut self, increment: u32) -> u128 {
-        let uw_read = self.uw_sync;
+    pub fn add_and_get(&self, increment: u32) -> u128 {
+        let uw_read = self.uw_sync.get();
         let lw_before_add = self.lw.fetch_add(increment as u64, SeqCst);
         let lw_after_add = u64::wrapping_add(lw_before_add, increment as u64);
         let uw_increment = if Self::uw_outdated(uw_read, lw_after_add) { UW_INCREMENT } else { 0 };
         let updated_sync_bits: bool = (lw_after_add & SYNC_MASK) != (lw_before_add & SYNC_MASK);
 
         if updated_sync_bits {
-            self.uw_sync = ((uw_read & UW_MASK) + uw_increment) | (lw_after_add as u128);
-            Self::compose(self.uw_sync, lw_after_add)
+            let updated_uw_sync = ((uw_read & UW_MASK) + uw_increment) | (lw_after_add as u128);
+            self.uw_sync.replace(updated_uw_sync);
+            Self::compose(updated_uw_sync, lw_after_add)
         } else {
             Self::compose(uw_read + uw_increment, lw_after_add)
         }
     }
 
-    pub fn compare_and_exchange_incremented(&mut self, current : u128, increment: u32) -> Result<u128, u128> {
+    pub fn compare_and_exchange_incremented(&self, current : u128, increment: u32) -> Result<u128, u128> {
         // UW must match to do a swap.
-        let uw_read = self.uw_sync;
+        let uw_read = self.uw_sync.get();
         // we can use current's LW in place of self.lw because current's sync-bits must be equal to lw's sync bits for the swap to succeed.
         let uw_increment = if Self::uw_outdated(uw_read, current as u64) { UW_INCREMENT } else { 0 };
         let uw_match_if_lw_match = ((uw_read & UW_MASK) + uw_increment) == (current & UW_MASK);
@@ -96,6 +98,7 @@ impl AtomicU128 {
             match lw_cas_result {
                 Ok(lw_swapped) => {
                     debug_assert_eq!(lw_swapped, current as u64);
+                    // BUG: uw_sync needs to be updated
                     Ok(current)
                 },
                 Err(lw_swapped) => {
@@ -110,7 +113,8 @@ impl AtomicU128 {
     }
 }
 
-pub mod tests {
+#[cfg(test)]
+mod tests {
     use crate::atomic_u128::{AtomicU128, UW_INCREMENT};
 
     #[test]
