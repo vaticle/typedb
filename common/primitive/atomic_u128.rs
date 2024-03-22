@@ -64,7 +64,7 @@ impl AtomicU128 {
         Self::compose(uw_read + uw_increment, lw_read)
     }
 
-    pub fn add_and_get(&self, increment: u32) -> u128 {
+    pub fn add_fetch(&self, increment: u32) -> u128 {
         let uw_read = self.uw_sync.get();
         let lw_before_add = self.lw.fetch_add(increment as u64, SeqCst);
         let lw_after_add = u64::wrapping_add(lw_before_add, increment as u64);
@@ -80,7 +80,7 @@ impl AtomicU128 {
         }
     }
 
-    pub fn compare_and_exchange_incremented(&self, current : u128, increment: u32) -> Result<u128, u128> {
+    pub fn compare_fetch_add(&self, current : u128, increment: u32) -> Result<u128, u128> {
         // UW must match to do a swap.
         let uw_read = self.uw_sync.get();
         // we can use current's LW in place of self.lw because current's sync-bits must be equal to lw's sync bits for the swap to succeed.
@@ -125,47 +125,46 @@ mod tests {
     }
 
     #[test]
-    fn test_add_and_get() {
+    fn add_fetch() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected = from + increment as u128;
         let mut t = AtomicU128::new(from);
-        let sum = t.add_and_get(increment);
-        // println!("exp:{:#18x}_{:#18x}\nact:{:#18x}_{:#18x}", (expected >> 64), expected as u64, (sum >> 64) , sum as u64);
+        let sum = t.add_fetch(increment);
         assert_eq!(expected, sum);
         assert_eq!(expected, t.get());
     }
 
     #[test]
-    fn test_compare_and_exchange_incremented__success() {
+    fn compare_fetch_add() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected_updated = from + increment as u128;
         let mut t = AtomicU128::new(from);
-        let ret = t.compare_and_exchange_incremented(from, increment);
+        let ret = t.compare_fetch_add(from, increment);
         assert_eq!(Ok(from), ret);
         assert_eq!(expected_updated, t.get());
     }
 
     #[test]
-    fn test_compare_and_exchange_incremented__failure() {
+    fn compare_fetch_add__failure() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let expected_ret = from + increment as u128;
         let mut t = AtomicU128::new(from);
-        t.add_and_get(increment);
+        t.add_fetch(increment);
 
-        let ret = t.compare_and_exchange_incremented(from, 0x1234);
+        let ret = t.compare_fetch_add(from, 0x1234);
         assert_eq!(Err(expected_ret), ret);
         assert_eq!(expected_ret, t.get());
     }
 
     #[test]
-    fn test_compare_and_exchange_incremented__fail_on_uw() {
+    fn compare_fetch_add__fail_on_uw() {
         let from: u128 = 0x0123456789abcdef__ffffffff_fedbca98;
         let increment: u32 = 0x11111111;
         let mut t = AtomicU128::new(from);
-        let ret = t.compare_and_exchange_incremented(from + UW_INCREMENT, increment);
+        let ret = t.compare_fetch_add(from + UW_INCREMENT, increment);
         assert_eq!(Err(from), ret);
         assert_eq!(from, t.get());
     }
