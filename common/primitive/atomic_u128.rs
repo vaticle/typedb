@@ -118,7 +118,7 @@ mod tests {
     use super::{AtomicU128, UW_INCREMENT};
 
     #[test]
-    fn test_create_readback() {
+    fn create_readback() {
         let from = 0x0123_4567_89ab_cdef__0123_4567_89ab_cdef;
         let t = AtomicU128::new(from);
         assert_eq!(from, t.load());
