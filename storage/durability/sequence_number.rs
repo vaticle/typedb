@@ -19,6 +19,7 @@ use std::cell::Cell;
 use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use primitive::u80::U80;
 
@@ -80,6 +81,7 @@ impl From<u128> for SequenceNumber {
 pub struct AtomicSequenceNumber {
     epoch: Cell<u64>,
     seq_sync: AtomicU64,
+    epoch_increment_mutex: Mutex<()>
 }
 
 impl AtomicSequenceNumber {
@@ -107,17 +109,7 @@ impl AtomicSequenceNumber {
         AtomicSequenceNumber {
             epoch: Cell::new(epoch),
             seq_sync: AtomicU64::new(seq_sync),
-        }
-    }
-
-    pub fn from_sequence_number(sequence_number: SequenceNumber) -> Self {
-        let from = sequence_number.number().number();
-        let epoch = (from >> Self::SEQ_NUMBER_BITS) as u64;
-        let lw_mask = (u128::checked_shl(1, 65).unwrap() - 1) as u64;
-        let seq_sync = (from as u64) & lw_mask;
-        AtomicSequenceNumber {
-            epoch: Cell::new(epoch),
-            seq_sync: AtomicU64::new(seq_sync),
+            epoch_increment_mutex: Mutex::new(())
         }
     }
 
@@ -137,7 +129,7 @@ impl AtomicSequenceNumber {
     }
 
     pub fn increment_epoch(&self) {
-        // TODO: Use Mutex to guarantee single writer?
+        let lock = self.epoch_increment_mutex.lock().unwrap();
         let next_epoch = self.epoch.get() + 1;
         let seq_sync_updated = next_epoch << Self::SEQ_NUMBER_BITS; // & Self::SEQ_SYNC_MASK; is not needed
         self.seq_sync.store(seq_sync_updated, SeqCst);
