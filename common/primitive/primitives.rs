@@ -18,4 +18,3 @@
 pub mod maybe_owns;
 pub mod prefix_range;
 pub mod u80;
-pub mod atomic_u128;

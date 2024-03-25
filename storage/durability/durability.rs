@@ -32,6 +32,8 @@ pub mod sequence_number;
 
 pub type Result<T> = std::result::Result<T, DurabilityError>;
 
+use sequence_number::SequenceNumber;
+
 #[derive(Debug)]
 struct RecordHeader {
     sequence_number: SequenceNumber,
