@@ -120,7 +120,7 @@ impl AtomicSequenceNumber {
         Self::compose(epoch_read + epoch_overflow_update, seq_sync_read)
     }
 
-    pub fn fetch_increment(&self) -> SequenceNumber {
+    pub fn fetch_increment_sequence(&self) -> SequenceNumber {
         // We need to be sure the epoch has not changed.
         let epoch_read = self.epoch.get();
         let seq_sync_before_increment = self.seq_sync.fetch_add(1, SeqCst);
@@ -128,12 +128,13 @@ impl AtomicSequenceNumber {
         Self::compose(epoch_read + epoch_overflow_update, seq_sync_before_increment)
     }
 
-    pub fn increment_epoch(&self) {
+    pub fn increment_epoch_fetch(&self) -> SequenceNumber {
         let lock = self.epoch_increment_mutex.lock().unwrap();
         let next_epoch = self.epoch.get() + 1;
         let seq_sync_updated = next_epoch << Self::SEQ_NUMBER_BITS; // & Self::SEQ_SYNC_MASK; is not needed
         self.seq_sync.store(seq_sync_updated, SeqCst);
         self.epoch.set(next_epoch);
+        Self::compose(next_epoch, seq_sync_updated)
     }
 }
 
@@ -157,7 +158,7 @@ mod tests {
     fn create_readback() {
         {
             let from: SequenceNumber = SequenceNumber::from(0x0000_0000_0000_0000__0000_1234_0000_ffff);
-            let t = AtomicSequenceNumber::from_sequence_number(from);
+            let t = AtomicSequenceNumber::from(from);
             assert_eq!(from, t.load());
         }
         {
@@ -178,7 +179,7 @@ mod tests {
         let expected = U80::new(0x0000_0000_0000_1234_0000_ffff);
         let t: AtomicSequenceNumber = AtomicSequenceNumber::new(epoch, seq);
 
-        let fetched = t.fetch_increment();
+        let fetched = t.fetch_increment_sequence();
         assert_eq!(expected, fetched.number());
         assert_eq!(expected.add(U80::new(1)), t.load().number());
     }
@@ -190,7 +191,7 @@ mod tests {
             let seq: u32 = 0x0000_ffff;
             let expected = U80::new(0x0000_0000_0000_1235_0000_0000);
             let t: AtomicSequenceNumber = AtomicSequenceNumber::new(epoch, seq);
-            t.increment_epoch();
+            t.increment_epoch_fetch();
             assert_eq!(expected, t.load().number());
         }
         {
@@ -198,7 +199,8 @@ mod tests {
             let seq: u32 = 0x0000_ffff;
             let expected = U80::new(0x0000_0001_0000_0000_0000_0000);
             let t: AtomicSequenceNumber = AtomicSequenceNumber::new(epoch, seq);
-            t.increment_epoch();
+            let incremented = t.increment_epoch_fetch();
+            assert_eq!(expected, incremented.number());
             assert_eq!(expected, t.load().number());
         }
     }
