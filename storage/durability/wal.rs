@@ -31,8 +31,9 @@ use itertools::Itertools;
 use primitive::u80::U80;
 
 use crate::{
-    DurabilityRecord, DurabilityRecordType, DurabilityService, RawRecord, RecordHeader, Result, SequenceNumber,
+    DurabilityRecord, DurabilityRecordType, DurabilityService, RawRecord, RecordHeader, Result,
     Sequencer,
+    sequence_number::{SequenceNumber},
 };
 
 const MAX_WAL_FILE_SIZE: u64 = 16 * 1024 * 1024;
