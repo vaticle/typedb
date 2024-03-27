@@ -42,8 +42,8 @@ pub struct Database<D> {
 }
 
 impl<D> fmt::Debug for Database<D> {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Database").field("name", &self.name).field("path", &self.path).finish_non_exhaustive()
     }
 }
 
