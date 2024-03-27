@@ -34,7 +34,6 @@ use chrono::Utc;
 use durability::{DurabilityError, DurabilityService, SequenceNumber};
 use iterator::MVCCReadError;
 use itertools::Itertools;
-use keyspace::keyspace::KeyspaceOpenError;
 use logger::{error, result::ResultExt};
 use primitive::{prefix_range::PrefixRange, u80::U80};
 use resource::constants::snapshot::BUFFER_VALUE_INLINE;
@@ -46,11 +45,8 @@ use crate::{
     iterator::MVCCRangeIterator,
     key_value::{StorageKey, StorageKeyReference},
     keyspace::{
-        iterator::KeyspaceRangeIterator,
-        keyspace::{
-            Keyspace, KeyspaceCheckpointError, KeyspaceId, KEYSPACE_ID_MAX, KEYSPACE_ID_RESERVED_UNSET,
-            KEYSPACE_MAXIMUM_COUNT,
-        },
+        iterator::KeyspaceRangeIterator, Keyspace, KeyspaceCheckpointError, KeyspaceId, KeyspaceOpenError,
+        KEYSPACE_ID_MAX, KEYSPACE_ID_RESERVED_UNSET, KEYSPACE_MAXIMUM_COUNT,
     },
     snapshot::{buffer::KeyspaceBuffers, write::Write, ReadSnapshot, WriteSnapshot},
 };

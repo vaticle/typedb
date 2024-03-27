@@ -19,7 +19,7 @@ use std::{error::Error, fmt, sync::Arc};
 
 use durability::DurabilityError;
 
-use crate::{isolation_manager::IsolationError, keyspace::keyspace::KeyspaceError};
+use crate::{isolation_manager::IsolationError, keyspace::KeyspaceError};
 
 #[derive(Debug)]
 pub struct MVCCStorageError {

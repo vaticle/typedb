@@ -32,7 +32,7 @@ use primitive::u80::U80;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    keyspace::keyspace::KeyspaceId,
+    keyspace::KeyspaceId,
     snapshot::{buffer::KeyspaceBuffers, write::Write},
 };
 

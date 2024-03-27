@@ -21,7 +21,7 @@ use std::{
     collections::{BTreeMap, Bound},
     fmt, mem,
     mem::MaybeUninit,
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use bytes::{byte_array::ByteArray, util::increment, Bytes};
@@ -37,7 +37,7 @@ use serde::{
 
 use crate::{
     key_value::StorageKeyArray,
-    keyspace::keyspace::{KeyspaceId, KEYSPACE_MAXIMUM_COUNT},
+    keyspace::{KeyspaceId, KEYSPACE_MAXIMUM_COUNT},
     snapshot::{snapshot::SnapshotError, write::Write},
 };
 
