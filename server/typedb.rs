@@ -60,8 +60,10 @@ impl Server {
     }
 
     pub fn serve(mut self) {
-        self.databases.insert("test".to_owned(), Database::recover(&self.data_directory.join("test"), "test").unwrap());
-        todo!()
+        self.databases
+            .entry("test".to_owned())
+            .or_insert_with(|| Database::recover(&self.data_directory.join("test"), "test").unwrap());
+        dbg!(self.databases);
     }
 }
 
