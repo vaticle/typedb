@@ -92,7 +92,7 @@ impl KeyspaceBuffer {
     }
 
     pub(crate) fn insert_preexisting(&self, key: ByteArray<BUFFER_KEY_INLINE>, value: ByteArray<BUFFER_VALUE_INLINE>) {
-        self.buffer.write().unwrap().insert(key, Write::InsertPreexisting(value, Arc::new(AtomicBool::new(false))));
+        self.buffer.write().unwrap().insert(key, Write::InsertPreexisting { value, reinsert: Arc::default() });
     }
 
     pub(crate) fn require_exists(&self, key: ByteArray<BUFFER_KEY_INLINE>, value: ByteArray<BUFFER_VALUE_INLINE>) {
@@ -116,9 +116,9 @@ impl KeyspaceBuffer {
     pub(crate) fn get<const INLINE_BYTES: usize>(&self, key: &[u8]) -> Option<ByteArray<INLINE_BYTES>> {
         let map = self.buffer.read().unwrap();
         match map.get(key) {
-            Some(Write::Insert { value }) => Some(ByteArray::copy(value.bytes())),
-            Some(Write::InsertPreexisting(value, _)) => Some(ByteArray::copy(value.bytes())),
-            Some(Write::RequireExists { value }) => Some(ByteArray::copy(value.bytes())),
+            | Some(Write::Insert { value })
+            | Some(Write::InsertPreexisting { value, .. })
+            | Some(Write::RequireExists { value }) => Some(ByteArray::copy(value.bytes())),
             Some(Write::Delete) | None => None,
         }
     }

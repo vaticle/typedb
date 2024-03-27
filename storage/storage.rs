@@ -310,7 +310,7 @@ impl<D> MVCCStorage<D> {
                     match write {
                         Write::Insert { value } => write_batch
                             .put(MVCCKey::build(key.bytes(), seq, StorageOperation::Insert).bytes(), value.bytes()),
-                        Write::InsertPreexisting(value, reinsert) => {
+                        Write::InsertPreexisting { value, reinsert } => {
                             if reinsert.load(Ordering::SeqCst) {
                                 write_batch.put(
                                     MVCCKey::build(key.bytes(), seq, StorageOperation::Insert).bytes(),

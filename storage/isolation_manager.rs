@@ -185,7 +185,7 @@ impl IsolationManager {
                 if predecessor_write.is_some() {
                     match write {
                         Write::Insert { .. } => {}
-                        Write::InsertPreexisting(_, reinsert) => {
+                        Write::InsertPreexisting { reinsert, .. } => {
                             // Re-insert the value if a predecessor has deleted it. This may create extra versions of a key
                             //  in the case that the predecessor ends up failing. However, this will be rare.
                             if matches!(predecessor_write.unwrap(), Write::Delete) {
