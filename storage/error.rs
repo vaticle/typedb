@@ -19,10 +19,7 @@ use std::{error::Error, fmt, sync::Arc};
 
 use durability::DurabilityError;
 
-use crate::{
-    isolation_manager::IsolationError,
-    keyspace::keyspace::{KeyspaceCreateError, KeyspaceError, KeyspaceOpenError},
-};
+use crate::{isolation_manager::IsolationError, keyspace::keyspace::KeyspaceError};
 
 #[derive(Debug)]
 pub struct MVCCStorageError {
@@ -33,16 +30,10 @@ pub struct MVCCStorageError {
 #[derive(Debug)]
 pub enum MVCCStorageErrorKind {
     FailedToDeleteStorage { source: std::io::Error },
-    KeyspaceNameExists { keyspace_name: &'static str },
-    KeyspaceIdReserved { keyspace_name: &'static str, keyspace_id: u8 },
-    KeyspaceIdTooLarge { keyspace_name: &'static str, keyspace_id: u8, max_keyspace_id: u8 },
-    KeyspaceIdExists { new_keyspace_name: &'static str, keyspace_id: u8, existing_keyspace_name: &'static str },
     KeyspaceError { source: Arc<dyn Error + Sync + Send>, keyspace_name: &'static str },
     KeyspaceDeleteError { source: KeyspaceError },
     IsolationError { source: IsolationError },
     DurabilityError { source: DurabilityError },
-    KeyspaceCreateError { source: Arc<KeyspaceCreateError>, keyspace_name: &'static str },
-    KeyspaceOpenError { source: Arc<KeyspaceOpenError>, keyspace_name: &'static str },
 }
 
 impl fmt::Display for MVCCStorageError {
@@ -50,22 +41,6 @@ impl fmt::Display for MVCCStorageError {
         match &self.kind {
             MVCCStorageErrorKind::FailedToDeleteStorage { source, .. } => {
                 write!(f, "MVCCStorageError.FailedToDeleteStorage caused by: '{}'", source)
-            }
-            MVCCStorageErrorKind::KeyspaceNameExists { keyspace_name, .. } => {
-                write!(f, "MVCCStorageError.KeyspaceNameExists: '{}'", keyspace_name)
-            }
-            MVCCStorageErrorKind::KeyspaceIdReserved { keyspace_name, keyspace_id, .. } => {
-                write!(f, "MVCCStorageError.KeyspaceIdReserved: reserved keyspace id '{}' cannot be used for new keyspace '{}'.", keyspace_id, keyspace_name)
-            }
-            MVCCStorageErrorKind::KeyspaceIdTooLarge {
-                keyspace_name, keyspace_id, max_keyspace_id: maximum, ..
-            } => {
-                write!(f, "MVCCStorageError.KeyspaceIdTooLarge: keyspace id '{}' cannot be used for new keyspace '{}' since it is larger than maximum keyspace id '{}'.", keyspace_id, keyspace_name, maximum)
-            }
-            MVCCStorageErrorKind::KeyspaceIdExists {
-                new_keyspace_name, keyspace_id, existing_keyspace_name, ..
-            } => {
-                write!(f, "MVCCStorageError.KeyspaceIdExists: keyspace id '{}' cannot be used for new keyspace '{}' since it is already used by keyspace '{}'", keyspace_id, new_keyspace_name, existing_keyspace_name)
             }
             MVCCStorageErrorKind::KeyspaceError { source, keyspace_name, .. } => {
                 write!(f, "MVCCStorageError.KeyspaceError in keyspace '{}' caused by: '{}'", keyspace_name, source)
@@ -79,7 +54,6 @@ impl fmt::Display for MVCCStorageError {
             MVCCStorageErrorKind::DurabilityError { source, .. } => {
                 write!(f, "MVCCStorageError.DurabilityError caused by: '{}'", source)
             }
-            _ => todo!(),
         }
     }
 }
@@ -91,10 +65,6 @@ impl Error for MVCCStorageError {
             MVCCStorageErrorKind::KeyspaceError { source, .. } => Some(source),
             MVCCStorageErrorKind::IsolationError { source, .. } => Some(source),
             MVCCStorageErrorKind::DurabilityError { source, .. } => Some(source),
-            MVCCStorageErrorKind::KeyspaceNameExists { .. } => None,
-            MVCCStorageErrorKind::KeyspaceIdReserved { .. } => None,
-            MVCCStorageErrorKind::KeyspaceIdTooLarge { .. } => None,
-            MVCCStorageErrorKind::KeyspaceIdExists { .. } => None,
             MVCCStorageErrorKind::KeyspaceDeleteError { source } => Some(source),
             _ => todo!(),
         }

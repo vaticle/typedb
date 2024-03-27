@@ -79,29 +79,22 @@ impl Keyspace {
 
     pub(crate) fn open(
         storage_path: &Path,
-        keyspace_id: impl KeyspaceSet,
+        keyspace: impl KeyspaceSet,
         options: &Options,
     ) -> Result<Keyspace, KeyspaceOpenError> {
         use KeyspaceOpenError::SpeeDB;
-        let name = keyspace_id.name();
+        let name = keyspace.name();
         let path = storage_path.join(name);
-        let kv_storage = DB::open(options, &path).map_err(|error| SpeeDB { source: error })?;
-        Ok(Self::new(path, keyspace_id, kv_storage))
+        let kv_storage = DB::open(options, &path).map_err(|error| SpeeDB { name, source: error })?;
+        Ok(Self::new(path, keyspace, kv_storage))
     }
 
-    fn new(path: PathBuf, keyspace_id: impl KeyspaceSet, kv_storage: DB) -> Self {
+    fn new(path: PathBuf, keyspace: impl KeyspaceSet, kv_storage: DB) -> Self {
         // initial read options, should be customised to this storage's properties
         let read_options = ReadOptions::default();
         let mut write_options = WriteOptions::default();
         write_options.disable_wal(true);
-        Self {
-            path,
-            name: keyspace_id.name(),
-            id: KeyspaceId(keyspace_id.id()),
-            kv_storage,
-            read_options,
-            write_options,
-        }
+        Self { path, name: keyspace.name(), id: KeyspaceId(keyspace.id()), kv_storage, read_options, write_options }
     }
 
     // TODO: we want to be able to pass new options, since Rocks can handle rebooting with new options
@@ -224,7 +217,7 @@ impl Error for KeyspaceCreateError {
 
 #[derive(Debug)]
 pub enum KeyspaceOpenError {
-    SpeeDB { source: speedb::Error },
+    SpeeDB { name: &'static str, source: speedb::Error },
 }
 
 impl fmt::Display for KeyspaceOpenError {
@@ -236,7 +229,7 @@ impl fmt::Display for KeyspaceOpenError {
 impl Error for KeyspaceOpenError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::SpeeDB { source } => Some(source),
+            Self::SpeeDB { source, .. } => Some(source),
         }
     }
 }

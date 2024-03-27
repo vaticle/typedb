@@ -57,16 +57,16 @@ pub trait DurabilityService: Sequencer {
     where
         Record: DurabilityRecord;
 
-    fn iter_from(&self, sequence_number: SequenceNumber) -> io::Result<impl Iterator<Item = io::Result<RawRecord>>>;
+    fn iter_from(&self, sequence_number: SequenceNumber) -> Result<impl Iterator<Item = io::Result<RawRecord>>>;
 
-    fn iter_from_start(&self) -> io::Result<impl Iterator<Item = io::Result<RawRecord>>> {
+    fn iter_from_start(&self) -> Result<impl Iterator<Item = io::Result<RawRecord>>> {
         self.iter_from(SequenceNumber::MIN)
     }
 
     fn iter_type_from<Record: DurabilityRecord>(
         &self,
         sequence_number: SequenceNumber,
-    ) -> io::Result<impl Iterator<Item = Result<(SequenceNumber, Record)>>> {
+    ) -> Result<impl Iterator<Item = Result<(SequenceNumber, Record)>>> {
         Ok(self.iter_from(sequence_number)?.map(|res| {
             let raw = res?;
             Ok((raw.sequence_number, Record::deserialise_from(&mut &*raw.bytes)?))
@@ -75,7 +75,7 @@ pub trait DurabilityService: Sequencer {
 
     fn iter_type_from_start<Record: DurabilityRecord>(
         &self,
-    ) -> io::Result<impl Iterator<Item = Result<(SequenceNumber, Record)>>> {
+    ) -> Result<impl Iterator<Item = Result<(SequenceNumber, Record)>>> {
         self.iter_type_from(SequenceNumber::MIN)
     }
 }
@@ -154,17 +154,12 @@ pub trait Sequencer {
 }
 
 #[derive(Debug)]
-pub struct DurabilityError {
-    pub kind: DurabilityErrorKind,
-}
-
-#[derive(Debug)]
-pub enum DurabilityErrorKind {
+pub enum DurabilityError {
     #[non_exhaustive]
-    BincodeSerializeError { source: bincode::Error },
+    BincodeSerialize { source: bincode::Error },
 
     #[non_exhaustive]
-    IOError { source: io::Error },
+    IO { source: io::Error },
 }
 
 impl fmt::Display for DurabilityError {
@@ -175,21 +170,21 @@ impl fmt::Display for DurabilityError {
 
 impl From<bincode::Error> for DurabilityError {
     fn from(source: bincode::Error) -> Self {
-        Self { kind: DurabilityErrorKind::BincodeSerializeError { source } }
+        Self::BincodeSerialize { source }
     }
 }
 
 impl From<io::Error> for DurabilityError {
     fn from(source: io::Error) -> Self {
-        Self { kind: DurabilityErrorKind::IOError { source } }
+        Self::IO { source }
     }
 }
 
 impl Error for DurabilityError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match &self.kind {
-            DurabilityErrorKind::BincodeSerializeError { source, .. } => Some(source),
-            DurabilityErrorKind::IOError { source, .. } => Some(source),
+        match self {
+            Self::BincodeSerialize { source, .. } => Some(source),
+            Self::IO { source, .. } => Some(source),
         }
     }
 }
