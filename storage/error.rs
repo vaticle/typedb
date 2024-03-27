@@ -66,7 +66,6 @@ impl Error for MVCCStorageError {
             MVCCStorageErrorKind::IsolationError { source, .. } => Some(source),
             MVCCStorageErrorKind::DurabilityError { source, .. } => Some(source),
             MVCCStorageErrorKind::KeyspaceDeleteError { source } => Some(source),
-            _ => todo!(),
         }
     }
 }

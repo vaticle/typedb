@@ -59,24 +59,6 @@ pub(crate) struct Keyspace {
 }
 
 impl Keyspace {
-    pub(crate) fn create(
-        storage_path: &Path,
-        keyspace_id: impl KeyspaceSet,
-        options: &Options,
-    ) -> Result<Keyspace, KeyspaceCreateError> {
-        use KeyspaceCreateError::{AlreadyExists, SpeeDB};
-
-        let name = keyspace_id.name();
-        let path = storage_path.join(name);
-
-        if path.exists() {
-            return Err(AlreadyExists { name });
-        }
-
-        let kv_storage = DB::open(options, &path).map_err(|error| SpeeDB { name, source: error })?;
-        Ok(Self::new(path, keyspace_id, kv_storage))
-    }
-
     pub(crate) fn open(
         storage_path: &Path,
         keyspace: impl KeyspaceSet,
@@ -188,30 +170,6 @@ impl Keyspace {
 impl fmt::Debug for Keyspace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Keyspace[name={}, path={}, id={}]", self.name(), self.path.to_str().unwrap(), self.id,)
-    }
-}
-
-#[derive(Debug)]
-pub enum KeyspaceCreateError {
-    AlreadyExists { name: &'static str },
-    SpeeDB { name: &'static str, source: speedb::Error },
-}
-
-impl fmt::Display for KeyspaceCreateError {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AlreadyExists { .. } => todo!(),
-            Self::SpeeDB { .. } => todo!(),
-        }
-    }
-}
-
-impl Error for KeyspaceCreateError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::AlreadyExists { .. } => None,
-            Self::SpeeDB { source, .. } => Some(source),
-        }
     }
 }
 
