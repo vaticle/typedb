@@ -31,7 +31,7 @@ pub(crate) enum Write {
     // Insert KeyValue with a new version. Never conflicts.
     Insert { value: ByteArray<BUFFER_VALUE_INLINE> },
     // Insert KeyValue with new version if a concurrent Txn deletes Key. Boolean indicates requires re-insertion. Never conflicts.
-    InsertPreexisting(ByteArray<BUFFER_VALUE_INLINE>, Arc<AtomicBool>),
+    InsertPreexisting { value: ByteArray<BUFFER_VALUE_INLINE>, reinsert: Arc<AtomicBool> },
     // Delete with a new version. Conflicts with Require.
     Delete,
 }
@@ -39,14 +39,13 @@ pub(crate) enum Write {
 impl PartialEq for Write {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Write::RequireExists { value }, Write::RequireExists { value: other_value }) => {
-                value == other_value
-            }
-            (Write::Insert { value }, Write::Insert { value: other_value }) => value == other_value,
-            (Write::InsertPreexisting(value, reinsert), Write::InsertPreexisting(other_value, other_reinsert)) => {
-                other_value == value && reinsert.load(Ordering::Acquire) == other_reinsert.load(Ordering::Acquire)
-            }
-            (Write::Delete, Write::Delete) => true,
+            (Self::RequireExists { value }, Self::RequireExists { value: other_value }) => value == other_value,
+            (Self::Insert { value }, Self::Insert { value: other_value }) => value == other_value,
+            (
+                Self::InsertPreexisting { value, reinsert },
+                Self::InsertPreexisting { value: other_value, reinsert: other_reinsert },
+            ) => other_value == value && reinsert.load(Ordering::Acquire) == other_reinsert.load(Ordering::Acquire),
+            (Self::Delete, Self::Delete) => true,
             _ => false,
         }
     }
@@ -60,7 +59,7 @@ impl Write {
     }
 
     pub(crate) fn is_insert_preexisting(&self) -> bool {
-        matches!(self, Write::InsertPreexisting(_, _))
+        matches!(self, Write::InsertPreexisting { .. })
     }
 
     pub(crate) fn is_delete(&self) -> bool {
@@ -69,9 +68,7 @@ impl Write {
 
     pub(crate) fn get_value(&self) -> &ByteArray<BUFFER_VALUE_INLINE> {
         match self {
-            Write::Insert { value } => value,
-            Write::InsertPreexisting(value, _) => value,
-            Write::RequireExists { value } => value,
+            Write::Insert { value } | Write::InsertPreexisting { value, .. } | Write::RequireExists { value } => value,
             Write::Delete => panic!("Buffered delete does not have a value."),
         }
     }

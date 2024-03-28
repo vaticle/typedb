@@ -29,7 +29,7 @@ use encoding::{
     graph::{thing::vertex_generator::ThingVertexGenerator, type_::vertex_generator::TypeVertexGenerator},
     EncodingKeyspace,
 };
-use storage::{error::MVCCStorageError, snapshot::Snapshot, MVCCStorage};
+use storage::{error::MVCCStorageError, snapshot::Snapshot, MVCCStorage, StorageRecoverError};
 
 use crate::transaction::{TransactionRead, TransactionWrite};
 
@@ -42,8 +42,8 @@ pub struct Database<D> {
 }
 
 impl<D> fmt::Debug for Database<D> {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Database").field("name", &self.name).field("path", &self.path).finish_non_exhaustive()
     }
 }
 
@@ -56,10 +56,10 @@ impl<D> Database<D> {
 
         let name = database_name.as_ref();
         if !path.exists() {
-            fs::create_dir(path).map_err(|error| FailedToCreateDirectory { path: path.to_owned(), source: error })?;
+            fs::create_dir(path).map_err(|error| DirectoryCreate { path: path.to_owned(), source: error })?;
         }
-        let mut storage = MVCCStorage::recover::<EncodingKeyspace>(name, path)
-            .map_err(|error| FailedToCreateStorage { source: error })?;
+        let mut storage =
+            MVCCStorage::recover::<EncodingKeyspace>(name, path).map_err(|error| StorageRecover { source: error })?;
         let type_vertex_generator = TypeVertexGenerator::new();
         let thing_vertex_generator = ThingVertexGenerator::new();
         TypeManager::initialise_types(&mut storage, &type_vertex_generator).unwrap();
@@ -92,8 +92,8 @@ impl<D> Database<D> {
 
 #[derive(Debug)]
 pub enum DatabaseRecoverError {
-    FailedToCreateDirectory { path: PathBuf, source: io::Error },
-    FailedToCreateStorage { source: MVCCStorageError },
+    DirectoryCreate { path: PathBuf, source: io::Error },
+    StorageRecover { source: StorageRecoverError },
 }
 
 impl fmt::Display for DatabaseRecoverError {
@@ -105,8 +105,8 @@ impl fmt::Display for DatabaseRecoverError {
 impl Error for DatabaseRecoverError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::FailedToCreateDirectory { source, .. } => Some(source),
-            Self::FailedToCreateStorage { source } => Some(source),
+            Self::DirectoryCreate { source, .. } => Some(source),
+            Self::StorageRecover { source } => Some(source),
         }
     }
 }

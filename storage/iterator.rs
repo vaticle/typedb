@@ -10,7 +10,7 @@ use crate::{
     key_value::{StorageKey, StorageKeyArray, StorageKeyReference},
     keyspace::{
         iterator::KeyspaceRangeIterator,
-        keyspace::{Keyspace, KeyspaceError},
+        Keyspace, KeyspaceError,
     },
 };
 

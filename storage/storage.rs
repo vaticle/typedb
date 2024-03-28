@@ -31,7 +31,7 @@ use std::{
 
 use bytes::{byte_array::ByteArray, byte_reference::ByteReference, Bytes};
 use chrono::Utc;
-use durability::{DurabilityService, SequenceNumber};
+use durability::{DurabilityError, DurabilityService, SequenceNumber};
 use iterator::MVCCReadError;
 use itertools::Itertools;
 use logger::{error, result::ResultExt};
@@ -45,11 +45,8 @@ use crate::{
     iterator::MVCCRangeIterator,
     key_value::{StorageKey, StorageKeyReference},
     keyspace::{
-        iterator::KeyspaceRangeIterator,
-        keyspace::{
-            Keyspace, KeyspaceCheckpointError, KeyspaceId, KEYSPACE_ID_MAX, KEYSPACE_ID_RESERVED_UNSET,
-            KEYSPACE_MAXIMUM_COUNT,
-        },
+        iterator::KeyspaceRangeIterator, Keyspace, KeyspaceCheckpointError, KeyspaceId, KeyspaceOpenError,
+        KEYSPACE_ID_MAX, KEYSPACE_ID_RESERVED_UNSET, KEYSPACE_MAXIMUM_COUNT,
     },
     snapshot::{buffer::KeyspaceBuffers, write::Write, ReadSnapshot, WriteSnapshot},
 };
@@ -87,56 +84,63 @@ pub trait KeyspaceSet: Copy {
 }
 
 fn validate_new_keyspace(
-    storage_name: &str,
     keyspace_id: impl KeyspaceSet,
     keyspaces: &[Keyspace],
     keyspaces_index: &[Option<KeyspaceId>],
-) -> Result<(), MVCCStorageError> {
-    let keyspace_name = keyspace_id.name();
-    let keyspace_id = KeyspaceId(keyspace_id.id());
+) -> Result<(), KeyspaceValidationError> {
+    use KeyspaceValidationError::{IdExists, IdReserved, IdTooLarge, NameExists};
 
-    if keyspace_id == KEYSPACE_ID_RESERVED_UNSET {
-        return Err(MVCCStorageError {
-            storage_name: storage_name.to_owned(),
-            kind: MVCCStorageErrorKind::KeyspaceIdReserved { keyspace_name, keyspace_id: keyspace_id.0 },
-        });
+    let name = keyspace_id.name();
+    let id = KeyspaceId(keyspace_id.id());
+
+    if id == KEYSPACE_ID_RESERVED_UNSET {
+        return Err(IdReserved { name, id: id.0 });
     }
 
-    if keyspace_id > KEYSPACE_ID_MAX {
-        return Err(MVCCStorageError {
-            storage_name: storage_name.to_owned(),
-            kind: MVCCStorageErrorKind::KeyspaceIdTooLarge {
-                keyspace_name,
-                keyspace_id: keyspace_id.0,
-                max_keyspace_id: KEYSPACE_ID_MAX.0,
-            },
-        });
+    if id > KEYSPACE_ID_MAX {
+        return Err(IdTooLarge { name, id: id.0, max_id: KEYSPACE_ID_MAX.0 });
     }
 
-    for (existing_keyspace_id, existing_keyspace_index) in keyspaces_index.iter().enumerate() {
-        if let Some(existing_keyspace_index) = existing_keyspace_index {
-            let keyspace = &keyspaces[existing_keyspace_index.0 as usize];
-            if keyspace.name() == keyspace_name {
-                return Err(MVCCStorageError {
-                    storage_name: storage_name.to_owned(),
-                    kind: MVCCStorageErrorKind::KeyspaceNameExists { keyspace_name },
-                });
+    for (existing_id, existing_keyspace_index) in keyspaces_index.iter().enumerate() {
+        if let Some(existing_index) = existing_keyspace_index {
+            let keyspace = &keyspaces[existing_index.0 as usize];
+            if keyspace.name() == name {
+                return Err(NameExists { name });
             }
-
-            if existing_keyspace_id == keyspace_id.0 as usize {
-                return Err(MVCCStorageError {
-                    storage_name: storage_name.to_owned(),
-                    kind: MVCCStorageErrorKind::KeyspaceIdExists {
-                        new_keyspace_name: keyspace_name,
-                        keyspace_id: keyspace_id.0,
-                        existing_keyspace_name: keyspace.name(),
-                    },
-                });
+            if existing_id == id.0 as usize {
+                return Err(IdExists { new_name: name, id: id.0, existing_name: keyspace.name() });
             }
         }
     }
     Ok(())
 }
+
+#[derive(Debug)]
+pub enum KeyspaceValidationError {
+    IdReserved { name: &'static str, id: u8 },
+    IdTooLarge { name: &'static str, id: u8, max_id: u8 },
+    NameExists { name: &'static str },
+    IdExists { new_name: &'static str, id: u8, existing_name: &'static str },
+}
+
+impl fmt::Display for KeyspaceValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NameExists { name, .. } => write!(f, "keyspace '{name}' is defined multiple times."),
+            Self::IdReserved { name, id, .. } => write!(f, "reserved keyspace id '{id}' cannot be used for new keyspace '{name}'."),
+            Self::IdTooLarge { name, id, max_id, .. } => write!(
+                f, "keyspace id '{id}' cannot be used for new keyspace '{name}' since it is larger than maximum keyspace id '{max_id}'.",
+            ),
+            Self::IdExists { new_name, id, existing_name, .. } => write!(
+                f,
+                "keyspace id '{}' cannot be used for new keyspace '{}' since it is already used by keyspace '{}'.",
+                id, new_name, existing_name
+            ),
+        }
+    }
+}
+
+impl Error for KeyspaceValidationError {}
 
 fn db_options() -> Options {
     let mut options = Options::default();
@@ -148,66 +152,70 @@ fn db_options() -> Options {
 }
 
 fn recover_keyspaces<KS: KeyspaceSet>(
-    storage_name: &str,
     storage_dir: impl AsRef<Path>,
-) -> Result<(Vec<Keyspace>, [Option<KeyspaceId>; KEYSPACE_MAXIMUM_COUNT]), MVCCStorageError> {
+) -> Result<(Vec<Keyspace>, [Option<KeyspaceId>; KEYSPACE_MAXIMUM_COUNT]), StorageRecoverError> {
+    use StorageRecoverError::*;
+
     let path = storage_dir.as_ref();
     let mut keyspaces = Vec::new();
     let mut keyspaces_index = core::array::from_fn(|_| None);
     let options = db_options();
     for keyspace_id in KS::iter() {
-        validate_new_keyspace(storage_name, keyspace_id, &keyspaces, &keyspaces_index)?;
-        keyspaces.push(Keyspace::open(path, keyspace_id, &options).map_err(|err| MVCCStorageError {
-            storage_name: storage_name.to_owned(),
-            kind: MVCCStorageErrorKind::KeyspaceOpenError { source: Arc::new(err), keyspace_name: keyspace_id.name() },
-        })?);
+        validate_new_keyspace(keyspace_id, &keyspaces, &keyspaces_index)
+            .map_err(|error| KeyspaceValidation { source: error })?;
+        keyspaces.push(Keyspace::open(path, keyspace_id, &options).map_err(|error| KeyspaceOpen { source: error })?);
         keyspaces_index[keyspace_id.id() as usize] = Some(KeyspaceId(keyspaces.len() as u8 - 1));
     }
     Ok((keyspaces, keyspaces_index))
 }
 
 impl<D> MVCCStorage<D> {
+    const WAL_DIR_NAME: &'static str = "wal";
     const STORAGE_DIR_NAME: &'static str = "storage";
     const CHECKPOINT_DIR_NAME: &'static str = "checkpoint";
     const CHECKPOINT_METADATA_FILE_NAME: &'static str = "METADATA";
 
-    pub fn recover<KS: KeyspaceSet>(name: impl AsRef<str>, path: &Path) -> Result<Self, MVCCStorageError>
+    pub fn recover<KS: KeyspaceSet>(name: impl AsRef<str>, path: &Path) -> Result<Self, StorageRecoverError>
     where
         D: DurabilityService,
     {
         let storage_dir = path.join(Self::STORAGE_DIR_NAME);
-
         if !storage_dir.exists() {
             fs::create_dir_all(&storage_dir).map_err(|_error| todo!())?;
         }
 
-        let mut durability_service = D::recover(path.join("wal")).expect("Could not create WAL directory"); // FIXME proper error
+        let mut durability_service = D::recover(path.join(Self::WAL_DIR_NAME)).expect("Could not create WAL directory");
+        // FIXME proper error
         durability_service.register_record_type::<CommitRecord>();
 
         let name = name.as_ref();
-        let (keyspaces, keyspaces_index) = recover_keyspaces::<KS>(name, &storage_dir)?;
-
+        let (keyspaces, keyspaces_index) = recover_keyspaces::<KS>(&storage_dir)?;
         let isolation_manager = IsolationManager::new(SequenceNumber::from(1));
 
         let name = name.to_owned();
-
-        let storage =
-            Self { name, path: path.to_owned(), keyspaces, keyspaces_index, isolation_manager, durability_service };
+        let path = path.to_owned();
+        let storage = Self { name, path, keyspaces, keyspaces_index, isolation_manager, durability_service };
 
         storage.reload()?;
 
         Ok(storage)
     }
 
-    fn reload(&self) -> Result<(), MVCCStorageError>
+    fn reload(&self) -> Result<(), StorageRecoverError>
     where
         D: DurabilityService,
     {
-        for record in self.durability_service.iter_type_from_start::<CommitRecord>().unwrap() {
-            if let Ok((commit_sequence_number, commit_record)) = record {
-                self.write_commit_record(commit_sequence_number, commit_record)?;
-            } else {
-                record.unwrap(); // FIXME
+        use StorageRecoverError::DurabilityServiceRead;
+        let records = self
+            .durability_service
+            .iter_type_from_start::<CommitRecord>()
+            .map_err(|error| DurabilityServiceRead { source: error })?;
+        for record in records {
+            match record {
+                Ok((commit_sequence_number, commit_record)) => {
+                    self.write_commit_record(commit_sequence_number, commit_record).unwrap();
+                }
+                Err(error) => return Err(DurabilityServiceRead { source: error }),
             }
         }
         Ok(())
@@ -310,7 +318,7 @@ impl<D> MVCCStorage<D> {
                     match write {
                         Write::Insert { value } => write_batch
                             .put(MVCCKey::build(key.bytes(), seq, StorageOperation::Insert).bytes(), value.bytes()),
-                        Write::InsertPreexisting(value, reinsert) => {
+                        Write::InsertPreexisting { value, reinsert } => {
                             if reinsert.load(Ordering::SeqCst) {
                                 write_batch.put(
                                     MVCCKey::build(key.bytes(), seq, StorageOperation::Insert).bytes(),
@@ -490,6 +498,29 @@ impl<D> MVCCStorage<D> {
     ) -> KeyspaceRangeIterator<'this, PREFIX_INLINE> {
         debug_assert!(!range.start().bytes().is_empty());
         self.get_keyspace(range.start().keyspace_id()).iterate_range(range.map(|k| k.into_byte_array_or_ref()))
+    }
+}
+
+#[derive(Debug)]
+pub enum StorageRecoverError {
+    KeyspaceValidation { source: KeyspaceValidationError },
+    KeyspaceOpen { source: KeyspaceOpenError },
+    DurabilityServiceRead { source: DurabilityError },
+}
+
+impl fmt::Display for StorageRecoverError {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for StorageRecoverError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::KeyspaceValidation { source, .. } => Some(source),
+            Self::KeyspaceOpen { source, .. } => Some(source),
+            Self::DurabilityServiceRead { source, .. } => Some(source),
+        }
     }
 }
 

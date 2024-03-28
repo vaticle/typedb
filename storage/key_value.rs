@@ -21,7 +21,7 @@ use bytes::{byte_array::ByteArray, byte_reference::ByteReference, Bytes};
 use primitive::prefix_range::Prefix;
 use serde::{Deserialize, Serialize};
 
-use crate::{keyspace::keyspace::KeyspaceId, KeyspaceSet};
+use crate::{keyspace::KeyspaceId, KeyspaceSet};
 
 #[derive(Debug, Clone)]
 pub enum StorageKey<'bytes, const S: usize> {

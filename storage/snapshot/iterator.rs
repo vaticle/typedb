@@ -225,8 +225,8 @@ impl<'a, const PS: usize> SnapshotRangeIterator<'a, PS> {
     }
 
     pub fn collect_cloned_vec<F, M>(mut self, mapper: F) -> Result<Vec<M>, SnapshotError>
-        where
-            F: for<'b> Fn(StorageKeyReference<'b>, ByteReference<'b>) -> M,
+    where
+        F: for<'b> Fn(StorageKeyReference<'b>, ByteReference<'b>) -> M,
     {
         let mut vec = Vec::new();
         loop {
@@ -243,9 +243,9 @@ impl<'a, const PS: usize> SnapshotRangeIterator<'a, PS> {
     }
 
     pub fn collect_cloned_bmap<F, M, N>(mut self, mapper: F) -> Result<BTreeMap<M, N>, SnapshotError>
-        where
-            F: for<'b> Fn(StorageKeyReference<'b>, ByteReference<'b>) -> (M, N),
-            M: Ord + Eq + PartialEq,
+    where
+        F: for<'b> Fn(StorageKeyReference<'b>, ByteReference<'b>) -> (M, N),
+        M: Ord + Eq + PartialEq,
     {
         let mut btree_map = BTreeMap::new();
         loop {
@@ -263,9 +263,9 @@ impl<'a, const PS: usize> SnapshotRangeIterator<'a, PS> {
     }
 
     pub fn collect_cloned_key_hashset<F, M>(mut self, mapper: F) -> Result<HashSet<M>, SnapshotError>
-        where
-            F: for<'b> Fn(StorageKeyReference<'b>) -> M,
-            M: Hash + Eq + PartialEq,
+    where
+        F: for<'b> Fn(StorageKeyReference<'b>) -> M,
+        M: Hash + Eq + PartialEq,
     {
         let mut set = HashSet::new();
         loop {

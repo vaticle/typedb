@@ -101,8 +101,8 @@ impl DurabilityService for WAL {
         Ok(seq)
     }
 
-    fn iter_from(&self, sequence_number: SequenceNumber) -> io::Result<impl Iterator<Item = io::Result<RawRecord>>> {
-        RecordIterator::new(self.files.read().unwrap(), sequence_number)
+    fn iter_from(&self, sequence_number: SequenceNumber) -> Result<impl Iterator<Item = io::Result<RawRecord>>> {
+        Ok(RecordIterator::new(self.files.read().unwrap(), sequence_number)?)
     }
 }
 
