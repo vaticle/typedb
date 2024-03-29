@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Random;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -54,11 +55,73 @@ public class BasicTest {
     private static final Path dataDir = Paths.get(System.getProperty("user.dir")).resolve(database);
     private static final Path logDir = dataDir.resolve("logs");
     private static final Options.Database options = new Options.Database().dataDir(dataDir).reasonerDebuggerDir(logDir)
-            .storageIndexCacheSize(MB).storageDataCacheSize(MB);
+            .storageIndexCacheSize(500 * MB).storageDataCacheSize(500 * MB);
 
     @BeforeClass
     public static void beforeClass() {
         Diagnostics.Noop.initialise();
+    }
+
+    @Test
+    public void single_threaded_attr_ownership_test() throws IOException {
+        Util.resetDirectory(dataDir);
+        try (TypeDB.DatabaseManager typedb = CoreDatabaseManager.open(options)) {
+            typedb.create(database);
+            try (TypeDB.Session session = typedb.session(database, Arguments.Session.Type.SCHEMA)) {
+                try (TypeDB.Transaction transaction = session.transaction(Arguments.Transaction.Type.WRITE)) {
+                    var personType = transaction.concepts().putEntityType("person");
+                    var ageType = transaction.concepts().putAttributeType("age", LONG);
+                    var nameType = transaction.concepts().putAttributeType("name", STRING);
+                    personType.setOwns(ageType);
+                    personType.setOwns(nameType);
+                    transaction.commit();
+                }
+            }
+
+            try (TypeDB.Session session = typedb.session(database, Arguments.Session.Type.DATA)) {
+                long start = System.currentTimeMillis();
+                var iterations = 50_000;
+                for (int i = 0; i < iterations; i++) {
+                    try (TypeDB.Transaction transaction = session.transaction(Arguments.Transaction.Type.WRITE)) {
+                        var personType = transaction.concepts().getEntityType("person");
+                        var nameType = transaction.concepts().getAttributeType("name");
+                        var ageType = transaction.concepts().getAttributeType("age");
+
+                        var person = personType.create();
+                        var name = nameType.asString().put(random_string());
+                        var age = ageType.asLong().put(random.nextLong());
+                        person.setHas(name);
+                        person.setHas(age);
+
+                        transaction.commit();
+                    }
+                }
+
+                long end = System.currentTimeMillis();
+                long duration_micros = (end - start) * 1000;
+                double micros_per_iteration = (double) duration_micros / iterations;
+
+                System.out.println("--- Micros per iteration: " + micros_per_iteration);
+            }
+        }
+    }
+
+    private static Random random = new Random(0);
+
+    private static String random_string() {
+        int leftLimit = 48; // numeral '0'
+        int rightLimit = 122; // letter 'z'
+        int targetStringLength = 10;
+
+        int length = random.nextInt(255);
+
+        String generatedString = random.ints(leftLimit, rightLimit + 1)
+                .filter(i -> (i <= 57 || i >= 65) && (i <= 90 || i >= 97))
+                .limit(length)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
+
+        return generatedString;
     }
 
     private static void assert_transaction_read(TypeDB.Transaction transaction) {
