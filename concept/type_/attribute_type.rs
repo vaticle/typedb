@@ -13,10 +13,10 @@ use encoding::{
     Prefixed,
 };
 use primitive::maybe_owns::MaybeOwns;
-use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
+use storage::snapshot::{ReadableSnapshot, WriteSnapshot};
 
 use crate::{
-    error::ConceptReadError,
+    error::{ConceptReadError, ConceptWriteError},
     type_::{
         annotation::{Annotation, AnnotationAbstract, AnnotationIndependent},
         owns::Owns,
@@ -25,7 +25,6 @@ use crate::{
     },
     ConceptAPI,
 };
-use crate::error::ConceptWriteError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct AttributeType<'a> {
@@ -56,14 +55,12 @@ impl<'a> TypeAPI<'a> for AttributeType<'a> {
         self.vertex
     }
 
-    fn is_abstract(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>
-    ) -> Result<bool, ConceptReadError> {
+    fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(type_manager)?;
         Ok(annotations.contains(&AttributeTypeAnnotation::Abstract(AnnotationAbstract::new())))
     }
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         todo!()
     }
 }
@@ -73,7 +70,7 @@ impl<'a> AttributeType<'a> {
         type_manager.get_attribute_type_is_root(self.clone().into_owned())
     }
 
-    pub fn set_value_type(&self, type_manager: &TypeManager<impl WritableSnapshot>, value_type: ValueType) {
+    pub fn set_value_type<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, value_type: ValueType) {
         type_manager.storage_set_value_type(self.clone().into_owned(), value_type)
     }
 
@@ -91,7 +88,11 @@ impl<'a> AttributeType<'a> {
         type_manager.get_attribute_type_label(self.clone().into_owned())
     }
 
-    pub fn set_label(&self, type_manager: &TypeManager<impl WritableSnapshot>, label: &Label<'_>) -> Result<(), ConceptWriteError>{
+    pub fn set_label<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        label: &Label<'_>,
+    ) -> Result<(), ConceptWriteError> {
         if self.is_root(type_manager)? {
             Err(ConceptWriteError::RootModification)
         } else {
@@ -106,7 +107,11 @@ impl<'a> AttributeType<'a> {
         type_manager.get_attribute_type_supertype(self.clone().into_owned())
     }
 
-    pub fn set_supertype(&self, type_manager: &TypeManager<impl WritableSnapshot>, supertype: AttributeType<'static>) -> Result<(), ConceptWriteError> {
+    pub fn set_supertype<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        supertype: AttributeType<'static>,
+    ) -> Result<(), ConceptWriteError> {
         type_manager.storage_set_supertype(self.clone().into_owned(), supertype);
         Ok(())
     }
@@ -133,13 +138,12 @@ impl<'a> AttributeType<'a> {
     }
 
     pub(crate) fn is_independent(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>
+        &self,
+        type_manager: &TypeManager<impl ReadableSnapshot>,
     ) -> Result<bool, ConceptReadError> {
-        Ok(
-            self
-                .get_annotations(type_manager)?
-                .contains(&AttributeTypeAnnotation::Independent(AnnotationIndependent::new()))
-        )
+        Ok(self
+            .get_annotations(type_manager)?
+            .contains(&AttributeTypeAnnotation::Independent(AnnotationIndependent::new())))
     }
 
     pub fn get_annotations<'m>(
@@ -149,9 +153,9 @@ impl<'a> AttributeType<'a> {
         type_manager.get_attribute_type_annotations(self.clone().into_owned())
     }
 
-    pub fn set_annotation(
+    pub fn set_annotation<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         annotation: AttributeTypeAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
@@ -165,11 +169,7 @@ impl<'a> AttributeType<'a> {
         Ok(())
     }
 
-    fn delete_annotation(
-        &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
-        annotation: AttributeTypeAnnotation,
-    ) {
+    fn delete_annotation<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, annotation: AttributeTypeAnnotation) {
         match annotation {
             AttributeTypeAnnotation::Abstract(_) => {
                 type_manager.storage_delete_annotation_abstract(self.clone().into_owned())

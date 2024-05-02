@@ -7,17 +7,17 @@
 #![deny(unused_must_use)]
 
 use std::{
+    borrow::Cow,
     ffi::c_int,
     fs::File,
     path::Path,
     rc::Rc,
     sync::{Arc, OnceLock},
 };
-use std::borrow::Cow;
 
 use concept::{
     thing::{thing_manager::ThingManager, value::Value},
-    type_::{type_cache::TypeCache, type_manager::TypeManager, OwnerAPI},
+    type_::{type_cache::TypeCache, type_manager::TypeManager, Ordering, OwnerAPI},
 };
 use criterion::{criterion_group, criterion_main, profiler::Profiler, Criterion};
 use durability::wal::WAL;
@@ -28,9 +28,7 @@ use encoding::{
 };
 use pprof::ProfilerGuard;
 use rand::distributions::{Alphanumeric, DistString};
-use concept::type_::Ordering;
-use storage::{MVCCStorage};
-use storage::snapshot::{CommittableSnapshot, WriteSnapshot};
+use storage::{snapshot::WriteSnapshot, MVCCStorage};
 use test_utils::{create_tmp_dir, init_logging};
 
 static AGE_LABEL: OnceLock<Label> = OnceLock::new();
@@ -45,7 +43,8 @@ fn write_entity_attributes(
 ) {
     let snapshot = Arc::new(storage.clone().open_snapshot_write());
     {
-        let type_manager = Arc::new(TypeManager::new(snapshot.clone(), type_vertex_generator.clone(), Some(schema_cache)));
+        let type_manager =
+            Arc::new(TypeManager::new(snapshot.clone(), type_vertex_generator.clone(), Some(schema_cache)));
         let thing_manager = ThingManager::new(snapshot.clone(), thing_vertex_generator.clone(), type_manager.clone());
 
         let person_type = type_manager.get_entity_type(PERSON_LABEL.get().unwrap()).unwrap().unwrap();
@@ -104,7 +103,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("test writes");
     group.bench_function("thing_write", |b| {
         b.iter(|| {
-            write_entity_attributes(storage.clone(), type_vertex_generator.clone(), thing_vertex_generator.clone(), schema_cache.clone())
+            write_entity_attributes(
+                storage.clone(),
+                type_vertex_generator.clone(),
+                thing_vertex_generator.clone(),
+                schema_cache.clone(),
+            )
         });
     });
 }

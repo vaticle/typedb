@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{cmp::Ordering, sync::Arc};
+use std::cmp::Ordering;
 
 use bytes::Bytes;
 use encoding::{
@@ -19,10 +19,7 @@ use encoding::{
 use iterator::State;
 use storage::{
     key_value::StorageKeyReference,
-    snapshot::{
-        iterator::{SnapshotIteratorError, SnapshotRangeIterator},
-        ReadableSnapshot, WritableSnapshot,
-    },
+    snapshot::{iterator::SnapshotRangeIterator, ReadableSnapshot, WriteSnapshot},
 };
 
 use crate::{
@@ -103,7 +100,7 @@ impl<'a> Attribute<'a> {
 impl<'a> ConceptAPI<'a> for Attribute<'a> {}
 
 impl<'a> ThingAPI<'a> for Attribute<'a> {
-    fn set_modified(&self, thing_manager: &ThingManager<impl WritableSnapshot>) {
+    fn set_modified<D>(&self, thing_manager: &ThingManager<WriteSnapshot<D>>) {
         debug_assert_eq!(thing_manager.get_status(self.vertex().as_storage_key()), ConceptStatus::Put);
         // Attributes are always PUT, so we don't have to record a lock on modification
     }
@@ -112,14 +109,14 @@ impl<'a> ThingAPI<'a> for Attribute<'a> {
         thing_manager.get_status(self.vertex().as_storage_key())
     }
 
-    fn errors(
+    fn errors<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         Ok(Vec::new())
     }
 
-    fn delete<'m>(self, thing_manager: &'m ThingManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, thing_manager: &ThingManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         let mut owner_iter = self.get_owners(thing_manager);
         let mut owner = owner_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         while let Some((object, count)) = owner {

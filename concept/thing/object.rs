@@ -6,24 +6,24 @@
 
 use bytes::{byte_reference::ByteReference, Bytes};
 use encoding::{
-    graph::thing::{
-        edge::ThingEdgeHas
-        ,
-        vertex_object::ObjectVertex,
-    },
+    graph::thing::{edge::ThingEdgeHas, vertex_object::ObjectVertex},
     layout::prefix::Prefix,
-    Prefixed,
     value::decode_value_u64,
+    Prefixed,
 };
 use storage::{
     key_value::StorageKeyReference,
-    snapshot::WritableSnapshot,
+    snapshot::{ReadableSnapshot, WriteSnapshot},
 };
-use storage::snapshot::ReadableSnapshot;
 
-use crate::{ConceptStatus, edge_iterator, thing::{attribute::Attribute, entity::Entity, ObjectAPI, relation::Relation, thing_manager::ThingManager}};
-use crate::error::{ConceptReadError, ConceptWriteError};
-use crate::thing::ThingAPI;
+use crate::{
+    edge_iterator,
+    error::{ConceptReadError, ConceptWriteError},
+    thing::{
+        attribute::Attribute, entity::Entity, relation::Relation, thing_manager::ThingManager, ObjectAPI, ThingAPI,
+    },
+    ConceptStatus,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Object<'a> {
@@ -47,8 +47,10 @@ impl<'a> Object<'a> {
         }
     }
 
-    fn set_has(
-        &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'_>
+    fn set_has<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+        attribute: Attribute<'_>,
     ) -> Result<(), ConceptWriteError> {
         match self {
             Object::Entity(entity) => entity.set_has_unordered(thing_manager, attribute),
@@ -56,14 +58,17 @@ impl<'a> Object<'a> {
         }
     }
 
-    pub(crate) fn delete_has_many(
-        &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'_>, count: u64
+    pub(crate) fn delete_has_many<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+        attribute: Attribute<'_>,
+        count: u64,
     ) -> Result<(), ConceptWriteError> {
         match self {
             Object::Entity(entity) => {
                 todo!()
                 // entity.delete_has_many(thing_manager, attribute, count)
-            },
+            }
             Object::Relation(relation) => {
                 todo!()
                 // relation.delete_has_many(thing_manager, attribute, count)
@@ -87,7 +92,7 @@ impl<'a> Object<'a> {
 }
 
 impl<'a> ThingAPI<'a> for Object<'a> {
-    fn set_modified(&self, thing_manager: &ThingManager<impl WritableSnapshot>) {
+    fn set_modified<D>(&self, thing_manager: &ThingManager<WriteSnapshot<D>>) {
         match self {
             Object::Entity(entity) => entity.set_modified(thing_manager),
             Object::Relation(relation) => relation.set_modified(thing_manager),
@@ -101,14 +106,17 @@ impl<'a> ThingAPI<'a> for Object<'a> {
         }
     }
 
-    fn errors(&self, thing_manager: &ThingManager<impl WritableSnapshot>) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
+    fn errors<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+    ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         match self {
             Object::Entity(entity) => entity.errors(thing_manager),
             Object::Relation(relation) => relation.errors(thing_manager),
         }
     }
 
-    fn delete(self, thing_manager: &ThingManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, thing_manager: &ThingManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         match self {
             Object::Entity(entity) => entity.delete(thing_manager),
             Object::Relation(relation) => relation.delete(thing_manager),

@@ -31,7 +31,7 @@ use durability::wal::WAL;
 use storage::{
     key_value::{StorageKey, StorageKeyArray, StorageKeyReference},
     keyspace::{KeyspaceId, KeyspaceSet},
-    snapshot::{CommittableSnapshot, ReadableSnapshot, WritableSnapshot},
+    snapshot::ReadableSnapshot,
     MVCCStorage,
 };
 use test_utils::{create_tmp_dir, init_logging};

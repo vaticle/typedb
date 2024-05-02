@@ -16,12 +16,12 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use storage::{
     key_value::StorageKeyReference,
-    snapshot::{ReadableSnapshot, WritableSnapshot},
+    snapshot::{ReadableSnapshot, WriteSnapshot},
 };
 
 use crate::{
     concept_iterator,
-    error::ConceptReadError,
+    error::{ConceptReadError, ConceptWriteError},
     type_::{
         annotation::{Annotation, AnnotationAbstract},
         attribute_type::AttributeType,
@@ -31,12 +31,10 @@ use crate::{
         relates::Relates,
         role_type::RoleType,
         type_manager::TypeManager,
-        ObjectTypeAPI, OwnerAPI, PlayerAPI, TypeAPI,
+        ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
     },
     ConceptAPI,
 };
-use crate::error::ConceptWriteError;
-use crate::type_::Ordering;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RelationType<'a> {
@@ -67,14 +65,12 @@ impl<'a> TypeAPI<'a> for RelationType<'a> {
         self.vertex
     }
 
-    fn is_abstract(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>,
-    ) -> Result<bool, ConceptReadError> {
+    fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(type_manager)?;
         Ok(annotations.contains(&RelationTypeAnnotation::Abstract(AnnotationAbstract::new())))
     }
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         todo!()
     }
 }
@@ -93,7 +89,11 @@ impl<'a> RelationType<'a> {
         type_manager.get_relation_type_label(self.clone().into_owned())
     }
 
-    pub fn set_label(&self, type_manager: &TypeManager<impl WritableSnapshot>, label: &Label<'_>) -> Result<(), ConceptWriteError>{
+    pub fn set_label<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        label: &Label<'_>,
+    ) -> Result<(), ConceptWriteError> {
         if self.is_root(type_manager)? {
             Err(ConceptWriteError::RootModification)
         } else {
@@ -108,7 +108,11 @@ impl<'a> RelationType<'a> {
         type_manager.get_relation_type_supertype(self.clone().into_owned())
     }
 
-    pub fn set_supertype(&self, type_manager: &TypeManager<impl WritableSnapshot>, supertype: RelationType<'static>) -> Result<(), ConceptWriteError> {
+    pub fn set_supertype<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        supertype: RelationType<'static>,
+    ) -> Result<(), ConceptWriteError> {
         type_manager.storage_set_supertype(self.clone().into_owned(), supertype);
         Ok(())
     }
@@ -141,9 +145,9 @@ impl<'a> RelationType<'a> {
         type_manager.get_relation_type_annotations(self.clone().into_owned())
     }
 
-    pub fn set_annotation(
+    pub fn set_annotation<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         annotation: RelationTypeAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
@@ -154,7 +158,7 @@ impl<'a> RelationType<'a> {
         Ok(())
     }
 
-    fn delete_annotation(&self, type_manager: &TypeManager<impl WritableSnapshot>, annotation: RelationTypeAnnotation) {
+    fn delete_annotation<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, annotation: RelationTypeAnnotation) {
         match annotation {
             RelationTypeAnnotation::Abstract(_) => {
                 type_manager.storage_delete_annotation_abstract(self.clone().into_owned())
@@ -171,14 +175,17 @@ impl<'a> RelationType<'a> {
         type_manager.get_role_type(&label)
     }
 
-    pub fn create_relates(
-        &self, type_manager: &TypeManager<impl WritableSnapshot>, name: &str, ordering: Ordering
+    pub fn create_relates<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        name: &str,
+        ordering: Ordering,
     ) -> Result<RoleType<'static>, ConceptWriteError> {
         let label = Label::build_scoped(name, self.get_label(type_manager).unwrap().name().as_str());
         type_manager.create_role_type(&label, self.clone().into_owned(), false, ordering)
     }
 
-    fn delete_relates(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>) {
+    fn delete_relates<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>) {
         type_manager.storage_delete_relates(self.clone().into_owned(), role_type)
     }
 
@@ -211,9 +218,9 @@ impl<'a> RelationType<'a> {
 }
 
 impl<'a> OwnerAPI<'a> for RelationType<'a> {
-    fn set_owns(
+    fn set_owns<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Owns<'static> {
@@ -221,7 +228,7 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type)
     }
 
-    fn delete_owns(&self, type_manager: &TypeManager<impl WritableSnapshot>, attribute_type: AttributeType<'static>) {
+    fn delete_owns<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, attribute_type: AttributeType<'static>) {
         // TODO: error if not owned?
         type_manager.storage_delete_owns(self.clone().into_owned(), attribute_type)
     }
@@ -244,15 +251,17 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
 }
 
 impl<'a> PlayerAPI<'a> for RelationType<'a> {
-    fn set_plays(
-        &self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>,
+    fn set_plays<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        role_type: RoleType<'static>,
     ) -> Plays<'static> {
         // TODO: decide behaviour (ok or error) if already playing
         type_manager.storage_set_plays(self.clone().into_owned(), role_type.clone());
         Plays::new(ObjectType::Relation(self.clone().into_owned()), role_type)
     }
 
-    fn delete_plays(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>) {
+    fn delete_plays<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>) {
         // TODO: error if not playing?
         type_manager.storage_delete_plays(self.clone().into_owned(), role_type)
     }

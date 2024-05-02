@@ -6,18 +6,18 @@
 
 use std::collections::HashSet;
 
-use encoding::graph::type_::vertex::TypeVertex;
-use encoding::layout::prefix::Prefix;
-use encoding::Prefixed;
+use encoding::{graph::type_::vertex::TypeVertex, layout::prefix::Prefix, Prefixed};
 use primitive::maybe_owns::MaybeOwns;
-use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
+use storage::snapshot::{ReadableSnapshot, WriteSnapshot};
 
-use crate::{ConceptAPI, error::ConceptReadError, type_::{
-    attribute_type::AttributeType, entity_type::EntityType, OwnerAPI, owns::Owns, PlayerAPI,
-    plays::Plays, relation_type::RelationType, role_type::RoleType, type_manager::TypeManager,
-}};
-use crate::type_::{Ordering, TypeAPI};
-use crate::error::ConceptWriteError;
+use crate::{
+    error::{ConceptReadError, ConceptWriteError},
+    type_::{
+        attribute_type::AttributeType, entity_type::EntityType, owns::Owns, plays::Plays, relation_type::RelationType,
+        role_type::RoleType, type_manager::TypeManager, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
+    },
+    ConceptAPI,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum ObjectType<'a> {
@@ -36,9 +36,9 @@ impl<'a> ObjectType<'a> {
 }
 
 impl<'a> OwnerAPI<'a> for ObjectType<'a> {
-    fn set_owns(
+    fn set_owns<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Owns<'static> {
@@ -49,7 +49,7 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn delete_owns(&self, type_manager: &TypeManager<impl WritableSnapshot>, attribute_type: AttributeType<'static>) {
+    fn delete_owns<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, attribute_type: AttributeType<'static>) {
         match self {
             ObjectType::Entity(entity) => entity.delete_owns(type_manager, attribute_type),
             ObjectType::Relation(relation) => relation.delete_owns(type_manager, attribute_type),
@@ -95,32 +95,34 @@ impl<'a> TypeAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn is_abstract(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>,
-    ) -> Result<bool, ConceptReadError> {
+    fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.is_abstract(type_manager),
-            ObjectType::Relation(relation) => relation.is_abstract(type_manager)
+            ObjectType::Relation(relation) => relation.is_abstract(type_manager),
         }
     }
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         match self {
             ObjectType::Entity(entity) => entity.delete(type_manager),
-            ObjectType::Relation(relation) => relation.delete(type_manager)
+            ObjectType::Relation(relation) => relation.delete(type_manager),
         }
     }
 }
 
 impl<'a> PlayerAPI<'a> for ObjectType<'a> {
-    fn set_plays(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>) -> Plays<'static> {
+    fn set_plays<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        role_type: RoleType<'static>,
+    ) -> Plays<'static> {
         match self {
             ObjectType::Entity(entity) => entity.set_plays(type_manager, role_type),
             ObjectType::Relation(relation) => relation.set_plays(type_manager, role_type),
         }
     }
 
-    fn delete_plays(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>) {
+    fn delete_plays<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>) {
         match self {
             ObjectType::Entity(entity) => entity.delete_plays(type_manager, role_type),
             ObjectType::Relation(relation) => relation.delete_plays(type_manager, role_type),

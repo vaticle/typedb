@@ -11,7 +11,7 @@ use encoding::graph::type_::edge::TypeEdge;
 
 use encoding::graph::type_::vertex::TypeVertex;
 use primitive::maybe_owns::MaybeOwns;
-use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
+use storage::snapshot::{ReadableSnapshot, WriteSnapshot};
 
 use crate::{
     error::ConceptReadError,
@@ -41,20 +41,20 @@ pub trait TypeAPI<'a>: ConceptAPI<'a> + Sized + Clone {
 
     fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError>;
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError>;
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError>;
 }
 
 pub trait ObjectTypeAPI<'a>: TypeAPI<'a> {}
 
 pub trait OwnerAPI<'a>: TypeAPI<'a> {
-    fn set_owns(
+    fn set_owns<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Owns<'static>;
 
-    fn delete_owns(&self, type_manager: &TypeManager<impl WritableSnapshot>, attribute_type: AttributeType<'static>);
+    fn delete_owns<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, attribute_type: AttributeType<'static>);
 
     fn get_owns<'m>(
         &self,
@@ -77,11 +77,11 @@ pub trait OwnerAPI<'a>: TypeAPI<'a> {
 }
 
 pub trait PlayerAPI<'a>: TypeAPI<'a> {
-    fn set_plays(
-        &self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>
+    fn set_plays<D>(
+        &self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>
     ) -> Plays<'static>;
 
-    fn delete_plays(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>);
+    fn delete_plays<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>);
 
     fn get_plays<'m>(
         &self,

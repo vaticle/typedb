@@ -6,34 +6,36 @@
 
 #![deny(unused_must_use)]
 
-use std::borrow::Cow;
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use concept::{
-    thing::{thing_manager::ThingManager, value::Value},
-    type_::type_manager::TypeManager,
+    thing::{object::Object, thing_manager::ThingManager, value::Value},
+    type_::{
+        annotation::{AnnotationCardinality, AnnotationDistinct, AnnotationIndependent},
+        attribute_type::AttributeTypeAnnotation,
+        owns::OwnsAnnotation,
+        role_type::RoleTypeAnnotation,
+        type_manager::TypeManager,
+        Ordering, OwnerAPI, PlayerAPI,
+    },
 };
-use concept::thing::object::Object;
-use concept::type_::{Ordering, OwnerAPI, PlayerAPI};
-use concept::type_::annotation::{AnnotationCardinality, AnnotationDistinct, AnnotationIndependent};
-use concept::type_::attribute_type::AttributeTypeAnnotation;
-use concept::type_::owns::OwnsAnnotation;
-use concept::type_::role_type::RoleTypeAnnotation;
 use durability::wal::WAL;
 use encoding::{
-    EncodingKeyspace,
     graph::{thing::vertex_generator::ThingVertexGenerator, type_::vertex_generator::TypeVertexGenerator},
     value::{label::Label, value_type::ValueType},
+    EncodingKeyspace,
 };
-use storage::MVCCStorage;
-use storage::snapshot::{CommittableSnapshot, ReadSnapshot, WriteSnapshot};
+use storage::{
+    snapshot::{ReadSnapshot, WriteSnapshot},
+    MVCCStorage,
+};
 use test_utils::{create_tmp_dir, init_logging};
 
 #[test]
 fn thing_create_iterate() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
     let snapshot: Arc<WriteSnapshot<WAL>> = Arc::new(storage.clone().open_snapshot_write());
@@ -53,9 +55,9 @@ fn thing_create_iterate() {
         let finalise_result = thing_manager.finalise();
         assert!(finalise_result.is_ok());
     }
-    if let write_snapshot = Arc::try_unwrap(snapshot).ok().unwrap() {
-        write_snapshot.commit().unwrap();
-    }
+
+    let write_snapshot = Arc::try_unwrap(snapshot).ok().unwrap();
+    write_snapshot.commit().unwrap();
 
     {
         let snapshot: Arc<ReadSnapshot<WAL>> = Arc::new(storage.clone().open_snapshot_read());
@@ -71,7 +73,7 @@ fn thing_create_iterate() {
 fn attribute_create() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -89,17 +91,20 @@ fn attribute_create() {
 
         let age_type = type_manager.create_attribute_type(&age_label, false).unwrap();
         age_type.set_value_type(&type_manager, ValueType::Long);
-        age_type.set_annotation(&type_manager, AttributeTypeAnnotation::Independent(AnnotationIndependent::new())).unwrap();
+        age_type
+            .set_annotation(&type_manager, AttributeTypeAnnotation::Independent(AnnotationIndependent::new()))
+            .unwrap();
         let name_type = type_manager.create_attribute_type(&name_label, false).unwrap();
         name_type.set_value_type(&type_manager, ValueType::String);
-        name_type.set_annotation(&type_manager, AttributeTypeAnnotation::Independent(AnnotationIndependent::new())).unwrap();
+        name_type
+            .set_annotation(&type_manager, AttributeTypeAnnotation::Independent(AnnotationIndependent::new()))
+            .unwrap();
 
         let mut age_1 = thing_manager.create_attribute(age_type.clone(), Value::Long(age_value)).unwrap();
         assert_eq!(age_1.get_value(&thing_manager).unwrap(), Value::Long(age_value));
 
-        let mut name_1 = thing_manager
-            .create_attribute(name_type.clone(), Value::String(Cow::Borrowed(name_value)))
-            .unwrap();
+        let mut name_1 =
+            thing_manager.create_attribute(name_type.clone(), Value::String(Cow::Borrowed(name_value))).unwrap();
         assert_eq!(name_1.get_value(&thing_manager).unwrap(), Value::String(Cow::Borrowed(name_value)));
 
         let finalise_result = thing_manager.finalise();
@@ -127,7 +132,7 @@ fn attribute_create() {
 fn has() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -191,7 +196,7 @@ fn has() {
 fn attribute_cleanup_on_concurrent_detach() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -222,14 +227,11 @@ fn attribute_cleanup_on_concurrent_detach() {
         let person_1 = thing_manager.create_entity(person_type.clone()).unwrap();
         let person_2 = thing_manager.create_entity(person_type.clone()).unwrap();
         let age_1 = thing_manager.create_attribute(age_type.clone(), Value::Long(age_value)).unwrap();
-        let name_alice = thing_manager.create_attribute(
-            name_type.clone(),
-            Value::String(Cow::Borrowed(name_alice_value)),
-        ).unwrap();
-        let name_bob = thing_manager.create_attribute(
-            name_type.clone(),
-            Value::String(Cow::Owned(String::from(name_bob_value))),
-        ).unwrap();
+        let name_alice =
+            thing_manager.create_attribute(name_type.clone(), Value::String(Cow::Borrowed(name_alice_value))).unwrap();
+        let name_bob = thing_manager
+            .create_attribute(name_type.clone(), Value::String(Cow::Owned(String::from(name_bob_value))))
+            .unwrap();
 
         person_1.set_has_unordered(&thing_manager, age_1.as_reference()).unwrap();
         person_1.set_has_unordered(&thing_manager, name_alice.as_reference()).unwrap();
@@ -254,19 +256,27 @@ fn attribute_cleanup_on_concurrent_detach() {
         let age_type = type_manager.get_attribute_type(&age_label).unwrap().unwrap();
 
         let entities = thing_manager.get_entities().collect_cloned();
-        let bob = entities.iter().filter(|entity| {
-            entity.has_attribute(&thing_manager, name_type.clone(), Value::String(Cow::Borrowed(name_bob_value)))
-                .unwrap()
-        }).next().unwrap();
+        let bob = entities
+            .iter()
+            .filter(|entity| {
+                entity
+                    .has_attribute(&thing_manager, name_type.clone(), Value::String(Cow::Borrowed(name_bob_value)))
+                    .unwrap()
+            })
+            .next()
+            .unwrap();
 
         let mut ages = thing_manager.get_attributes_in(age_type.clone()).unwrap().collect_cloned();
-        let age = ages.iter_mut().filter_map(|mut attr| {
-            if attr.get_value(&thing_manager).unwrap().unwrap_long() == age_value {
-                Some(attr.as_reference())
-            } else {
-                None
-            }
-        }).next().unwrap();
+        let age = ages
+            .iter_mut()
+            .find_map(|attr| {
+                if attr.get_value(&thing_manager).unwrap().unwrap_long() == age_value {
+                    Some(attr.as_reference())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         bob.delete_has_unordered(&thing_manager, age).unwrap();
 
         let finalise_result = thing_manager.finalise();
@@ -281,19 +291,27 @@ fn attribute_cleanup_on_concurrent_detach() {
         let age_type = type_manager.get_attribute_type(&age_label).unwrap().unwrap();
 
         let entities = thing_manager.get_entities().collect_cloned();
-        let alice = entities.iter().filter(|entity|
-            entity.has_attribute(&thing_manager, name_type.clone(), Value::String(Cow::Borrowed(name_bob_value)))
-                .unwrap()
-        ).next().unwrap();
+        let alice = entities
+            .iter()
+            .filter(|entity| {
+                entity
+                    .has_attribute(&thing_manager, name_type.clone(), Value::String(Cow::Borrowed(name_bob_value)))
+                    .unwrap()
+            })
+            .next()
+            .unwrap();
 
         let mut ages = thing_manager.get_attributes_in(age_type.clone()).unwrap().collect_cloned();
-        let age = ages.iter_mut().filter_map(|mut attr| {
-            if attr.get_value(&thing_manager).unwrap().unwrap_long() == age_value {
-                Some(attr.as_reference())
-            } else {
-                None
-            }
-        }).next().unwrap();
+        let age = ages
+            .iter_mut()
+            .find_map(|attr| {
+                if attr.get_value(&thing_manager).unwrap().unwrap_long() == age_value {
+                    Some(attr.as_reference())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         alice.delete_has_unordered(&thing_manager, age).unwrap();
 
         let finalise_result = thing_manager.finalise();
@@ -316,12 +334,11 @@ fn attribute_cleanup_on_concurrent_detach() {
     }
 }
 
-
 #[test]
 fn role_player_distinct() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -344,9 +361,9 @@ fn role_player_distinct() {
         employment_type.create_relates(&type_manager, employer_role, Ordering::Unordered).unwrap();
         let employer_type = employment_type.get_relates_role(&type_manager, employer_role).unwrap().unwrap().role();
         employer_type.set_annotation(&type_manager, RoleTypeAnnotation::Distinct(AnnotationDistinct::new())).unwrap();
-        employer_type.set_annotation(
-            &type_manager, RoleTypeAnnotation::Cardinality(AnnotationCardinality::new(1, Some(2))),
-        ).unwrap();
+        employer_type
+            .set_annotation(&type_manager, RoleTypeAnnotation::Cardinality(AnnotationCardinality::new(1, Some(2))))
+            .unwrap();
 
         let person_type = type_manager.create_entity_type(&person_label, false).unwrap();
         let company_type = type_manager.create_entity_type(&company_label, false).unwrap();
@@ -359,13 +376,23 @@ fn role_player_distinct() {
         let company_3 = thing_manager.create_entity(company_type.clone()).unwrap();
 
         let employment_1 = thing_manager.create_relation(employment_type.clone()).unwrap();
-        employment_1.add_player(&thing_manager, employee_type.clone(), Object::Entity(person_1.as_reference())).unwrap();
-        employment_1.add_player(&thing_manager, employer_type.clone(), Object::Entity(company_1.as_reference())).unwrap();
+        employment_1
+            .add_player(&thing_manager, employee_type.clone(), Object::Entity(person_1.as_reference()))
+            .unwrap();
+        employment_1
+            .add_player(&thing_manager, employer_type.clone(), Object::Entity(company_1.as_reference()))
+            .unwrap();
 
         let employment_2 = thing_manager.create_relation(employment_type.clone()).unwrap();
-        employment_2.add_player(&thing_manager, employee_type.clone(), Object::Entity(person_1.as_reference())).unwrap();
-        employment_2.add_player(&thing_manager, employer_type.clone(), Object::Entity(company_2.as_reference())).unwrap();
-        employment_2.add_player(&thing_manager, employer_type.clone(), Object::Entity(company_3.as_reference())).unwrap();
+        employment_2
+            .add_player(&thing_manager, employee_type.clone(), Object::Entity(person_1.as_reference()))
+            .unwrap();
+        employment_2
+            .add_player(&thing_manager, employer_type.clone(), Object::Entity(company_2.as_reference()))
+            .unwrap();
+        employment_2
+            .add_player(&thing_manager, employer_type.clone(), Object::Entity(company_3.as_reference()))
+            .unwrap();
 
         assert_eq!(employment_1.get_players(&thing_manager).count(), 2);
         assert_eq!(employment_2.get_players(&thing_manager).count(), 3);
@@ -400,7 +427,8 @@ fn role_player_distinct() {
             assert_eq!(relations[1].get_players(&thing_manager).count(), 2);
         }
 
-        let person_1 = entities.iter()
+        let person_1 = entities
+            .iter()
             .find(|entity| entity.type_() == type_manager.get_entity_type(&person_label).unwrap().unwrap())
             .unwrap();
 
@@ -413,7 +441,7 @@ fn role_player_distinct() {
 fn role_player_duplicates() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
+    let storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>("storage", &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -432,10 +460,12 @@ fn role_player_duplicates() {
         let list_type = type_manager.create_relation_type(&list_label, false).unwrap();
         list_type.create_relates(&type_manager, entry_role_label, Ordering::Unordered).unwrap();
         let entry_type = list_type.get_relates_role(&type_manager, entry_role_label).unwrap().unwrap().role();
-        entry_type.set_annotation(
-            &type_manager,
-            RoleTypeAnnotation::Cardinality(AnnotationCardinality::new(0, Some(4))), // must be small to allow index to kick in
-        ).unwrap();
+        entry_type
+            .set_annotation(
+                &type_manager,
+                RoleTypeAnnotation::Cardinality(AnnotationCardinality::new(0, Some(4))), // must be small to allow index to kick in
+            )
+            .unwrap();
         list_type.create_relates(&type_manager, owner_role_label, Ordering::Unordered).unwrap();
         let owner_type = list_type.get_relates_role(&type_manager, owner_role_label).unwrap().unwrap().role();
 
@@ -452,27 +482,38 @@ fn role_player_duplicates() {
         list_1.add_player(&thing_manager, entry_type.clone(), Object::Entity(resource_1.as_reference())).unwrap();
         list_1.add_player(&thing_manager, entry_type.clone(), Object::Entity(resource_1.as_reference())).unwrap();
 
-        let player_counts: u64 = list_1.get_players(&thing_manager)
-            .collect_cloned_vec(|(_, count)| count).unwrap().into_iter().sum();
+        let player_counts: u64 =
+            list_1.get_players(&thing_manager).collect_cloned_vec(|(_, count)| count).unwrap().into_iter().sum();
         assert_eq!(player_counts, 3);
 
-        let group_relations_count: u64 = group_1.get_relations(&thing_manager)
-            .collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
+        let group_relations_count: u64 =
+            group_1.get_relations(&thing_manager).collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
         assert_eq!(group_relations_count, 1);
-        let resource_relations_count: u64 = resource_1.get_relations(&thing_manager)
-            .collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
+        let resource_relations_count: u64 = resource_1
+            .get_relations(&thing_manager)
+            .collect_cloned_vec(|(_, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(resource_relations_count, 2);
 
-        let group_1_indexed_count: u64 = group_1.get_indexed_players(&thing_manager)
-            .collect_cloned_vec(|(_, _, _, count)| count).unwrap().into_iter().sum();
+        let group_1_indexed_count: u64 = group_1
+            .get_indexed_players(&thing_manager)
+            .collect_cloned_vec(|(_, _, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(group_1_indexed_count, 2);
-        let resource_1_indexed_count: u64 = resource_1.get_indexed_players(&thing_manager)
-            .collect_cloned_vec(|(_, _, _, count)| count).unwrap().into_iter().sum();
+        let resource_1_indexed_count: u64 = resource_1
+            .get_indexed_players(&thing_manager)
+            .collect_cloned_vec(|(_, _, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(resource_1_indexed_count, 2);
 
-        let group_relations_count: u64 = group_1.get_relations(&thing_manager)
-            .collect_cloned_vec(|(rel, rol, count)| count)
-            .unwrap().into_iter().sum();
+        let group_relations_count: u64 =
+            group_1.get_relations(&thing_manager).collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
         assert_eq!(group_relations_count, 1);
 
         let finalise_result = thing_manager.finalise();
@@ -492,31 +533,44 @@ fn role_player_duplicates() {
         assert_eq!(relations.len(), 1);
 
         let list_1 = relations.get(0).unwrap();
-        let player_counts: u64 = list_1.get_players(&thing_manager)
-            .collect_cloned_vec(|(_, count)| count).unwrap().into_iter().sum();
+        let player_counts: u64 =
+            list_1.get_players(&thing_manager).collect_cloned_vec(|(_, count)| count).unwrap().into_iter().sum();
         assert_eq!(player_counts, 3);
 
-        let group_1 = entities.iter()
+        let group_1 = entities
+            .iter()
             .find(|entity| entity.type_() == type_manager.get_entity_type(&group_label).unwrap().unwrap())
             .unwrap();
 
-        let resource_1 = entities.iter()
+        let resource_1 = entities
+            .iter()
             .find(|entity| entity.type_() == type_manager.get_entity_type(&resource_label).unwrap().unwrap())
             .unwrap();
 
-        let group_relations_count: u64 = group_1.get_relations(&thing_manager)
-            .collect_cloned_vec(|(rel, rol, count)| count)
-            .unwrap().into_iter().sum();
+        let group_relations_count: u64 =
+            group_1.get_relations(&thing_manager).collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
         assert_eq!(group_relations_count, 1);
-        let resource_relations_count: u64 = resource_1.get_relations(&thing_manager)
-            .collect_cloned_vec(|(_, _, count)| count).unwrap().into_iter().sum();
+        let resource_relations_count: u64 = resource_1
+            .get_relations(&thing_manager)
+            .collect_cloned_vec(|(_, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(resource_relations_count, 2);
 
-        let group_1_indexed_count: u64 = group_1.get_indexed_players(&thing_manager)
-            .collect_cloned_vec(|(_, _, _, count)| count).unwrap().into_iter().sum();
+        let group_1_indexed_count: u64 = group_1
+            .get_indexed_players(&thing_manager)
+            .collect_cloned_vec(|(_, _, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(group_1_indexed_count, 2);
-        let resource_1_indexed_count: u64 = resource_1.get_indexed_players(&thing_manager)
-            .collect_cloned_vec(|(_, _, _, count)| count).unwrap().into_iter().sum();
+        let resource_1_indexed_count: u64 = resource_1
+            .get_indexed_players(&thing_manager)
+            .collect_cloned_vec(|(_, _, _, count)| count)
+            .unwrap()
+            .into_iter()
+            .sum();
         assert_eq!(resource_1_indexed_count, 2);
     }
 }

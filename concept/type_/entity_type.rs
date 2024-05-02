@@ -16,12 +16,12 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use storage::{
     key_value::StorageKeyReference,
-    snapshot::{ReadableSnapshot, WritableSnapshot},
+    snapshot::{ReadableSnapshot, WriteSnapshot},
 };
 
 use crate::{
     concept_iterator,
-    error::ConceptReadError,
+    error::{ConceptReadError, ConceptWriteError},
     type_::{
         annotation::{Annotation, AnnotationAbstract},
         attribute_type::AttributeType,
@@ -30,12 +30,10 @@ use crate::{
         plays::Plays,
         role_type::RoleType,
         type_manager::TypeManager,
-        ObjectTypeAPI, OwnerAPI, PlayerAPI, TypeAPI,
+        ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
     },
     ConceptAPI,
 };
-use crate::type_::Ordering;
-use crate::error::ConceptWriteError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EntityType<'a> {
@@ -66,14 +64,12 @@ impl<'a> TypeAPI<'a> for EntityType<'a> {
         self.vertex
     }
 
-    fn is_abstract(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>,
-    ) -> Result<bool, ConceptReadError> {
+    fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(type_manager)?;
         Ok(annotations.contains(&EntityTypeAnnotation::Abstract(AnnotationAbstract::new())))
     }
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         // todo!("Validation");
         type_manager.delete_entity_type(self);
         Ok(())
@@ -94,7 +90,11 @@ impl<'a> EntityType<'a> {
         type_manager.get_entity_type_label(self.clone().into_owned())
     }
 
-    pub fn set_label(&self, type_manager: &TypeManager<impl WritableSnapshot>, label: &Label<'_>) -> Result<(), ConceptWriteError> {
+    pub fn set_label<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        label: &Label<'_>,
+    ) -> Result<(), ConceptWriteError> {
         if self.is_root(type_manager)? {
             Err(ConceptWriteError::RootModification)
         } else {
@@ -109,7 +109,11 @@ impl<'a> EntityType<'a> {
         type_manager.get_entity_type_supertype(self.clone().into_owned())
     }
 
-    pub fn set_supertype(&self, type_manager: &TypeManager<impl WritableSnapshot>, supertype: EntityType<'static>) -> Result<(), ConceptWriteError> {
+    pub fn set_supertype<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        supertype: EntityType<'static>,
+    ) -> Result<(), ConceptWriteError> {
         type_manager.storage_set_supertype(self.clone().into_owned(), supertype);
         Ok(())
     }
@@ -142,7 +146,11 @@ impl<'a> EntityType<'a> {
         type_manager.get_entity_type_annotations(self.clone().into_owned())
     }
 
-    pub fn set_annotation(&self, type_manager: &TypeManager<impl WritableSnapshot>, annotation: EntityTypeAnnotation) -> Result<(), ConceptWriteError> {
+    pub fn set_annotation<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        annotation: EntityTypeAnnotation,
+    ) -> Result<(), ConceptWriteError> {
         match annotation {
             EntityTypeAnnotation::Abstract(_) => {
                 type_manager.storage_set_annotation_abstract(self.clone().into_owned())
@@ -151,7 +159,7 @@ impl<'a> EntityType<'a> {
         Ok(())
     }
 
-    fn delete_annotation(&self, type_manager: &TypeManager<impl WritableSnapshot>, annotation: EntityTypeAnnotation) {
+    fn delete_annotation<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, annotation: EntityTypeAnnotation) {
         match annotation {
             EntityTypeAnnotation::Abstract(_) => {
                 type_manager.storage_delete_annotation_abstract(self.clone().into_owned())
@@ -165,15 +173,17 @@ impl<'a> EntityType<'a> {
 }
 
 impl<'a> OwnerAPI<'a> for EntityType<'a> {
-    fn set_owns(
-        &self, type_manager: &TypeManager<impl WritableSnapshot>, attribute_type: AttributeType<'static>,
+    fn set_owns<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Owns<'static> {
         type_manager.storage_set_owns(self.clone().into_owned(), attribute_type.clone(), ordering);
         Owns::new(ObjectType::Entity(self.clone().into_owned()), attribute_type)
     }
 
-    fn delete_owns(&self, type_manager: &TypeManager<impl WritableSnapshot>, attribute_type: AttributeType<'static>) {
+    fn delete_owns<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, attribute_type: AttributeType<'static>) {
         // TODO: error if not owned?
         type_manager.storage_delete_owns(self.clone().into_owned(), attribute_type)
     }
@@ -196,15 +206,17 @@ impl<'a> OwnerAPI<'a> for EntityType<'a> {
 }
 
 impl<'a> PlayerAPI<'a> for EntityType<'a> {
-    fn set_plays(
-        &self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>
+    fn set_plays<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        role_type: RoleType<'static>,
     ) -> Plays<'static> {
         // TODO: decide behaviour (ok or error) if already playing
         type_manager.storage_set_plays(self.clone().into_owned(), role_type.clone());
         Plays::new(ObjectType::Entity(self.clone().into_owned()), role_type)
     }
 
-    fn delete_plays(&self, type_manager: &TypeManager<impl WritableSnapshot>, role_type: RoleType<'static>) {
+    fn delete_plays<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, role_type: RoleType<'static>) {
         // TODO: error if not playing
         type_manager.storage_delete_plays(self.clone().into_owned(), role_type)
     }

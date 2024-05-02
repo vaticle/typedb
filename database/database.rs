@@ -19,10 +19,7 @@ use encoding::{
     graph::{thing::vertex_generator::ThingVertexGenerator, type_::vertex_generator::TypeVertexGenerator},
     EncodingKeyspace,
 };
-use storage::{
-    snapshot::{iterator::SnapshotIteratorError, WriteSnapshot},
-    MVCCStorage, StorageOpenError,
-};
+use storage::{snapshot::WriteSnapshot, MVCCStorage, StorageOpenError};
 
 pub struct Database<D> {
     name: String,

@@ -33,13 +33,12 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use resource::constants::snapshot::BUFFER_KEY_INLINE;
 use storage::{
-    snapshot::{CommittableSnapshot, ReadableSnapshot, WritableSnapshot},
+    snapshot::{ReadableSnapshot, WriteSnapshot},
     MVCCStorage,
 };
 
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
-    thing::ObjectAPI,
     type_::{
         annotation::{Annotation, AnnotationAbstract, AnnotationCardinality},
         attribute_type::{AttributeType, AttributeTypeAnnotation},
@@ -52,7 +51,7 @@ use crate::{
         serialise_annotation_cardinality, serialise_ordering,
         type_cache::TypeCache,
         type_reader::TypeReader,
-        IntoCanonicalTypeEdge, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
+        IntoCanonicalTypeEdge, ObjectTypeAPI, Ordering, TypeAPI,
     },
 };
 
@@ -419,7 +418,7 @@ where
 }
 
 // TODO: Move this somewhere too?
-impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
+impl<D> TypeManager<WriteSnapshot<D>> {
     pub fn create_entity_type(
         &self,
         label: &Label<'_>,

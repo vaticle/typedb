@@ -9,11 +9,11 @@ use std::sync::{
     Arc,
 };
 
-use bytes::{byte_array::ByteArray, byte_reference::ByteReference, Bytes};
+use bytes::{byte_array::ByteArray, Bytes};
 use storage::{
     key_range::KeyRange,
     key_value::StorageKey,
-    snapshot::{iterator::SnapshotIteratorError, ReadableSnapshot, WritableSnapshot},
+    snapshot::{iterator::SnapshotIteratorError, ReadableSnapshot, WriteSnapshot},
     MVCCKey, MVCCStorage,
 };
 
@@ -123,35 +123,26 @@ impl ThingVertexGenerator {
         ObjectVertex::new(Bytes::Array(ByteArray::copy(k.key())))
     }
 
-    pub fn create_entity<Snapshot>(&self, type_id: TypeID, snapshot: &Snapshot) -> ObjectVertex<'static>
-    where
-        Snapshot: WritableSnapshot,
-    {
+    pub fn create_entity<D>(&self, type_id: TypeID, snapshot: &WriteSnapshot<D>) -> ObjectVertex<'static> {
         let entity_id = self.entity_ids[type_id.as_u16() as usize].fetch_add(1, Ordering::Relaxed);
         let vertex = ObjectVertex::build_entity(type_id, ObjectID::build(entity_id));
         snapshot.insert(vertex.as_storage_key().into_owned_array());
         vertex
     }
 
-    pub fn create_relation<Snapshot>(&self, type_id: TypeID, snapshot: &Snapshot) -> ObjectVertex<'static>
-    where
-        Snapshot: WritableSnapshot,
-    {
+    pub fn create_relation<D>(&self, type_id: TypeID, snapshot: &WriteSnapshot<D>) -> ObjectVertex<'static> {
         let relation_id = self.relation_ids[type_id.as_u16() as usize].fetch_add(1, Ordering::Relaxed);
         let vertex = ObjectVertex::build_relation(type_id, ObjectID::build(relation_id));
         snapshot.insert(vertex.as_storage_key().into_owned_array());
         vertex
     }
 
-    pub fn create_attribute_long<Snapshot>(
+    pub fn create_attribute_long<D>(
         &self,
         type_id: TypeID,
         value: LongBytes,
-        snapshot: &Snapshot,
-    ) -> AttributeVertex<'static>
-    where
-        Snapshot: WritableSnapshot,
-    {
+        snapshot: &WriteSnapshot<D>,
+    ) -> AttributeVertex<'static> {
         let long_attribute_id = self.create_attribute_id_long(value);
         let vertex = AttributeVertex::build(ValueType::Long, type_id, AttributeID::Long(long_attribute_id));
         snapshot.put(vertex.as_storage_key().into_owned_array());
@@ -172,30 +163,24 @@ impl ThingVertexGenerator {
     /// We do not need to retain a reverse index from String -> ID, since 99.9% of the time the prefix + hash
     /// lets us retrieve the ID from the forward index by prefix (ID -> String).
     ///
-    pub fn create_attribute_string<const INLINE_LENGTH: usize, Snapshot>(
+    pub fn create_attribute_string<const INLINE_LENGTH: usize, D>(
         &self,
         type_id: TypeID,
         value: StringBytes<'_, INLINE_LENGTH>,
-        snapshot: &Snapshot,
-    ) -> Result<AttributeVertex<'static>, Arc<SnapshotIteratorError>>
-    where
-        Snapshot: WritableSnapshot,
-    {
+        snapshot: &WriteSnapshot<D>,
+    ) -> Result<AttributeVertex<'static>, Arc<SnapshotIteratorError>> {
         let string_attribute_id = self.create_attribute_id_string(type_id, value.as_reference(), snapshot)?;
         let vertex = AttributeVertex::build(ValueType::String, type_id, AttributeID::String(string_attribute_id));
         snapshot.put_val(vertex.as_storage_key().into_owned_array(), ByteArray::from(value.bytes()));
         Ok(vertex)
     }
 
-    pub fn create_attribute_id_string<const INLINE_LENGTH: usize, Snapshot>(
+    pub fn create_attribute_id_string<const INLINE_LENGTH: usize, D>(
         &self,
         type_id: TypeID,
         string: StringBytes<'_, INLINE_LENGTH>,
-        snapshot: &Snapshot,
-    ) -> Result<StringAttributeID, Arc<SnapshotIteratorError>>
-    where
-        Snapshot: WritableSnapshot,
-    {
+        snapshot: &WriteSnapshot<D>,
+    ) -> Result<StringAttributeID, Arc<SnapshotIteratorError>> {
         if string.length() <= StringAttributeID::ENCODING_INLINE_CAPACITY {
             Ok(StringAttributeID::build_inline_id(string))
         } else {
@@ -207,15 +192,12 @@ impl ThingVertexGenerator {
         }
     }
 
-    pub fn find_attribute_id_string_noinline<const INLINE_LENGTH: usize, Snapshot>(
+    pub fn find_attribute_id_string_noinline<const INLINE_LENGTH: usize>(
         &self,
         type_id: TypeID,
         string: StringBytes<'_, INLINE_LENGTH>,
-        snapshot: &Snapshot,
-    ) -> Result<Option<StringAttributeID>, Arc<SnapshotIteratorError>>
-    where
-        Snapshot: ReadableSnapshot,
-    {
+        snapshot: &impl ReadableSnapshot,
+    ) -> Result<Option<StringAttributeID>, Arc<SnapshotIteratorError>> {
         assert!(!StringAttributeID::is_inlineable(string.as_reference()));
         StringAttributeID::find_hashed_id(type_id, string, snapshot, &self.large_value_hasher)
     }

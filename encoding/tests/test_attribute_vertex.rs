@@ -19,7 +19,7 @@ use encoding::{
     AsBytes, EncodingKeyspace,
 };
 use resource::constants::snapshot::BUFFER_KEY_INLINE;
-use storage::{snapshot::CommittableSnapshot, MVCCStorage};
+use storage::MVCCStorage;
 use test_utils::{create_tmp_dir, init_logging};
 
 #[test]

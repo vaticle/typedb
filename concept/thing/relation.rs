@@ -7,35 +7,46 @@
 use std::collections::{HashMap, HashSet};
 
 use bytes::Bytes;
-use encoding::{AsBytes, graph::{
-    thing::{
-        edge::{ThingEdgeHas, ThingEdgeRelationIndex, ThingEdgeRolePlayer},
-        vertex_object::ObjectVertex},
-    type_::vertex::{build_vertex_relation_type, build_vertex_role_type},
-    Typed,
-}, Keyable, layout::prefix::Prefix, Prefixed, value::decode_value_u64};
+use encoding::{
+    graph::{
+        thing::{
+            edge::{ThingEdgeHas, ThingEdgeRelationIndex, ThingEdgeRolePlayer},
+            vertex_object::ObjectVertex,
+        },
+        type_::vertex::{build_vertex_relation_type, build_vertex_role_type},
+        Typed,
+    },
+    layout::prefix::Prefix,
+    value::decode_value_u64,
+    AsBytes, Keyable, Prefixed,
+};
 use iterator::Collector;
-use storage::key_value::StorageKeyReference;
-use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
+use storage::{
+    key_value::StorageKeyReference,
+    snapshot::{ReadableSnapshot, WriteSnapshot},
+};
 
-use crate::{ByteReference, concept_iterator, ConceptAPI, ConceptStatus, edge_iterator, error::ConceptReadError, GetStatus, thing::{
-    attribute::Attribute,
-    object::Object,
-    thing_manager::ThingManager,
-}, type_::{
-    annotation::AnnotationDistinct,
-    relation_type::RelationType,
-    role_type::{RoleType, RoleTypeAnnotation},
-    TypeAPI,
-}};
-use crate::error::ConceptWriteError;
-use crate::thing::{ObjectAPI, ThingAPI};
-use crate::thing::object::HasAttributeIterator;
-use crate::thing::value::Value;
-use crate::type_::attribute_type::AttributeType;
-use crate::type_::{Ordering, OwnerAPI};
-use crate::type_::owns::{Owns};
-use crate::type_::type_manager::TypeManager;
+use crate::{
+    concept_iterator, edge_iterator,
+    error::{ConceptReadError, ConceptWriteError},
+    thing::{
+        attribute::Attribute,
+        object::{HasAttributeIterator, Object},
+        thing_manager::ThingManager,
+        value::Value,
+        ObjectAPI, ThingAPI,
+    },
+    type_::{
+        annotation::AnnotationDistinct,
+        attribute_type::AttributeType,
+        owns::Owns,
+        relation_type::RelationType,
+        role_type::{RoleType, RoleTypeAnnotation},
+        type_manager::TypeManager,
+        Ordering, OwnerAPI,
+    },
+    ByteReference, ConceptAPI, ConceptStatus,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Relation<'a> {
@@ -79,18 +90,22 @@ impl<'a> Relation<'a> {
     pub fn get_has_type<'m>(
         &self,
         thing_manager: &'m ThingManager<impl ReadableSnapshot>,
-        attribute_type: AttributeType<'static>
+        attribute_type: AttributeType<'static>,
     ) -> Result<HasAttributeIterator<'m, { ThingEdgeHas::LENGTH_PREFIX_FROM_OBJECT_TO_TYPE }>, ConceptReadError> {
         thing_manager.get_has_type_unordered(self.as_reference(), attribute_type)
     }
 
-    pub fn set_has_unordered(
-        &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'_>,
+    pub fn set_has_unordered<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+        attribute: Attribute<'_>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: validate schema
-        let owns = self.get_type_owns(thing_manager.type_manager(), attribute.type_())
+        let owns = self
+            .get_type_owns(thing_manager.type_manager(), attribute.type_())
             .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
-        let ordering = owns.get_ordering(thing_manager.type_manager())
+        let ordering = owns
+            .get_ordering(thing_manager.type_manager())
             .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         match ordering {
             Ordering::Unordered => {
@@ -103,12 +118,16 @@ impl<'a> Relation<'a> {
         }
     }
 
-    pub fn delete_has_unordered(
-        &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'static>,
+    pub fn delete_has_unordered<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+        attribute: Attribute<'static>,
     ) -> Result<(), ConceptWriteError> {
-        let owns = self.get_type_owns(thing_manager.type_manager(), attribute.type_())
+        let owns = self
+            .get_type_owns(thing_manager.type_manager(), attribute.type_())
             .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
-        let ordering = owns.get_ordering(thing_manager.type_manager())
+        let ordering = owns
+            .get_ordering(thing_manager.type_manager())
             .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         match ordering {
             Ordering::Unordered => {
@@ -121,30 +140,29 @@ impl<'a> Relation<'a> {
         }
     }
 
-
     fn get_type_owns<'m>(
-        &self, type_manager: &'m TypeManager<impl ReadableSnapshot>, attribute_type: AttributeType<'static>,
+        &self,
+        type_manager: &'m TypeManager<impl ReadableSnapshot>,
+        attribute_type: AttributeType<'static>,
     ) -> Result<Owns<'m>, ConceptReadError> {
         let owns = self.type_().get_owns_attribute(type_manager, attribute_type)?;
         match owns {
             None => {
                 todo!("throw useful schema error")
             }
-            Some(owns) => {
-                Ok(owns)
-            }
+            Some(owns) => Ok(owns),
         }
     }
     //
     //
     // pub fn delete_has_single(
-    //     &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'_>,
+    //     &self, thing_manager: &ThingManager<WriteSnapshot<D>>, attribute: Attribute<'_>,
     // ) -> Result<(), ConceptWriteError> {
     //     self.delete_has_many(thing_manager, attribute, 1)
     // }
     //
     // pub fn delete_has_many(
-    //     &self, thing_manager: &ThingManager<impl WritableSnapshot>, attribute: Attribute<'_>, count: u64,
+    //     &self, thing_manager: &ThingManager<WriteSnapshot<D>>, attribute: Attribute<'_>, count: u64,
     // ) -> Result<(), ConceptWriteError> {
     //     let owns = self.type_().get_owns_attribute(
     //         thing_manager.type_manager(),
@@ -219,9 +237,9 @@ impl<'a> Relation<'a> {
     /// TODO: to optimise the common case of creating a full relation, we could introduce a RelationBuilder, which can accumulate role players,
     ///   Then write all players + indexes in one go
     ///
-    pub fn add_player(
+    pub fn add_player<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
@@ -235,18 +253,24 @@ impl<'a> Relation<'a> {
         }
     }
 
-    fn add_player_distinct(
+    fn add_player_distinct<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
-        if thing_manager.type_manager().relation_index_available(self.type_())
-            .map_err(|e| ConceptWriteError::ConceptRead { source: e })? {
+        if thing_manager
+            .type_manager()
+            .relation_index_available(self.type_())
+            .map_err(|e| ConceptWriteError::ConceptRead { source: e })?
+        {
             let compound_update_guard = thing_manager.relation_compound_update_mutex().lock().unwrap();
             thing_manager.set_role_player(self.as_reference(), player.as_reference(), role_type.clone());
             thing_manager.relation_index_player_regenerate(
-                self.as_reference(), player.as_reference(), role_type, 1,
+                self.as_reference(),
+                player.as_reference(),
+                role_type,
+                1,
                 &compound_update_guard,
             );
         } else {
@@ -255,9 +279,9 @@ impl<'a> Relation<'a> {
         Ok(())
     }
 
-    fn add_player_increment(
+    fn add_player_increment<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
@@ -268,28 +292,34 @@ impl<'a> Relation<'a> {
             role_type.clone(),
             &compound_update_guard,
         );
-        if thing_manager.type_manager().relation_index_available(self.type_())
-            .map_err(|e| ConceptWriteError::ConceptRead { source: e })? {
+        if thing_manager
+            .type_manager()
+            .relation_index_available(self.type_())
+            .map_err(|e| ConceptWriteError::ConceptRead { source: e })?
+        {
             thing_manager.relation_index_player_regenerate(
-                self.as_reference(), player.as_reference(), role_type, player_count,
+                self.as_reference(),
+                player.as_reference(),
+                role_type,
+                player_count,
                 &compound_update_guard,
             );
         }
         Ok(())
     }
 
-    pub fn delete_player_single(
+    pub fn delete_player_single<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
         self.delete_player_many(thing_manager, role_type, player, 1)
     }
 
-    pub fn delete_player_many(
+    pub fn delete_player_many<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
         delete_count: u64,
@@ -304,18 +334,23 @@ impl<'a> Relation<'a> {
         }
     }
 
-    fn delete_player_distinct(
+    fn delete_player_distinct<D>(
         &self,
-        thing_manager: &ThingManager<impl WritableSnapshot>,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
-        if thing_manager.type_manager().relation_index_available(self.type_())
-            .map_err(|e| ConceptWriteError::ConceptRead { source: e })? {
+        if thing_manager
+            .type_manager()
+            .relation_index_available(self.type_())
+            .map_err(|e| ConceptWriteError::ConceptRead { source: e })?
+        {
             let compound_update_guard = thing_manager.relation_compound_update_mutex().lock().unwrap();
             thing_manager.delete_role_player(self.as_reference(), player.as_reference(), role_type.clone());
             thing_manager.relation_index_player_deleted(
-                self.as_reference(), player.as_reference(), role_type,
+                self.as_reference(),
+                player.as_reference(),
+                role_type,
                 &compound_update_guard,
             );
         } else {
@@ -324,12 +359,13 @@ impl<'a> Relation<'a> {
         Ok(())
     }
 
-    fn delete_player_decrement(&self,
-                               thing_manager: &ThingManager<impl WritableSnapshot>,
-                               role_type: RoleType<'static>,
-                               player: Object<'_>,
-                               decrement_count: u64,
-    )  -> Result<(), ConceptWriteError> {
+    fn delete_player_decrement<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+        role_type: RoleType<'static>,
+        player: Object<'_>,
+        decrement_count: u64,
+    ) -> Result<(), ConceptWriteError> {
         let compound_update_guard = thing_manager.relation_compound_update_mutex().lock().unwrap();
         let remaining_player_count = thing_manager.decrement_role_player(
             self.as_reference(),
@@ -338,11 +374,17 @@ impl<'a> Relation<'a> {
             decrement_count,
             &compound_update_guard,
         );
-        if thing_manager.type_manager().relation_index_available(self.type_())
-            .map_err(|e| ConceptWriteError::ConceptRead { source: e })? {
+        if thing_manager
+            .type_manager()
+            .relation_index_available(self.type_())
+            .map_err(|e| ConceptWriteError::ConceptRead { source: e })?
+        {
             debug_assert_eq!(remaining_player_count, 0);
             thing_manager.relation_index_player_regenerate(
-                self.as_reference(), player.as_reference(), role_type, remaining_player_count,
+                self.as_reference(),
+                player.as_reference(),
+                role_type,
+                remaining_player_count,
                 &compound_update_guard,
             );
         }
@@ -357,7 +399,7 @@ impl<'a> Relation<'a> {
 impl<'a> ConceptAPI<'a> for Relation<'a> {}
 
 impl<'a> ThingAPI<'a> for Relation<'a> {
-    fn set_modified(&self, thing_manager: &ThingManager<impl WritableSnapshot>) {
+    fn set_modified<D>(&self, thing_manager: &ThingManager<WriteSnapshot<D>>) {
         if matches!(self.get_status(thing_manager), ConceptStatus::Persisted) {
             thing_manager.lock_existing(self.as_reference());
         }
@@ -367,7 +409,10 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
         thing_manager.get_status(self.vertex().as_storage_key())
     }
 
-    fn errors(&self, thing_manager: &ThingManager<impl WritableSnapshot>) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
+    fn errors<D>(
+        &self,
+        thing_manager: &ThingManager<WriteSnapshot<D>>,
+    ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         let mut errors = Vec::new();
 
         // validate cardinality
@@ -390,22 +435,24 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
         Ok(errors)
     }
 
-    fn delete<'m>(self, thing_manager: &'m ThingManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, thing_manager: &ThingManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         let mut has_iter = self.get_has(thing_manager);
-        let mut has = has_iter.next().transpose()
-            .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
+        let mut has = has_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         let mut has_attr_type_deleted = HashSet::new();
         while let Some((attr, count)) = has {
             has_attr_type_deleted.add(attr.type_());
             thing_manager.delete_has(self.as_reference(), attr);
-            has = has_iter.next().transpose()
-                .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
+            has = has_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         }
 
-        for owns in self.type_().get_owns(thing_manager.type_manager())
+        for owns in self
+            .type_()
+            .get_owns(thing_manager.type_manager())
             .map_err(|err| ConceptWriteError::ConceptRead { source: err })?
-            .iter() {
-            let ordering = owns.get_ordering(thing_manager.type_manager())
+            .iter()
+        {
+            let ordering = owns
+                .get_ordering(thing_manager.type_manager())
                 .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
             if matches!(ordering, Ordering::Ordered) {
                 thing_manager.delete_has_ordered(self.as_reference(), owns.attribute());
@@ -413,21 +460,22 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
         }
 
         let mut relation_iter = self.get_relations(thing_manager);
-        let mut playing = relation_iter.next().transpose()
-            .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
+        let mut playing =
+            relation_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         while let Some((relation, role, count)) = playing {
             relation.delete_player_many(thing_manager, role, Object::Relation(self.as_reference()), count)?;
-            playing = relation_iter.next().transpose()
-                .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
+            playing = relation_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         }
 
         let mut player_iter = self.get_players(thing_manager);
-        let mut role_player = player_iter.next().transpose()
+        let mut role_player = player_iter
+            .next()
+            .transpose()
             .map_err(|err| ConceptWriteError::ConceptRead { source: ConceptReadError::from(err) })?;
         while let Some((rp, count)) = role_player {
             self.delete_player_many(thing_manager, rp.role_type(), rp.player(), count)?;
-            role_player = player_iter.next().transpose()
-                .map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
+            role_player =
+                player_iter.next().transpose().map_err(|err| ConceptWriteError::ConceptRead { source: err })?;
         }
 
         thing_manager.delete_relation(self);
@@ -473,10 +521,7 @@ fn storage_key_to_role_player<'a>(
 ) -> (RolePlayer<'a>, u64) {
     let edge = ThingEdgeRolePlayer::new(Bytes::Reference(storage_key_ref.byte_ref()));
     let role_type = build_vertex_role_type(edge.role_id());
-    (
-        RolePlayer { player: Object::new(edge.into_to()), role_type: RoleType::new(role_type) },
-        decode_value_u64(value),
-    )
+    (RolePlayer { player: Object::new(edge.into_to()), role_type: RoleType::new(role_type) }, decode_value_u64(value))
 }
 
 edge_iterator!(
@@ -506,17 +551,21 @@ fn storage_key_to_indexed_players<'a>(
 ) -> (RolePlayer<'a>, RolePlayer<'a>, Relation<'a>, u64) {
     let from_role_player = RolePlayer {
         player: Object::new(ThingEdgeRelationIndex::read_from(storage_key_ref.byte_ref())),
-        role_type: RoleType::new(build_vertex_role_type(ThingEdgeRelationIndex::read_from_role_id(storage_key_ref.byte_ref()))),
+        role_type: RoleType::new(build_vertex_role_type(ThingEdgeRelationIndex::read_from_role_id(
+            storage_key_ref.byte_ref(),
+        ))),
     };
     let to_role_player = RolePlayer {
         player: Object::new(ThingEdgeRelationIndex::read_to(storage_key_ref.byte_ref())),
-        role_type: RoleType::new(build_vertex_role_type(ThingEdgeRelationIndex::read_to_role_id(storage_key_ref.byte_ref()))),
+        role_type: RoleType::new(build_vertex_role_type(ThingEdgeRelationIndex::read_to_role_id(
+            storage_key_ref.byte_ref(),
+        ))),
     };
     (
         from_role_player,
         to_role_player,
         Relation::new(ThingEdgeRelationIndex::read_relation(storage_key_ref.byte_ref())),
-        decode_value_u64(value)
+        decode_value_u64(value),
     )
 }
 

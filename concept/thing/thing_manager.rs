@@ -33,7 +33,7 @@ use resource::constants::snapshot::BUFFER_KEY_INLINE;
 use storage::{
     key_range::KeyRange,
     key_value::StorageKey,
-    snapshot::{write::Write, ReadableSnapshot, WritableSnapshot},
+    snapshot::{write::Write, ReadableSnapshot, WriteSnapshot},
 };
 
 use crate::{
@@ -357,7 +357,7 @@ impl<Snapshot: ReadableSnapshot> ThingManager<Snapshot> {
     }
 }
 
-impl<'txn, Snapshot: WritableSnapshot> ThingManager<Snapshot> {
+impl<'txn, D> ThingManager<WriteSnapshot<D>> {
     pub(crate) fn relation_compound_update_mutex(&self) -> &Mutex<()> {
         &self.relation_lock
     }

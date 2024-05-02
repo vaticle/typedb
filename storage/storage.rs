@@ -33,7 +33,7 @@ use crate::{
     key_range::KeyRange,
     key_value::{StorageKey, StorageKeyReference},
     keyspace::{iterator::KeyspaceRangeIterator, Keyspace, KeyspaceError, KeyspaceId, KeyspaceSet, Keyspaces},
-    snapshot::{write::Write, CommittableSnapshot, ReadSnapshot, SchemaSnapshot, WriteSnapshot},
+    snapshot::{write::Write, ReadSnapshot, ReadableSnapshot, WriteSnapshot},
 };
 
 mod checkpoint;
@@ -97,6 +97,20 @@ impl<Durability> MVCCStorage<Durability> {
         &self.name
     }
 
+    pub fn open_snapshot_read(self: Arc<Self>) -> ReadSnapshot<Durability> {
+        let open_sequence_number = self.isolation_manager.watermark();
+        ReadSnapshot::new(self, open_sequence_number)
+    }
+
+    pub fn open_snapshot_read_at(
+        self: Arc<Self>,
+        sequence_number: SequenceNumber,
+    ) -> Result<ReadSnapshot<Durability>, ReadSnapshotOpenError> {
+        // TODO: Support waiting for watermark to catch up to sequence number when we support causal reading.
+        assert!(sequence_number <= self.read_watermark());
+        Ok(ReadSnapshot::new(self, sequence_number))
+    }
+
     pub fn open_snapshot_write(self: Arc<Self>) -> WriteSnapshot<Durability> {
         /*
         How to pick a sequence number:
@@ -123,31 +137,11 @@ impl<Durability> MVCCStorage<Durability> {
         Ok(WriteSnapshot::new(self, sequence_number))
     }
 
-    pub fn open_snapshot_read(self: Arc<Self>) -> ReadSnapshot<Durability> {
-        let open_sequence_number = self.isolation_manager.watermark();
-        ReadSnapshot::new(self, open_sequence_number)
-    }
-
-    pub fn open_snapshot_read_at(
-        self: Arc<Self>,
-        sequence_number: SequenceNumber,
-    ) -> Result<ReadSnapshot<Durability>, ReadSnapshotOpenError> {
-        // TODO: Support waiting for watermark to catch up to sequence number when we support causal reading.
-        assert!(sequence_number <= self.read_watermark());
-        Ok(ReadSnapshot::new(self, sequence_number))
-    }
-
-    pub fn open_snapshot_schema(self: Arc<Self>) -> SchemaSnapshot<Durability> {
-        // todo!("schema snapshot locking");
-        let watermark = self.isolation_manager.watermark();
-        SchemaSnapshot::new(self, watermark)
-    }
-
-    fn snapshot_commit(&self, snapshot: impl CommittableSnapshot<Durability>) -> Result<(), StorageCommitError>
+    fn snapshot_commit(&self, snapshot: WriteSnapshot<Durability>) -> Result<(), StorageCommitError>
     where
         Durability: DurabilityService,
     {
-        use StorageCommitError::{Internal, Isolation, MVCCRead, Keyspace, Durability};
+        use StorageCommitError::{Durability, Internal, Keyspace, MVCCRead};
 
         self.set_initial_put_status(&snapshot).map_err(|error| MVCCRead { source: error })?;
         let commit_record = snapshot.into_commit_record();
@@ -187,7 +181,7 @@ impl<Durability> MVCCStorage<Durability> {
         }
     }
 
-    fn set_initial_put_status(&self, snapshot: &impl CommittableSnapshot<Durability>) -> Result<(), MVCCReadError>
+    fn set_initial_put_status(&self, snapshot: &WriteSnapshot<Durability>) -> Result<(), MVCCReadError>
     where
         Durability: DurabilityService,
     {
@@ -565,7 +559,7 @@ mod tests {
         isolation_manager::{CommitRecord, ValidatedCommit},
         key_value::{StorageKeyArray, StorageKeyReference},
         keyspace::{KeyspaceId, KeyspaceSet, Keyspaces},
-        snapshot::{buffer::OperationsBuffer, CommittableSnapshot, WritableSnapshot},
+        snapshot::buffer::OperationsBuffer,
         write_batches::WriteBatches,
     };
 

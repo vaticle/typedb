@@ -16,12 +16,12 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use storage::{
     key_value::StorageKeyReference,
-    snapshot::{ReadableSnapshot, WritableSnapshot},
+    snapshot::{ReadableSnapshot, WriteSnapshot},
 };
 
 use crate::{
     concept_iterator,
-    error::ConceptReadError,
+    error::{ConceptReadError, ConceptWriteError},
     type_::{
         annotation::{Annotation, AnnotationAbstract, AnnotationCardinality, AnnotationDistinct},
         plays::Plays,
@@ -31,7 +31,6 @@ use crate::{
     },
     ConceptAPI,
 };
-use crate::error::ConceptWriteError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RoleType<'a> {
@@ -56,14 +55,12 @@ impl<'a> TypeAPI<'a> for RoleType<'a> {
         self.vertex
     }
 
-    fn is_abstract(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>
-    ) -> Result<bool, ConceptReadError> {
+    fn is_abstract(&self, type_manager: &TypeManager<impl ReadableSnapshot>) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(type_manager)?;
         Ok(annotations.contains(&RoleTypeAnnotation::Abstract(AnnotationAbstract::new())))
     }
 
-    fn delete(self, type_manager: &TypeManager<impl WritableSnapshot>) -> Result<(), ConceptWriteError> {
+    fn delete<D>(self, type_manager: &TypeManager<WriteSnapshot<D>>) -> Result<(), ConceptWriteError> {
         todo!()
     }
 }
@@ -80,7 +77,7 @@ impl<'a> RoleType<'a> {
         type_manager.get_role_type_label(self.clone().into_owned())
     }
 
-    fn set_name(&self, _type_manager: &TypeManager<impl WritableSnapshot>, _name: &str) {
+    fn set_name<D>(&self, _type_manager: &TypeManager<WriteSnapshot<D>>, _name: &str) {
         // // TODO: setLabel should fail is setting label on Root type
         // type_manager.set_storage_label(self.clone().into_owned(), label);
 
@@ -94,7 +91,11 @@ impl<'a> RoleType<'a> {
         type_manager.get_role_type_supertype(self.clone().into_owned())
     }
 
-    pub fn set_supertype(&self, type_manager: &TypeManager<impl WritableSnapshot>, supertype: RoleType<'static>) -> Result<(), ConceptWriteError> {
+    pub fn set_supertype<D>(
+        &self,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
+        supertype: RoleType<'static>,
+    ) -> Result<(), ConceptWriteError> {
         type_manager.storage_set_supertype(self.clone().into_owned(), supertype);
         Ok(())
     }
@@ -121,15 +122,18 @@ impl<'a> RoleType<'a> {
     }
 
     pub fn get_cardinality(
-        &self, type_manager: &TypeManager<impl ReadableSnapshot>,
+        &self,
+        type_manager: &TypeManager<impl ReadableSnapshot>,
     ) -> Result<AnnotationCardinality, ConceptReadError> {
         let annotations = self.get_annotations(type_manager)?;
-        let card: AnnotationCardinality = annotations.iter().filter_map(|annotation|
-            match annotation {
+        let card: AnnotationCardinality = annotations
+            .iter()
+            .filter_map(|annotation| match annotation {
                 RoleTypeAnnotation::Cardinality(card) => Some(card.clone()),
-                _ => None
-            }
-        ).next().unwrap_or_else(|| type_manager.role_default_cardinality());
+                _ => None,
+            })
+            .next()
+            .unwrap_or_else(|| type_manager.role_default_cardinality());
         Ok(card)
     }
 
@@ -140,11 +144,11 @@ impl<'a> RoleType<'a> {
         type_manager.get_role_type_annotations(self.clone().into_owned())
     }
 
-    pub fn set_annotation(
+    pub fn set_annotation<D>(
         &self,
-        type_manager: &TypeManager<impl WritableSnapshot>,
+        type_manager: &TypeManager<WriteSnapshot<D>>,
         annotation: RoleTypeAnnotation,
-    )  -> Result<(), ConceptWriteError>  {
+    ) -> Result<(), ConceptWriteError> {
         match annotation {
             RoleTypeAnnotation::Abstract(_) => type_manager.storage_set_annotation_abstract(self.clone().into_owned()),
             RoleTypeAnnotation::Distinct(_) => type_manager.storage_set_annotation_distinct(self.clone().into_owned()),
@@ -155,7 +159,7 @@ impl<'a> RoleType<'a> {
         Ok(())
     }
 
-    fn delete_annotation(&self, type_manager: &TypeManager<impl WritableSnapshot>, annotation: RoleTypeAnnotation) {
+    fn delete_annotation<D>(&self, type_manager: &TypeManager<WriteSnapshot<D>>, annotation: RoleTypeAnnotation) {
         match annotation {
             RoleTypeAnnotation::Abstract(_) => {
                 type_manager.storage_delete_annotation_abstract(self.clone().into_owned())

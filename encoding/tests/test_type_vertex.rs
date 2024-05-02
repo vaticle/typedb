@@ -18,11 +18,7 @@ use encoding::{
     },
     AsBytes, EncodingKeyspace, Keyable,
 };
-use storage::{
-    key_value::StorageKeyReference,
-    snapshot::{CommittableSnapshot, WritableSnapshot},
-    MVCCStorage,
-};
+use storage::{key_value::StorageKeyReference, MVCCStorage};
 use test_utils::{create_tmp_dir, init_logging};
 
 // TODO: Update all tests with higher level APIs
@@ -58,7 +54,8 @@ fn entity_type_vertexes_are_reused() {
         for i in 0..=create_till {
             if i % 2 == 0 {
                 let vertex = build_vertex_entity_type(TypeID::build(i));
-                snapshot.delete(StorageKeyReference::new(vertex.keyspace(), vertex.bytes()).into()); // TODO: replace with type api call.
+                snapshot.delete(StorageKeyReference::new(vertex.keyspace(), vertex.bytes()).into());
+                // TODO: replace with type api call.
             }
         }
         snapshot.commit().unwrap();

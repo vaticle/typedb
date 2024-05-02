@@ -4,10 +4,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{error::Error, fmt, sync::Arc};
-
-use storage::snapshot::iterator::SnapshotIteratorError;
-
 // FIXME: exported macros must provide their own use-declarations or use fully qualified paths
 //        As it stands, this macro requires imports at point of use.
 #[macro_export]
@@ -37,7 +33,7 @@ macro_rules! concept_iterator {
 
             // a lending iterator trait is infeasible with the current borrow checker
             #[allow(clippy::should_implement_trait)]
-            pub fn next(&mut self) -> Option<Result<$concept_type<'_>,  $crate::error::ConceptReadError>> {
+            pub fn next(&mut self) -> Option<Result<$concept_type<'_>, $crate::error::ConceptReadError>> {
                 use $crate::error::ConceptReadError::SnapshotIterate;
                 self.iter_next().map(|result| {
                     result
@@ -95,7 +91,6 @@ macro_rules! concept_iterator {
         }
     };
 }
-
 
 #[macro_export]
 macro_rules! edge_iterator {

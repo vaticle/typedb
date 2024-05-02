@@ -15,12 +15,12 @@ use durability::wal::WAL;
 use logger::result::ResultExt;
 use resource::constants::snapshot::{BUFFER_KEY_INLINE, BUFFER_VALUE_INLINE};
 use storage::{
+    key_range::KeyRange,
     key_value::{StorageKey, StorageKeyArray},
     keyspace::{KeyspaceId, KeyspaceSet},
-    snapshot::{CommittableSnapshot, ReadableSnapshot, WritableSnapshot},
+    snapshot::ReadableSnapshot,
     MVCCStorage,
 };
-use storage::key_range::KeyRange;
 use test_utils::{create_tmp_dir, init_logging};
 
 test_keyspace_set! {

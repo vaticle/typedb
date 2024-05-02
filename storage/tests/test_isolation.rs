@@ -16,7 +16,7 @@ use storage::{
     key_range::KeyRange,
     key_value::{StorageKey, StorageKeyArray, StorageKeyReference},
     keyspace::{KeyspaceId, KeyspaceSet},
-    snapshot::{CommittableSnapshot, ReadableSnapshot, SnapshotError, WritableSnapshot, WriteSnapshot},
+    snapshot::{ReadableSnapshot, SnapshotError, WriteSnapshot},
     MVCCStorage, StorageCommitError,
 };
 use test_utils::{create_tmp_dir, init_logging};

@@ -8,15 +8,21 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use concept::type_::{annotation::AnnotationAbstract, entity_type::EntityTypeAnnotation, object_type::ObjectType, owns::Owns, relation_type::RelationTypeAnnotation, role_type::RoleTypeAnnotation, type_cache::TypeCache, type_manager::TypeManager, OwnerAPI, PlayerAPI, Ordering};
+use concept::type_::{
+    annotation::AnnotationAbstract, entity_type::EntityTypeAnnotation, object_type::ObjectType, owns::Owns,
+    relation_type::RelationTypeAnnotation, role_type::RoleTypeAnnotation, type_cache::TypeCache,
+    type_manager::TypeManager, Ordering, OwnerAPI, PlayerAPI,
+};
 use durability::wal::WAL;
 use encoding::{
     graph::type_::{vertex_generator::TypeVertexGenerator, Kind},
     value::{label::Label, value_type::ValueType},
     EncodingKeyspace,
 };
-use storage::{MVCCStorage};
-use storage::snapshot::{CommittableSnapshot, ReadableSnapshot, ReadSnapshot, WriteSnapshot};
+use storage::{
+    snapshot::{ReadSnapshot, ReadableSnapshot, WriteSnapshot},
+    MVCCStorage,
+};
 use test_utils::{create_tmp_dir, init_logging};
 
 /*
@@ -28,7 +34,8 @@ We don't aim for complete coverage of all APIs, and will rely on the BDD scenari
 fn entity_usage() {
     init_logging();
     let storage_path = create_tmp_dir();
-    let mut storage = Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>(Rc::from("storage"), &storage_path).unwrap());
+    let mut storage =
+        Arc::new(MVCCStorage::<WAL>::open::<EncodingKeyspace>(Rc::from("storage"), &storage_path).unwrap());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     TypeManager::<WriteSnapshot<WAL>>::initialise_types(storage.clone(), type_vertex_generator.clone()).unwrap();
 
@@ -80,7 +87,7 @@ fn entity_usage() {
         assert_eq!(supertypes.len(), 2);
 
         // --- child owns age ---
-         child_type.set_owns(&type_manager, age_type.clone().into_owned(), Ordering::Unordered);
+        child_type.set_owns(&type_manager, age_type.clone().into_owned(), Ordering::Unordered);
         let owns = child_type.get_owns_attribute(&type_manager, age_type.clone().into_owned()).unwrap().unwrap();
         // TODO: test 'owns' structure directly
 
