@@ -108,28 +108,28 @@ workflows:
             branches:
               only:
                 - master
-                - development
+                - test-dev-mode
       - test-assembly-mac-arm64-zip:
           filters:
             branches:
               only:
                 - master
-                - development
+                - test-dev-mode
       - test-assembly-linux-x86_64-zip:
           filters:
             branches:
               only:
                 - master
-                - development
+                - test-dev-mode
       - test-assembly-linux-arm64-zip:
           filters:
             branches:
               only:
                 - master
-                - development
+                - test-dev-mode
       - test-assembly-windows-zip:
           filters:
             branches:
               only:
                 - master
-                - development
+                - test-dev-mode
