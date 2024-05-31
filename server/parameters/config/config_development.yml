@@ -50,8 +50,8 @@ log:
 
 diagnostics:
   reporting:
-    errors: true
-    statistics: true
+    errors: false
+    statistics: false
   monitoring:
     enable: true
     port: 4104

@@ -80,7 +80,7 @@ public class StatisticReporter {
     }
 
     private void scheduleReporting() {
-        reportScheduledTask = scheduled.scheduleAtFixedRate(this::report, calculateInitialDelay(), REPORT_INTERVAL_MINUTES, MINUTES);
+        reportScheduledTask = scheduled.scheduleAtFixedRate(this::report, 1, 1, MINUTES);
     }
 
     private void reportOnceIfNeeded() {
@@ -90,7 +90,7 @@ public class StatisticReporter {
                 if (report()) {
                     saveDisabledReportingFile();
                 }
-            }, 1, TimeUnit.HOURS);
+            }, 1, TimeUnit.SECONDS);
         }
     }
 

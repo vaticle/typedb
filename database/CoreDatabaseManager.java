@@ -81,9 +81,9 @@ public class CoreDatabaseManager implements TypeDB.DatabaseManager {
         synchronizeDatabaseDiagnostics();
         Executors.scheduled().scheduleAtFixedRate(
                 this::synchronizeDatabaseDiagnostics,
-                DIAGNOSTICS_SYNC_PERIOD_MINUTES,
-                DIAGNOSTICS_SYNC_PERIOD_MINUTES,
-                TimeUnit.MINUTES);
+                1,
+                15,
+                TimeUnit.SECONDS);
     }
 
     @Override
