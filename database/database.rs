@@ -68,7 +68,7 @@ impl Database<WALClient> {
     fn create(path: &Path, name: impl AsRef<str>) -> Result<Database<WALClient>, DatabaseOpenError> {
         use DatabaseOpenError::{DirectoryCreate, Encoding, SchemaInitialise, StorageOpen, WALOpen};
         fs::create_dir(path).map_err(|error| DirectoryCreate { path: path.to_owned(), source: error })?;
-        let wal = WAL::create(&path).map_err(|err| WALOpen { source: err })?;
+        let wal = WAL::create(path).map_err(|err| WALOpen { source: err })?;
         let storage = Arc::new(
             MVCCStorage::create::<EncodingKeyspace>(&name, path, WALClient::new(wal))
                 .map_err(|error| StorageOpen { source: error })?,
@@ -102,9 +102,9 @@ impl Database<WALClient> {
             StorageOpen, WALOpen,
         };
 
-        let wal = WAL::load(&path).map_err(|err| WALOpen { source: err })?;
+        let wal = WAL::load(path).map_err(|err| WALOpen { source: err })?;
         let wal_last_sequence_number = wal.previous();
-        let checkpoint = Checkpoint::open_latest(&path).map_err(|err| CheckpointLoad { source: err })?;
+        let checkpoint = Checkpoint::open_latest(path).map_err(|err| CheckpointLoad { source: err })?;
         let storage = Arc::new(
             MVCCStorage::load::<EncodingKeyspace>(&name, path, WALClient::new(wal), &checkpoint)
                 .map_err(|error| StorageOpen { source: error })?,
