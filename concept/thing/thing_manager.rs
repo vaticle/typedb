@@ -583,7 +583,8 @@ impl<Snapshot: ReadableSnapshot> ThingManager<Snapshot> {
 
     pub(crate) fn get_status(&self, snapshot: &Snapshot, key: StorageKey<'_, BUFFER_KEY_INLINE>) -> ConceptStatus {
         snapshot
-            .get_buffered_write_mapped(key.as_reference(), |write| match write {
+            .get_buffered_write(key.as_reference())
+            .map(|write| match write {
                 Write::Insert { .. } => ConceptStatus::Inserted,
                 Write::Put { .. } => ConceptStatus::Put,
                 Write::Delete => ConceptStatus::Deleted,

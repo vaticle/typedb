@@ -229,8 +229,8 @@ impl WriteBuffer {
         &mut self.writes
     }
 
-    pub(crate) fn get_write_mapped<T>(&self, key: ByteReference<'_>, mapper: impl FnMut(&Write) -> T) -> Option<T> {
-        self.writes.get(key.bytes()).map(mapper)
+    pub(crate) fn get_write(&self, key: ByteReference<'_>) -> Option<&Write> {
+        self.writes.get(key.bytes())
     }
 }
 

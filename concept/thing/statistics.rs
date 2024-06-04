@@ -18,7 +18,7 @@ use encoding::graph::{
         vertex_attribute::AttributeVertex,
         vertex_object::ObjectVertex,
     },
-    type_::vertex::{PrefixedTypeVertexEncoding, TypeID, TypeIDUInt, TypeVertexEncoding},
+    type_::vertex::{PrefixedTypeVertexEncoding, TypeID, TypeIDUInt},
     Typed,
 };
 use resource::constants::snapshot::BUFFER_KEY_INLINE;
@@ -78,7 +78,7 @@ impl Statistics {
     pub fn new(sequence_number: SequenceNumber) -> Self {
         Statistics {
             statistics_version: Self::STATISTICS_VERSION,
-            sequence_number: sequence_number,
+            sequence_number,
             total_thing_count: 0,
             total_entity_count: 0,
             total_relation_count: 0,
@@ -199,22 +199,22 @@ impl Statistics {
 
     fn clear_object_type(&mut self, object_type: ObjectType<'static>) {
         self.has_attribute_counts.remove(&object_type);
-        self.attribute_owner_counts.iter_mut().for_each(|(_, map)| {
-            let _ = map.remove(&object_type);
-        });
+        for map in self.attribute_owner_counts.values_mut() {
+            map.remove(&object_type);
+        }
         self.attribute_owner_counts.retain(|_, map| !map.is_empty());
 
         self.role_player_counts.remove(&object_type);
 
         self.player_index_counts.remove(&object_type);
-        self.player_index_counts.iter_mut().for_each(|(_, map)| {
-            let _ = map.remove(&object_type);
-        });
+        for map in self.player_index_counts.values_mut() {
+            map.remove(&object_type);
+        }
         self.player_index_counts.retain(|_, map| !map.is_empty());
     }
 
     fn write_to_delta<D, Snapshot: ReadableSnapshot>(
-        write_key: &StorageKeyArray<{ BUFFER_KEY_INLINE }>,
+        write_key: &StorageKeyArray<BUFFER_KEY_INLINE>,
         write: &Write,
         write_open_sequence_number: SequenceNumber,
         write_commit_sequence_number: SequenceNumber,
@@ -223,6 +223,7 @@ impl Statistics {
     ) -> Result<i64, MVCCReadError> {
         match write {
             Write::Insert { .. } => Ok(1),
+            Write::Delete => Ok(-1),
             Write::Put { reinsert, .. } => {
                 // PUT operation which we may have a concurrent commit and may or may not be inserted in the end
                 // The easiest way to check whether it was ultimately committed or not is to open the storage at
@@ -230,7 +231,8 @@ impl Statistics {
                 // However, this induces a read for every PUT, even though 99% of time there is no concurrent put.
 
                 // So, we only read from storage, if :
-                // 1. we can't tell from the current set of commits whether a predecessor could have written the same key (open < commits start)
+                // 1. we can't tell from the current set of commits whether a predecessor could
+                //    have written the same key (open < commits start)
                 // 2. any commit in the set of commits modifies the same key at all
 
                 let check_storage = write_open_sequence_number < *commits.first_key_value().unwrap().0
@@ -239,10 +241,8 @@ impl Statistics {
                             Bound::Excluded(write_open_sequence_number),
                             Bound::Excluded(write_commit_sequence_number),
                         ))
-                        .any(|(seq, snapshot)| {
-                            snapshot
-                                .get_buffered_write_mapped(StorageKeyReference::from(write_key), |v| true)
-                                .unwrap_or(false)
+                        .any(|(_, snapshot)| {
+                            snapshot.get_buffered_write(StorageKeyReference::from(write_key)).is_some()
                         }));
 
                 if check_storage {
@@ -255,21 +255,16 @@ impl Statistics {
                         .unwrap_or(false)
                     {
                         // exists in storage before PUT is committed
-                        return Ok(0);
+                        Ok(0)
                     } else {
                         // does not exist in storage before PUT is committed
-                        return Ok(1);
+                        Ok(1)
                     }
                 } else {
                     // no concurrent commit could have occurred - fall back to the reinsert flag
-                    if reinsert.load(Ordering::Relaxed) {
-                        return Ok(1);
-                    } else {
-                        return Ok(0);
-                    }
+                    Ok(reinsert.load(Ordering::Relaxed) as i64)
                 }
             }
-            Write::Delete => Ok(-1),
         }
     }
 
@@ -294,14 +289,14 @@ impl Statistics {
     fn update_has(&mut self, owner_type: ObjectType<'static>, attribute_type: AttributeType<'static>, delta: i64) {
         self.has_attribute_counts
             .entry(owner_type.clone())
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(attribute_type.clone())
             .or_insert(0)
             .checked_add_signed(delta)
             .unwrap();
         self.attribute_owner_counts
             .entry(attribute_type)
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(owner_type)
             .or_insert(0)
             .checked_add_signed(delta)
@@ -320,14 +315,14 @@ impl Statistics {
         self.total_role_count.checked_add_signed(delta).unwrap();
         self.role_player_counts
             .entry(player_type)
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(role_type.clone())
             .or_insert(0)
             .checked_add_signed(delta)
             .unwrap();
         self.relation_role_counts
             .entry(relation_type)
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(role_type)
             .or_insert(0)
             .checked_add_signed(delta)
@@ -342,7 +337,7 @@ impl Statistics {
     ) {
         self.player_index_counts
             .entry(player_1_type.clone())
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(player_2_type.clone())
             .or_insert(0)
             .checked_add_signed(delta)
@@ -350,7 +345,7 @@ impl Statistics {
         if player_1_type != player_2_type {
             self.player_index_counts
                 .entry(player_2_type)
-                .or_insert_with(|| HashMap::new())
+                .or_default()
                 .entry(player_1_type)
                 .or_insert(0)
                 .checked_add_signed(delta)
@@ -742,7 +737,7 @@ mod serialise {
                         .map(|(type_1, map)| (type_1.into_object_type(), into_object_map(map)))
                         .collect();
                     Ok(Statistics {
-                        statistics_version: statistics_version,
+                        statistics_version,
                         sequence_number: open_sequence_number,
                         total_thing_count,
                         total_entity_count,
