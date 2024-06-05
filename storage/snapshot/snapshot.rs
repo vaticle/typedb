@@ -178,7 +178,7 @@ pub trait CommittableSnapshot<D>: WritableSnapshot
 where
     D: DurabilityClient,
 {
-    fn commit(self) -> Result<(), SnapshotError>;
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError>;
 
     fn into_commit_record(self) -> CommitRecord;
 }
@@ -349,11 +349,14 @@ impl<D> WritableSnapshot for WriteSnapshot<D> {
 }
 
 impl<D: DurabilityClient> CommittableSnapshot<D> for WriteSnapshot<D> {
-    fn commit(self) -> Result<(), SnapshotError> {
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError> {
         if self.operations.is_writes_empty() && self.operations.locks_empty() {
-            Ok(())
+            Ok(None)
         } else {
-            self.storage.clone().snapshot_commit(self).map_err(|error| SnapshotError::Commit { source: error })
+            match self.storage.clone().snapshot_commit(self) {
+                Ok(sequence_number) => Ok(Some(sequence_number)),
+                Err(error) => Err(SnapshotError::Commit { source: error }),
+            }
         }
     }
 
@@ -470,11 +473,14 @@ impl<D> WritableSnapshot for SchemaSnapshot<D> {
 
 impl<D: DurabilityClient> CommittableSnapshot<D> for SchemaSnapshot<D> {
     // TODO: extract these two methods into separate trait
-    fn commit(self) -> Result<(), SnapshotError> {
-        if self.operations.is_writes_empty() {
-            Ok(())
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError> {
+        if self.operations.is_writes_empty() && self.operations.locks_empty() {
+            Ok(None)
         } else {
-            self.storage.clone().snapshot_commit(self).map_err(|error| SnapshotError::Commit { source: error })
+            match self.storage.clone().snapshot_commit(self) {
+                Ok(sequence_number) => Ok(Some(sequence_number)),
+                Err(error) => Err(SnapshotError::Commit { source: error }),
+            }
         }
     }
 

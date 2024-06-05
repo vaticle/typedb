@@ -46,7 +46,7 @@ impl OperationsBuffer {
         self.write_buffers.iter().all(|buffer| buffer.is_empty())
     }
 
-    pub(crate) fn writes_in(&self, keyspace_id: KeyspaceId) -> &WriteBuffer {
+    pub fn writes_in(&self, keyspace_id: KeyspaceId) -> &WriteBuffer {
         &self.write_buffers[keyspace_id.0 as usize]
     }
 
@@ -78,7 +78,7 @@ impl OperationsBuffer {
         self.locks.is_empty()
     }
 
-    pub(crate) fn iterate_writes(&self) -> impl Iterator<Item = (StorageKeyArray<{ BUFFER_KEY_INLINE }>, Write)> + '_ {
+    pub fn iterate_writes(&self) -> impl Iterator<Item = (StorageKeyArray<BUFFER_KEY_INLINE>, Write)> + '_ {
         self.write_buffers().flat_map(|buffer| {
             buffer.iterate_range(KeyRange::new_unbounded(Bytes::Array(ByteArray::<BUFFER_KEY_INLINE>::empty())))
         })
@@ -229,7 +229,7 @@ impl WriteBuffer {
         &mut self.writes
     }
 
-    pub(crate) fn get_write(&self, key: ByteReference<'_>) -> Option<&Write> {
+    pub fn get_write(&self, key: ByteReference<'_>) -> Option<&Write> {
         self.writes.get(key.bytes())
     }
 }

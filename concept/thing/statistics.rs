@@ -6,8 +6,10 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    error::Error,
+    fmt,
     ops::Bound,
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, Arc},
 };
 
 use bytes::Bytes;
@@ -24,11 +26,13 @@ use encoding::graph::{
 use resource::constants::snapshot::BUFFER_KEY_INLINE;
 use serde::{Deserialize, Serialize};
 use storage::{
-    durability_client::{DurabilityRecord, UnsequencedDurabilityRecord},
+    durability_client::{DurabilityClient, DurabilityClientError, DurabilityRecord, UnsequencedDurabilityRecord},
+    isolation_manager::CommitType,
     iterator::MVCCReadError,
     key_value::{StorageKeyArray, StorageKeyReference},
+    recovery::commit_replay::{load_commit_data_from, CommitRecoveryError, RecoveryCommitStatus},
     sequence_number::SequenceNumber,
-    snapshot::{write::Write, ReadableSnapshot},
+    snapshot::{buffer::OperationsBuffer, write::Write},
     MVCCStorage,
 };
 
@@ -97,13 +101,63 @@ impl Statistics {
         }
     }
 
-    pub fn update_writes<D>(
+    pub fn may_synchronise(
+        mut self,
+        storage: Arc<MVCCStorage<impl DurabilityClient>>,
+    ) -> Result<Statistics, StatisticsInitialiseError> {
+        use StatisticsInitialiseError::{DataRead, DurablyWrite, ReloadCommitData};
+
+        let storage_watermark = storage.read_watermark();
+        debug_assert!(self.sequence_number <= storage_watermark);
+        if self.sequence_number == storage_watermark {
+            return Ok(self);
+        }
+
+        let mut data_commits = BTreeMap::new();
+        for (seq, status) in load_commit_data_from(self.sequence_number.next(), storage.durability())
+            .map_err(|err| ReloadCommitData { source: err })?
+            .into_iter()
+        {
+            if let RecoveryCommitStatus::Validated(record) = status {
+                match record.commit_type() {
+                    CommitType::Data => {
+                        let writes = CommittedWrites {
+                            open_sequence_number: record.open_sequence_number(),
+                            operations: record.into_operations(),
+                        };
+                        data_commits.insert(seq, writes);
+                    }
+                    CommitType::Schema => {
+                        self.update_writes(&data_commits, &storage).map_err(|err| DataRead { source: err })?;
+                        storage.durability().unsequenced_write(&self).map_err(|err| DurablyWrite { source: err })?;
+
+                        data_commits.clear();
+
+                        let writes = CommittedWrites {
+                            open_sequence_number: record.open_sequence_number(),
+                            operations: record.into_operations(),
+                        };
+                        let mut commits = BTreeMap::new();
+                        commits.insert(seq, writes);
+                        self.update_writes(&commits, &storage).map_err(|err| DataRead { source: err })?;
+                    }
+                }
+            } else {
+                unreachable!("Only open validated records as snapshots.")
+            }
+        }
+
+        self.update_writes(&data_commits, &storage).map_err(|err| DataRead { source: err })?;
+        Ok(self)
+    }
+
+    fn update_writes<D>(
         &mut self,
-        commits: &BTreeMap<SequenceNumber, impl ReadableSnapshot>,
+        commits: &BTreeMap<SequenceNumber, CommittedWrites>,
         storage: &MVCCStorage<D>,
     ) -> Result<(), MVCCReadError> {
-        for (sequence_number, snapshot) in commits {
-            self.update_write(*sequence_number, snapshot, commits, storage)?
+        for (sequence_number, writes) in commits {
+            self.update_write(*sequence_number, writes, commits, storage)?
         }
         if let Some((&last_sequence_number, _)) = commits.last_key_value() {
             self.sequence_number = last_sequence_number;
@@ -113,21 +167,15 @@ impl Statistics {
 
     fn update_write<D>(
         &mut self,
-        snapshot_commit_sequence_number: SequenceNumber,
-        snapshot: &impl ReadableSnapshot,
-        commits: &BTreeMap<SequenceNumber, impl ReadableSnapshot>,
+        commit_sequence_number: SequenceNumber,
+        writes: &CommittedWrites,
+        commits: &BTreeMap<SequenceNumber, CommittedWrites>,
         storage: &MVCCStorage<D>,
     ) -> Result<(), MVCCReadError> {
-        for (key, write) in snapshot.iterate_buffered_writes() {
+        for (key, write) in writes.operations.iterate_writes() {
             let key_reference = StorageKeyReference::from(&key);
-            let delta = write_to_delta(
-                &key,
-                &write,
-                snapshot.open_sequence_number(),
-                snapshot_commit_sequence_number,
-                commits,
-                storage,
-            )?;
+            let delta =
+                write_to_delta(&key, &write, writes.open_sequence_number, commit_sequence_number, commits, storage)?;
             if ObjectVertex::is_entity_vertex(key_reference) {
                 let type_ = Entity::new(ObjectVertex::new(Bytes::Reference(key_reference.byte_ref()))).type_();
                 self.update_entities(type_, delta);
@@ -143,7 +191,12 @@ impl Statistics {
             } else if ThingEdgeRolePlayer::is_role_player(key_reference) {
                 let edge = ThingEdgeRolePlayer::new(Bytes::Reference(key_reference.byte_ref()));
                 let role_type = RoleType::build_from_type_id(edge.role_id());
-                self.update_role_player(Object::new(edge.from()).type_(), role_type, Relation::new(edge.to()).type_(), delta)
+                self.update_role_player(
+                    Object::new(edge.from()).type_(),
+                    role_type,
+                    Relation::new(edge.to()).type_(),
+                    delta,
+                )
             } else if ThingEdgeRelationIndex::is_index(key_reference) {
                 let edge = ThingEdgeRelationIndex::new(Bytes::Reference(key_reference.byte_ref()));
                 self.update_indexed_player(Object::new(edge.from()).type_(), Object::new(edge.to()).type_(), delta)
@@ -279,7 +332,7 @@ fn write_to_delta<D>(
     write: &Write,
     write_open_sequence_number: SequenceNumber,
     write_commit_sequence_number: SequenceNumber,
-    commits: &BTreeMap<SequenceNumber, impl ReadableSnapshot>,
+    commits: &BTreeMap<SequenceNumber, CommittedWrites>,
     storage: &MVCCStorage<D>,
 ) -> Result<i64, MVCCReadError> {
     match write {
@@ -302,7 +355,10 @@ fn write_to_delta<D>(
                         Bound::Excluded(write_open_sequence_number),
                         Bound::Excluded(write_commit_sequence_number),
                     ))
-                    .any(|(_, snapshot)| snapshot.get_buffered_write(StorageKeyReference::from(write_key)).is_some()));
+                    .any(|(_, writes)| {
+                        let key = StorageKeyReference::from(write_key);
+                        writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()).is_some()
+                    }));
 
             if check_storage {
                 if storage
@@ -323,6 +379,34 @@ fn write_to_delta<D>(
     }
 }
 
+struct CommittedWrites {
+    open_sequence_number: SequenceNumber,
+    operations: OperationsBuffer,
+}
+
+#[derive(Debug)]
+pub enum StatisticsInitialiseError {
+    DurablyWrite { source: DurabilityClientError },
+    ReloadCommitData { source: CommitRecoveryError },
+    DataRead { source: MVCCReadError },
+}
+
+impl fmt::Display for StatisticsInitialiseError {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for StatisticsInitialiseError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::DurablyWrite { source } => Some(source),
+            Self::ReloadCommitData { source } => Some(source),
+            Self::DataRead { source } => Some(source),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
 enum SerialisableType {
     Entity(TypeIDUInt),
@@ -333,11 +417,11 @@ enum SerialisableType {
 
 impl SerialisableType {
     pub(crate) fn id(&self) -> TypeIDUInt {
-        match self {
-            SerialisableType::Entity(id) => *id,
-            SerialisableType::Relation(id) => *id,
-            SerialisableType::Attribute(id) => *id,
-            SerialisableType::Role(id) => *id,
+        match *self {
+            SerialisableType::Entity(id) => id,
+            SerialisableType::Relation(id) => id,
+            SerialisableType::Attribute(id) => id,
+            SerialisableType::Role(id) => id,
         }
     }
 
