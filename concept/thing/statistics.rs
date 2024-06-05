@@ -44,14 +44,15 @@ use crate::{
     },
 };
 
-type StatisticsVersion = u64;
+type StatisticsEncodingVersion = u64;
 
 /// Thing statistics, reflecting a snapshot of statistics accurate as of a particular sequence number
 /// When types are undefined, we retain the last count of the instances of the type
 /// Invariant: all undefined types are
 #[derive(Debug, Clone)]
 pub struct Statistics {
-    statistics_version: StatisticsVersion,
+    #[allow(unused)]
+    encoding_version: StatisticsEncodingVersion,
     pub sequence_number: SequenceNumber,
 
     pub total_thing_count: u64,
@@ -77,11 +78,11 @@ pub struct Statistics {
 }
 
 impl Statistics {
-    const STATISTICS_VERSION: StatisticsVersion = 0;
+    const ENCODING_VERSION: StatisticsEncodingVersion = 0;
 
     pub fn new(sequence_number: SequenceNumber) -> Self {
         Statistics {
-            statistics_version: Self::STATISTICS_VERSION,
+            encoding_version: Self::ENCODING_VERSION,
             sequence_number,
             total_thing_count: 0,
             total_entity_count: 0,
@@ -790,7 +791,7 @@ mod serialise {
                         .map(|(type_1, map)| (type_1.into_object_type(), into_object_map(map)))
                         .collect();
                     Ok(Statistics {
-                        statistics_version,
+                        encoding_version: statistics_version,
                         sequence_number: open_sequence_number,
                         total_thing_count,
                         total_entity_count,
@@ -974,7 +975,7 @@ mod serialise {
                     }
 
                     Ok(Statistics {
-                        statistics_version: statistics_version
+                        encoding_version: statistics_version
                             .ok_or_else(|| de::Error::missing_field(Field::StatisticsVersion.name()))?,
                         sequence_number: open_sequence_number
                             .ok_or_else(|| de::Error::missing_field(Field::OpenSequenceNumber.name()))?,

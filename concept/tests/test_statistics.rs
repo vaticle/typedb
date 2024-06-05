@@ -120,7 +120,7 @@ fn statistics_are_updated_correctly() {
         let finalise_result = thing_manager.finalise(&mut snapshot);
         assert!(finalise_result.is_ok());
     }
-    let commit_sequence_number = snapshot.clone().commit().unwrap().unwrap();
+    let commit_sequence_number = snapshot.commit().unwrap().unwrap();
     manually_tracked.sequence_number = commit_sequence_number;
 
     let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage).unwrap();
