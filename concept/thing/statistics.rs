@@ -331,14 +331,24 @@ impl Statistics {
 fn write_to_delta<D>(
     write_key: &StorageKeyArray<BUFFER_KEY_INLINE>,
     write: &Write,
-    write_open_sequence_number: SequenceNumber,
-    write_commit_sequence_number: SequenceNumber,
+    open_sequence_number: SequenceNumber,
+    commit_sequence_number: SequenceNumber,
     commits: &BTreeMap<SequenceNumber, CommittedWrites>,
     storage: &MVCCStorage<D>,
 ) -> Result<i64, MVCCReadError> {
+    let concurrent_commit_range = (Bound::Excluded(open_sequence_number), Bound::Excluded(commit_sequence_number));
     match write {
         Write::Insert { .. } => Ok(1),
-        Write::Delete => Ok(-1),
+        Write::Delete => {
+            if commits.range::<SequenceNumber, _>(concurrent_commit_range).any(|(_, writes)| {
+                let key = StorageKeyReference::from(write_key);
+                matches!(writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()), Some(Write::Delete))
+            }) {
+                Ok(0)
+            } else {
+                Ok(-1)
+            }
+        }
         Write::Put { reinsert, .. } => {
             // PUT operation which we may have a concurrent commit and may or may not be inserted in the end
             // The easiest way to check whether it was ultimately committed or not is to open the storage at
@@ -350,21 +360,14 @@ fn write_to_delta<D>(
             //    have written the same key (open < commits start)
             // 2. any commit in the set of commits modifies the same key at all
 
-            let check_storage = write_open_sequence_number < *commits.first_key_value().unwrap().0
-                || (commits
-                    .range::<SequenceNumber, _>((
-                        Bound::Excluded(write_open_sequence_number),
-                        Bound::Excluded(write_commit_sequence_number),
-                    ))
-                    .any(|(_, writes)| {
-                        let key = StorageKeyReference::from(write_key);
-                        writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()).is_some()
-                    }));
+            let check_storage = open_sequence_number < *commits.first_key_value().unwrap().0
+                || (commits.range::<SequenceNumber, _>(concurrent_commit_range).any(|(_, writes)| {
+                    let key = StorageKeyReference::from(write_key);
+                    writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()).is_some()
+                }));
 
             if check_storage {
-                if storage
-                    .get::<0>(StorageKeyReference::from(write_key), write_commit_sequence_number.previous())?
-                    .is_some()
+                if storage.get::<0>(StorageKeyReference::from(write_key), commit_sequence_number.previous())?.is_some()
                 {
                     // exists in storage before PUT is committed
                     Ok(0)

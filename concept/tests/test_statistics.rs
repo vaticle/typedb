@@ -6,10 +6,10 @@
 
 #![deny(unused_must_use)]
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use concept::{
-    thing::{statistics::Statistics, thing_manager::ThingManager},
+    thing::{statistics::Statistics, thing_manager::ThingManager, ThingAPI},
     type_::type_manager::TypeManager,
 };
 use durability::wal::WAL;
@@ -89,7 +89,7 @@ macro_rules! assert_statistics_eq {
 
 fn setup() -> (Arc<MVCCStorage<WALClient>>, Arc<TypeVertexGenerator>, TempDir) {
     init_logging();
-    let storage_path = create_tmp_dir();
+    let storage_path = create_tmp_dir(); // NOTE: dir is deleted when TempDir goes out of scope
     let wal = WAL::create(&storage_path).unwrap();
     let storage =
         Arc::new(MVCCStorage::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap());
@@ -99,29 +99,62 @@ fn setup() -> (Arc<MVCCStorage<WALClient>>, Arc<TypeVertexGenerator>, TempDir) {
 }
 
 #[test]
-fn statistics_are_updated_correctly() {
+fn create_entity() {
     let (storage, type_vertex_generator, _guard) = setup();
-    let mut snapshot: WriteSnapshot<WALClient> = storage.clone().open_snapshot_write();
-    let mut manually_tracked = Statistics::new(SequenceNumber::MIN);
-    {
-        let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-        let type_manager = Arc::new(TypeManager::new(type_vertex_generator.clone(), None));
 
-        let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
-        let person_label = Label::build("person");
-        let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
+    let person_label = Label::build("person");
 
-        let _person_1 = thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
+    let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
+    let type_manager = Arc::new(TypeManager::new(type_vertex_generator.clone(), None));
 
-        manually_tracked.total_thing_count += 1;
-        manually_tracked.total_entity_count += 1;
-        *manually_tracked.entity_counts.entry(person_type).or_default() += 1;
-
-        let finalise_result = thing_manager.finalise(&mut snapshot);
-        assert!(finalise_result.is_ok());
-    }
+    let mut snapshot = storage.clone().open_snapshot_write();
+    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
+    let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
+    thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
     let commit_sequence_number = snapshot.commit().unwrap().unwrap();
-    manually_tracked.sequence_number = commit_sequence_number;
+
+    let mut manually_tracked = Statistics::new(commit_sequence_number);
+    manually_tracked.total_thing_count += 1;
+    manually_tracked.total_entity_count += 1;
+    *manually_tracked.entity_counts.entry(person_type).or_default() += 1;
+
+    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage).unwrap();
+
+    assert_statistics_eq!(synchronised, manually_tracked);
+    drop(_guard)
+}
+
+#[test]
+fn create_then_delete_twice_concurrently() {
+    let (storage, type_vertex_generator, _guard) = setup();
+
+    let person_label = Label::build("person");
+
+    let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
+    let type_manager = Arc::new(TypeManager::new(type_vertex_generator.clone(), None));
+
+    let mut snapshot = storage.clone().open_snapshot_write();
+    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
+    let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
+    let person = thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
+    let create_commit_seq = snapshot.commit().unwrap().unwrap();
+
+    let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
+    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
+    person.clone().delete(&mut snapshot, &thing_manager).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
+    snapshot.commit().unwrap().unwrap();
+
+    let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
+    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
+    person.clone().delete(&mut snapshot, &thing_manager).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
+    let commit_sequence_number = snapshot.commit().unwrap().unwrap();
+
+    let mut manually_tracked = Statistics::new(commit_sequence_number);
+    manually_tracked.entity_counts.insert(person_type, 0);
 
     let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage).unwrap();
 
