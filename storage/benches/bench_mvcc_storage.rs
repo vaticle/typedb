@@ -10,7 +10,7 @@ use std::{fs::File, os::raw::c_int, path::Path, sync::Arc};
 
 use bytes::{byte_array::ByteArray, byte_reference::ByteReference};
 use criterion::{criterion_group, criterion_main, profiler::Profiler, Criterion};
-use durability::{wal::WAL, DurabilityService};
+use durability::wal::WAL;
 use pprof::ProfilerGuard;
 use resource::constants::snapshot::{BUFFER_KEY_INLINE, BUFFER_VALUE_INLINE};
 use storage::{
@@ -106,7 +106,7 @@ fn bench_snapshot_write_put(storage: Arc<MVCCStorage<WALClient>>, keyspace: Test
     for _ in 0..batch_size {
         snapshot.put(random_key_24(keyspace));
     }
-    snapshot.commit().unwrap()
+    snapshot.commit().unwrap();
 }
 
 fn setup_storage(storage_path: &Path, key_count: usize) -> Arc<MVCCStorage<WALClient>> {

@@ -42,7 +42,7 @@ const VALUE_2: [u8; 1] = [0x1];
 const VALUE_3: [u8; 1] = [0x88];
 
 fn setup_storage(path: &Path) -> Arc<MVCCStorage<WALClient>> {
-    let storage = create_storage::<TestKeyspaceSet>(&path).unwrap();
+    let storage = create_storage::<TestKeyspaceSet>(path).unwrap();
     let mut snapshot = storage.clone().open_snapshot_write();
     snapshot.put_val(StorageKeyArray::new(Keyspace, ByteArray::copy(&KEY_1)), ByteArray::copy(&VALUE_1));
     snapshot.put_val(StorageKeyArray::new(Keyspace, ByteArray::copy(&KEY_2)), ByteArray::copy(&VALUE_2));
@@ -157,7 +157,7 @@ fn g0_dirty_writes() {
     snapshot_1.put_val(key_2.to_owned(), ByteArray::copy(value_21.bytes()));
     let result_1 = snapshot_1.commit();
 
-    if let Ok(()) = result_1 {
+    if result_1.is_ok() {
         let reader_after_1 = storage.clone().open_snapshot_read();
         assert_eq!(
             reader_after_1.get::<128>(StorageKeyReference::from(&key_1)).unwrap().unwrap().bytes(),
@@ -213,7 +213,7 @@ fn g1b_intermediate_read() {
     assert!(result_snapshot.is_ok());
 
     let mut snapshot_1 = storage.clone().open_snapshot_write();
-    let mut snapshot_2 = storage.open_snapshot_write();
+    let snapshot_2 = storage.open_snapshot_write();
     snapshot_1.put_val(key_1.to_owned(), ByteArray::copy(value_1_1i.bytes()));
     let read_2 = snapshot_2.get::<128>(StorageKeyReference::from(&key_1));
     snapshot_1.put_val(key_1.to_owned(), ByteArray::copy(value_1_1f.bytes()));
@@ -309,7 +309,7 @@ fn g_single_read_skew() {
     let result_snapshot = snapshot_setup.commit();
     assert!(result_snapshot.is_ok());
 
-    let mut snapshot_1 = storage.clone().open_snapshot_write();
+    let snapshot_1 = storage.clone().open_snapshot_write();
     let mut snapshot_2 = storage.open_snapshot_write();
 
     let read_1_1 = snapshot_1.get::<128>(StorageKeyReference::from(&key_1));
@@ -512,7 +512,7 @@ fn imp_setup(path: &Path) -> Arc<MVCCStorage<WALClient>> {
     let key_2 = StorageKeyArray::new(Keyspace, ByteArray::copy(&KEY_2));
     let value_1_0 = ByteArray::inline([10], 1);
     let value_2_0 = ByteArray::inline([20], 1);
-    let storage = setup_storage(&path);
+    let storage = setup_storage(path);
 
     let mut snapshot_setup = storage.clone().open_snapshot_write();
     snapshot_setup.put_val(key_1.to_owned(), ByteArray::copy(value_1_0.bytes()));

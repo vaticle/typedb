@@ -143,7 +143,8 @@ mod typedb_database {
         }
 
         fn commit(self) -> Result<(), Self::CommitError> {
-            self.snapshot.commit()
+            self.snapshot.commit()?;
+            Ok(())
         }
     }
 
