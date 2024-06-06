@@ -150,6 +150,18 @@ fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingMan
                 .entry(owner_type.clone())
                 .or_default() += count;
         }
+        let mut relates_iter = relation.get_players(&snapshot, &thing_manager);
+        while let Some(relates) = relates_iter.next() {
+            let (roleplayer, count) = relates.unwrap();
+            let role = roleplayer.role_type();
+            let player = roleplayer.player();
+            *statistics.role_counts.entry(role.clone()).or_default() += count;
+            *statistics.relation_role_counts.entry(relation.type_()).or_default().entry(role.clone()).or_default() +=
+                count;
+            *statistics.role_player_counts.entry(player.type_()).or_default().entry(role.clone()).or_default() +=
+                count;
+            // TODO role_player_index_counts
+        }
     }
 
     let mut attribute_iter = thing_manager.get_attributes(&snapshot);
@@ -208,7 +220,7 @@ fn create_entity() {
 }
 
 #[test]
-fn create_then_delete_twice_concurrently() {
+fn delete_twice() {
     let (storage, type_manager, thing_manager, _guard) = setup();
 
     let person_label = Label::build("person");
@@ -235,7 +247,7 @@ fn create_then_delete_twice_concurrently() {
 }
 
 #[test]
-fn put_ownership_twice() {
+fn put_has_twice() {
     let (storage, type_manager, thing_manager, _guard) = setup();
 
     let person_label = Label::build("person");
