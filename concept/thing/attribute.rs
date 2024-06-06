@@ -32,7 +32,7 @@ use crate::{
     edge_iterator,
     error::{ConceptReadError, ConceptWriteError},
     thing::{object::Object, thing_manager::ThingManager, ThingAPI},
-    type_::{attribute_type::AttributeType, type_manager::TypeManager, ObjectTypeAPI, TypeAPI},
+    type_::{attribute_type::AttributeType, type_manager::TypeManager, ObjectTypeAPI},
     ByteReference, ConceptAPI, ConceptStatus,
 };
 
@@ -55,10 +55,10 @@ impl<'a> Attribute<'a> {
         self.vertex.bytes()
     }
 
-    pub fn get_value<Snapshot: ReadableSnapshot>(
+    pub fn get_value(
         &mut self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<Value<'_>, ConceptReadError> {
         if self.value.is_none() {
             let value = thing_manager.get_attribute_value(snapshot, self)?;
@@ -67,11 +67,7 @@ impl<'a> Attribute<'a> {
         Ok(self.value.as_ref().unwrap().as_reference())
     }
 
-    pub fn has_owners<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> bool {
+    pub fn has_owners(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> bool {
         match self.get_status(snapshot, thing_manager) {
             ConceptStatus::Put | ConceptStatus::Persisted => {
                 thing_manager.has_owners(snapshot, self.as_reference(), false)
@@ -82,18 +78,18 @@ impl<'a> Attribute<'a> {
         }
     }
 
-    pub fn get_owners<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_owners<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> AttributeOwnerIterator {
         thing_manager.get_owners(snapshot, self.as_reference())
     }
 
-    pub fn get_owners_by_type<'m, 'o, Snapshot: ReadableSnapshot>(
+    pub fn get_owners_by_type<'m, 'o>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
         owner_type: impl ObjectTypeAPI<'o>,
     ) -> AttributeOwnerIterator {
         thing_manager.get_owners_by_type(snapshot, self.as_reference(), owner_type)
@@ -119,35 +115,27 @@ impl<'a> Attribute<'a> {
 impl<'a> ConceptAPI<'a> for Attribute<'a> {}
 
 impl<'a> ThingAPI<'a> for Attribute<'a> {
-    fn set_modified<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) {
+    fn set_modified(&self, snapshot: &mut impl WritableSnapshot, thing_manager: &ThingManager) {
         debug_assert_eq!(thing_manager.get_status(snapshot, self.vertex().as_storage_key()), ConceptStatus::Put);
         // Attributes are always PUT, so we don't have to record a lock on modification
     }
 
-    fn get_status<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> ConceptStatus {
+    fn get_status(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> ConceptStatus {
         thing_manager.get_status(snapshot, self.vertex().as_storage_key())
     }
 
-    fn errors<Snapshot: WritableSnapshot>(
+    fn errors(
         &self,
-        _snapshot: &Snapshot,
-        _thing_manager: &ThingManager<Snapshot>,
+        _snapshot: &impl WritableSnapshot,
+        _thing_manager: &ThingManager,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         Ok(Vec::new())
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
+    fn delete(
         self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<(), ConceptWriteError> {
         let owners = self
             .get_owners(snapshot, thing_manager)
@@ -208,7 +196,7 @@ impl ExtractAttributeFromKey for StructIndexAttributeExtractor {
 
 pub struct AttributeIteratorImpl<'a, Snapshot: ReadableSnapshot, AttributeExtractor: ExtractAttributeFromKey> {
     snapshot: Option<&'a Snapshot>,
-    type_manager: Option<&'a TypeManager<Snapshot>>,
+    type_manager: Option<&'a TypeManager>,
     attributes_iterator: Option<SnapshotRangeIterator>,
     has_reverse_iterator: Option<SnapshotRangeIterator>,
     state: State<ConceptReadError>,
@@ -226,7 +214,7 @@ impl<'a, Snapshot: ReadableSnapshot, KeyInterpreter: ExtractAttributeFromKey>
         attributes_iterator: SnapshotRangeIterator,
         has_reverse_iterator: SnapshotRangeIterator,
         snapshot: &'a Snapshot,
-        type_manager: &'a TypeManager<Snapshot>,
+        type_manager: &'a TypeManager,
     ) -> Self {
         Self {
             snapshot: Some(snapshot),
@@ -385,6 +373,14 @@ impl<'a, Snapshot: ReadableSnapshot, KeyInterpreter: ExtractAttributeFromKey>
             vec.push(key);
         }
         vec
+    }
+
+    pub fn count(mut self) -> usize {
+        let mut count = 0;
+        while self.next().is_some() {
+            count += 1;
+        }
+        count
     }
 }
 

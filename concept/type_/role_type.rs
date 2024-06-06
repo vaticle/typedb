@@ -45,35 +45,30 @@ pub struct RoleType<'a> {
 }
 
 impl<'a> RoleType<'a> {
-    pub fn get_players<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_players<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
         type_manager.get_plays_for_role_type(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_players_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_players_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<ObjectType<'static>, Plays<'static>>>, ConceptReadError> {
         type_manager.get_plays_for_role_type_transitive(snapshot, self.clone().into_owned())
     }
-    pub fn get_ordering<Snapshot: ReadableSnapshot>(
+    pub fn get_ordering(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Ordering, ConceptReadError> {
         type_manager.get_role_ordering(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_ordering<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-        ordering: Ordering,
-    ) {
+    pub fn set_ordering(&self, snapshot: &mut impl WritableSnapshot, type_manager: &TypeManager, ordering: Ordering) {
         type_manager.set_role_ordering(snapshot, self.clone(), ordering)
     }
 }
@@ -112,98 +107,89 @@ impl<'a> TypeAPI<'a> for RoleType<'a> {
     fn vertex<'this>(&'this self) -> TypeVertex<'this> {
         self.vertex.as_reference()
     }
-    fn is_abstract<Snapshot: ReadableSnapshot>(
+    fn is_abstract(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
         Ok(annotations.contains(&RoleTypeAnnotation::Abstract(AnnotationAbstract)))
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
-        self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-    ) -> Result<(), ConceptWriteError> {
+    fn delete(self, snapshot: &mut impl WritableSnapshot, type_manager: &TypeManager) -> Result<(), ConceptWriteError> {
         // TODO: validation (Or better it in type_manager)
         type_manager.delete_role_type(snapshot, self)
     }
 
-    fn get_label<'m, Snapshot: ReadableSnapshot>(
+    fn get_label<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Label<'static>>, ConceptReadError> {
         type_manager.get_role_type_label(snapshot, self.clone().into_owned())
     }
 }
 
 impl<'a> RoleType<'a> {
-    pub fn is_root<Snapshot: ReadableSnapshot>(
+    pub fn is_root(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         type_manager.get_role_type_is_root(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_name<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        _type_manager: &TypeManager<Snapshot>,
-        _name: &str,
-    ) {
+    pub fn set_name(&self, snapshot: &mut impl WritableSnapshot, _type_manager: &TypeManager, _name: &str) {
         // // TODO: setLabel should fail is setting label on Root type
         // type_manager.set_storage_label(self.clone().into_owned(), label);
         todo!()
     }
 
-    pub fn get_supertype<Snapshot: ReadableSnapshot>(
+    pub fn get_supertype(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Option<RoleType<'_>>, ConceptReadError> {
         type_manager.get_role_type_supertype(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_supertype<Snapshot: WritableSnapshot>(
+    pub fn set_supertype(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         supertype: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
         type_manager.set_role_type_supertype(snapshot, self.clone().into_owned(), supertype)
     }
 
-    pub fn get_supertypes<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_supertypes<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RoleType<'static>>>, ConceptReadError> {
         type_manager.get_role_type_supertypes(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_subtypes<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_subtypes<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RoleType<'static>>>, ConceptReadError> {
         type_manager.get_role_type_subtypes(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_subtypes_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_subtypes_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RoleType<'static>>>, ConceptReadError> {
         type_manager.get_role_type_subtypes_transitive(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_cardinality<Snapshot: ReadableSnapshot>(
+    pub fn get_cardinality(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<AnnotationCardinality, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
         let ordering = self.get_ordering(snapshot, type_manager)?;
@@ -218,18 +204,18 @@ impl<'a> RoleType<'a> {
         Ok(card)
     }
 
-    pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_annotations<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<RoleTypeAnnotation>>, ConceptReadError> {
         type_manager.get_role_type_annotations(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_annotation<Snapshot: WritableSnapshot>(
+    pub fn set_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: RoleTypeAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
@@ -246,10 +232,10 @@ impl<'a> RoleType<'a> {
         Ok(())
     }
 
-    fn delete_annotation<Snapshot: WritableSnapshot>(
+    fn delete_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: RoleTypeAnnotation,
     ) {
         match annotation {
@@ -265,7 +251,7 @@ impl<'a> RoleType<'a> {
         }
     }
 
-    fn get_relates<Snapshot: ReadableSnapshot>(&self, _type_manager: &TypeManager<Snapshot>) -> Relates<'static> {
+    fn get_relates(&self, _type_manager: &TypeManager) -> Relates<'static> {
         todo!()
     }
 
@@ -281,10 +267,10 @@ impl<'a> KindAPI<'a> for RoleType<'a> {
 
 // --- Played API ---
 impl<'a> RoleType<'a> {
-    pub fn get_plays<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_plays<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
         type_manager.get_plays_for_role_type(snapshot, self.clone().into_owned())
     }

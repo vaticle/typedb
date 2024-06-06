@@ -17,8 +17,8 @@ use super::Database;
 pub struct TransactionRead<D> {
     database: Arc<Database<D>>,
     pub snapshot: ReadSnapshot<D>,
-    pub type_manager: Arc<TypeManager<ReadSnapshot<D>>>,
-    pub thing_manager: ThingManager<ReadSnapshot<D>>,
+    pub type_manager: Arc<TypeManager>,
+    pub thing_manager: ThingManager,
 }
 
 impl<D: DurabilityClient> TransactionRead<D> {
@@ -49,8 +49,8 @@ impl<D: DurabilityClient> TransactionRead<D> {
 pub struct TransactionWrite<D> {
     database: Arc<Database<D>>,
     pub snapshot: WriteSnapshot<D>,
-    pub type_manager: Arc<TypeManager<WriteSnapshot<D>>>,
-    pub thing_manager: ThingManager<WriteSnapshot<D>>,
+    pub type_manager: Arc<TypeManager>,
+    pub thing_manager: ThingManager,
 }
 
 impl<D: DurabilityClient> TransactionWrite<D> {
@@ -83,8 +83,8 @@ impl<D: DurabilityClient> TransactionWrite<D> {
 pub struct TransactionSchema<D> {
     database: Arc<Database<D>>,
     pub snapshot: SchemaSnapshot<D>,
-    pub type_manager: Arc<TypeManager<SchemaSnapshot<D>>>, // TODO: krishnan: Should this be an arc or direct ownership?
-    pub thing_manager: ThingManager<SchemaSnapshot<D>>,
+    pub type_manager: Arc<TypeManager>, // TODO: krishnan: Should this be an arc or direct ownership?
+    pub thing_manager: ThingManager,
 }
 
 impl<D: DurabilityClient> TransactionSchema<D> {

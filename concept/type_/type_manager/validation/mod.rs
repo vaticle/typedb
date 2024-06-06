@@ -6,15 +6,11 @@
 
 use std::{error::Error, fmt};
 
-use encoding::{
-    graph::Typed,
-    value::{label::Label, value_type::ValueType},
-};
-use storage::snapshot::ReadableSnapshot;
+use encoding::value::{label::Label, value_type::ValueType};
 
 use crate::{
     error::ConceptReadError,
-    type_::{attribute_type::AttributeType, object_type::ObjectType, role_type::RoleType, TypeAPI},
+    type_::{attribute_type::AttributeType, object_type::ObjectType, role_type::RoleType},
 };
 
 pub mod annotation_compatibility;

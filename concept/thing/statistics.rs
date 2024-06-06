@@ -9,7 +9,7 @@ use std::{
     error::Error,
     fmt,
     ops::Bound,
-    sync::{atomic::Ordering, Arc},
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -23,13 +23,12 @@ use encoding::graph::{
     type_::vertex::{PrefixedTypeVertexEncoding, TypeID, TypeIDUInt},
     Typed,
 };
-use resource::constants::snapshot::BUFFER_KEY_INLINE;
 use serde::{Deserialize, Serialize};
 use storage::{
     durability_client::{DurabilityClient, DurabilityClientError, DurabilityRecord, UnsequencedDurabilityRecord},
     isolation_manager::CommitType,
     iterator::MVCCReadError,
-    key_value::{StorageKeyArray, StorageKeyReference},
+    key_value::StorageKeyReference,
     recovery::commit_replay::{load_commit_data_from, CommitRecoveryError, RecoveryCommitStatus},
     sequence_number::SequenceNumber,
     snapshot::{buffer::OperationsBuffer, write::Write},
@@ -175,8 +174,14 @@ impl Statistics {
     ) -> Result<(), MVCCReadError> {
         for (key, write) in writes.operations.iterate_writes() {
             let key_reference = StorageKeyReference::from(&key);
-            let delta =
-                write_to_delta(&key, &write, writes.open_sequence_number, commit_sequence_number, commits, storage)?;
+            let delta = write_to_delta(
+                key_reference,
+                &write,
+                writes.open_sequence_number,
+                commit_sequence_number,
+                commits,
+                storage,
+            )?;
             if ObjectVertex::is_entity_vertex(key_reference) {
                 let type_ = Entity::new(ObjectVertex::new(Bytes::Reference(key_reference.byte_ref()))).type_();
                 self.update_entities(type_, delta);
@@ -329,7 +334,7 @@ impl Statistics {
 }
 
 fn write_to_delta<D>(
-    write_key: &StorageKeyArray<BUFFER_KEY_INLINE>,
+    write_key: StorageKeyReference<'_>,
     write: &Write,
     open_sequence_number: SequenceNumber,
     commit_sequence_number: SequenceNumber,
@@ -340,16 +345,18 @@ fn write_to_delta<D>(
     match write {
         Write::Insert { .. } => Ok(1),
         Write::Delete => {
-            if commits.range::<SequenceNumber, _>(concurrent_commit_range).any(|(_, writes)| {
-                let key = StorageKeyReference::from(write_key);
-                matches!(writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()), Some(Write::Delete))
+            if commits.range(concurrent_commit_range).any(|(_, writes)| {
+                matches!(
+                    writes.operations.writes_in(write_key.keyspace_id()).get_write(write_key.byte_ref()),
+                    Some(Write::Delete)
+                )
             }) {
                 Ok(0)
             } else {
                 Ok(-1)
             }
         }
-        Write::Put { reinsert, .. } => {
+        &Write::Put { known_to_exist, .. } => {
             // PUT operation which we may have a concurrent commit and may or may not be inserted in the end
             // The easiest way to check whether it was ultimately committed or not is to open the storage at
             // CommitSequenceNumber - 1, and check if it exists. If it exists, we don't count. If it does, we do.
@@ -361,14 +368,12 @@ fn write_to_delta<D>(
             // 2. any commit in the set of commits modifies the same key at all
 
             let check_storage = open_sequence_number < *commits.first_key_value().unwrap().0
-                || (commits.range::<SequenceNumber, _>(concurrent_commit_range).any(|(_, writes)| {
-                    let key = StorageKeyReference::from(write_key);
-                    writes.operations.writes_in(key.keyspace_id()).get_write(key.byte_ref()).is_some()
+                || (commits.range(concurrent_commit_range).any(|(_, writes)| {
+                    writes.operations.writes_in(write_key.keyspace_id()).get_write(write_key.byte_ref()).is_some()
                 }));
 
             if check_storage {
-                if storage.get::<0>(StorageKeyReference::from(write_key), commit_sequence_number.previous())?.is_some()
-                {
+                if storage.get::<0>(write_key, commit_sequence_number.previous())?.is_some() {
                     // exists in storage before PUT is committed
                     Ok(0)
                 } else {
@@ -376,8 +381,12 @@ fn write_to_delta<D>(
                     Ok(1)
                 }
             } else {
-                // no concurrent commit could have occurred - fall back to the reinsert flag
-                Ok(reinsert.load(Ordering::Relaxed) as i64)
+                // no concurrent commit could have occurred - fall back to the flag
+                if known_to_exist {
+                    Ok(0)
+                } else {
+                    Ok(1)
+                }
             }
         }
     }

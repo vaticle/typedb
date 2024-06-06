@@ -32,10 +32,10 @@ pub enum ObjectType<'a> {
 }
 
 impl<'a> ObjectType<'a> {
-    pub fn get_supertype<Snapshot: ReadableSnapshot>(
+    pub fn get_supertype(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Option<ObjectType<'_>>, ConceptReadError> {
         Ok(match self {
             ObjectType::Entity(entity) => entity.get_supertype(snapshot, type_manager)?.map(ObjectType::Entity),
@@ -69,10 +69,10 @@ impl<'a> TypeVertexEncoding<'a> for ObjectType<'a> {
 }
 
 impl<'a> OwnerAPI<'a> for ObjectType<'a> {
-    fn set_owns<Snapshot: WritableSnapshot>(
+    fn set_owns(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<Owns<'static>, ConceptWriteError> {
@@ -83,10 +83,10 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn delete_owns<Snapshot: WritableSnapshot>(
+    fn delete_owns(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
         match self {
@@ -95,10 +95,10 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_owns<'m, Snapshot: ReadableSnapshot>(
+    fn get_owns<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.get_owns(snapshot, type_manager),
@@ -106,10 +106,10 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_owns_attribute<Snapshot: ReadableSnapshot>(
+    fn get_owns_attribute(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<Owns<'static>>, ConceptReadError> {
         match self {
@@ -118,10 +118,10 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_owns_transitive<'m, Snapshot: ReadableSnapshot>(
+    fn get_owns_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.get_owns_transitive(snapshot, type_manager),
@@ -146,10 +146,10 @@ impl<'a> TypeAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn is_abstract<Snapshot: ReadableSnapshot>(
+    fn is_abstract(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.is_abstract(snapshot, type_manager),
@@ -157,21 +157,17 @@ impl<'a> TypeAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
-        self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-    ) -> Result<(), ConceptWriteError> {
+    fn delete(self, snapshot: &mut impl WritableSnapshot, type_manager: &TypeManager) -> Result<(), ConceptWriteError> {
         match self {
             ObjectType::Entity(entity) => entity.delete(snapshot, type_manager),
             ObjectType::Relation(relation) => relation.delete(snapshot, type_manager),
         }
     }
 
-    fn get_label<'m, Snapshot: ReadableSnapshot>(
+    fn get_label<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Label<'static>>, ConceptReadError> {
         match self {
             Self::Entity(entity_type) => entity_type.get_label(snapshot, type_manager),
@@ -187,10 +183,10 @@ impl<'a> ObjectTypeAPI<'a> for ObjectType<'a> {
 }
 
 impl<'a> PlayerAPI<'a> for ObjectType<'a> {
-    fn set_plays<Snapshot: WritableSnapshot>(
+    fn set_plays(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
         match self {
@@ -199,10 +195,10 @@ impl<'a> PlayerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn delete_plays<Snapshot: WritableSnapshot>(
+    fn delete_plays(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
         match self {
@@ -211,10 +207,10 @@ impl<'a> PlayerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_plays<'m, Snapshot: ReadableSnapshot>(
+    fn get_plays<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.get_plays(snapshot, type_manager),
@@ -222,10 +218,10 @@ impl<'a> PlayerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_plays_role<Snapshot: ReadableSnapshot>(
+    fn get_plays_role(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<Option<Plays<'static>>, ConceptReadError> {
         match self {
@@ -234,10 +230,10 @@ impl<'a> PlayerAPI<'a> for ObjectType<'a> {
         }
     }
 
-    fn get_plays_transitive<'m, Snapshot: ReadableSnapshot>(
+    fn get_plays_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         match self {
             ObjectType::Entity(entity) => entity.get_plays_transitive(snapshot, type_manager),

@@ -90,32 +90,24 @@ impl<'a> Object<'a> {
 }
 
 impl<'a> ThingAPI<'a> for Object<'a> {
-    fn set_modified<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) {
+    fn set_modified(&self, snapshot: &mut impl WritableSnapshot, thing_manager: &ThingManager) {
         match self {
             Object::Entity(entity) => entity.set_modified(snapshot, thing_manager),
             Object::Relation(relation) => relation.set_modified(snapshot, thing_manager),
         }
     }
 
-    fn get_status<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> ConceptStatus {
+    fn get_status(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> ConceptStatus {
         match self {
             Object::Entity(entity) => entity.get_status(snapshot, thing_manager),
             Object::Relation(relation) => relation.get_status(snapshot, thing_manager),
         }
     }
 
-    fn errors<Snapshot: WritableSnapshot>(
+    fn errors(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         match self {
             Object::Entity(entity) => entity.errors(snapshot, thing_manager),
@@ -123,10 +115,10 @@ impl<'a> ThingAPI<'a> for Object<'a> {
         }
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
+    fn delete(
         self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<(), ConceptWriteError> {
         match self {
             Object::Entity(entity) => entity.delete(snapshot, thing_manager),
@@ -142,46 +134,46 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
     fn type_(&self) -> impl ObjectTypeAPI<'static>;
     fn into_owned_object(self) -> Object<'static>;
 
-    fn has_attribute<Snapshot: ReadableSnapshot>(
+    fn has_attribute(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         attribute_type: AttributeType<'static>,
         value: Value<'_>,
     ) -> Result<bool, ConceptReadError> {
         thing_manager.has_attribute(snapshot, self, attribute_type, value)
     }
 
-    fn get_has_unordered<'m, Snapshot: ReadableSnapshot>(
+    fn get_has_unordered<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> HasAttributeIterator {
         thing_manager.get_has_unordered(snapshot, self)
     }
 
-    fn get_has_ordered<'m, Snapshot: ReadableSnapshot>(
+    fn get_has_ordered<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<Vec<Attribute<'_>>, ConceptReadError> {
         thing_manager.get_has_type_ordered(snapshot, self, attribute_type)
     }
 
-    fn get_has_type<'m, Snapshot: ReadableSnapshot>(
+    fn get_has_type<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<HasAttributeIterator, ConceptReadError> {
         thing_manager.get_has_type_unordered(snapshot, self, attribute_type)
     }
 
-    fn set_has_unordered<Snapshot: WritableSnapshot>(
+    fn set_has_unordered(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         mut attribute: Attribute<'_>,
     ) -> Result<(), ConceptWriteError> {
         if !thing_manager.object_exists(snapshot, self)? {
@@ -231,10 +223,10 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
         Ok(())
     }
 
-    fn unset_has_unordered<Snapshot: WritableSnapshot>(
+    fn unset_has_unordered(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         attribute: Attribute<'_>,
     ) -> Result<(), ConceptWriteError> {
         let owns = self
@@ -251,10 +243,10 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
         Ok(())
     }
 
-    fn set_has_ordered<Snapshot: WritableSnapshot>(
+    fn set_has_ordered(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         attribute_type: AttributeType<'static>,
         new_attributes: Vec<Attribute<'_>>,
     ) -> Result<(), ConceptWriteError> {
@@ -305,10 +297,10 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
         Ok(())
     }
 
-    fn unset_has_ordered<Snapshot: WritableSnapshot>(
+    fn unset_has_ordered(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
         let owns = self
@@ -328,10 +320,10 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
         }
     }
 
-    fn get_type_owns<'m, Snapshot: ReadableSnapshot>(
+    fn get_type_owns<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<Owns<'m>, ConceptReadError> {
         let owns = self.type_().get_owns_attribute(snapshot, type_manager, attribute_type)?;
@@ -343,18 +335,18 @@ pub trait ObjectAPI<'a>: ThingAPI<'a> + Clone + Debug {
         }
     }
 
-    fn get_relations<'m, Snapshot: ReadableSnapshot>(
+    fn get_relations<'m>(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> impl for<'x> LendingIterator<Item<'x> = Result<Relation<'x>, ConceptReadError>> {
         thing_manager.get_relations_player(snapshot, self)
     }
 
-    fn get_relations_by_role<'m, Snapshot: ReadableSnapshot>(
+    fn get_relations_by_role<'m>(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
         role_type: RoleType<'static>,
     ) -> impl for<'x> LendingIterator<Item<'x> = Result<Relation<'x>, ConceptReadError>> {
         thing_manager.get_relations_player_role(snapshot, self, role_type)

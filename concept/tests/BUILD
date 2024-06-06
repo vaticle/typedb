@@ -13,6 +13,7 @@ rust_test(
     ]),
     deps = [
         "//common/bytes",
+        "//common/lending_iterator",
         "//common/logger",
         "//common/primitive",
         "//concept",

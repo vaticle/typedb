@@ -30,7 +30,6 @@ use storage::{
     durability_client::{DurabilityClient, DurabilityClientError, WALClient},
     recovery::checkpoint::{Checkpoint, CheckpointCreateError, CheckpointLoadError},
     sequence_number::SequenceNumber,
-    snapshot::WriteSnapshot,
     MVCCStorage, StorageOpenError,
 };
 
@@ -75,12 +74,8 @@ impl Database<WALClient> {
         let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
         let thing_vertex_generator =
             Arc::new(ThingVertexGenerator::load(storage.clone()).map_err(|err| Encoding { source: err })?);
-        TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-            storage.clone(),
-            definition_key_generator.clone(),
-            type_vertex_generator.clone(),
-        )
-        .map_err(|err| SchemaInitialise { source: err })?;
+        TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+            .map_err(|err| SchemaInitialise { source: err })?;
         let statistics = Arc::new(Statistics::new(storage.read_watermark()));
 
         Ok(Database::<WALClient> {
@@ -111,12 +106,8 @@ impl Database<WALClient> {
         let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
         let thing_vertex_generator =
             Arc::new(ThingVertexGenerator::load(storage.clone()).map_err(|err| Encoding { source: err })?);
-        TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-            storage.clone(),
-            definition_key_generator.clone(),
-            type_vertex_generator.clone(),
-        )
-        .map_err(|err| SchemaInitialise { source: err })?;
+        TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+            .map_err(|err| SchemaInitialise { source: err })?;
 
         let statistics = storage
             .durability()

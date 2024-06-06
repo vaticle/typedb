@@ -31,6 +31,7 @@ use crate::{
     type_::{entity_type::EntityType, ObjectTypeAPI, Ordering, OwnerAPI},
     ByteReference, ConceptAPI, ConceptStatus,
 };
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Entity<'a> {
     vertex: ObjectVertex<'a>,
@@ -54,18 +55,18 @@ impl<'a> Entity<'a> {
         self.vertex.bytes()
     }
 
-    pub fn get_relations<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relations<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> RelationRoleIterator {
         thing_manager.get_relations_roles(snapshot, self.as_reference())
     }
 
-    pub fn get_indexed_players<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_indexed_players<'m>(
         &'m self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> IndexedPlayersIterator {
         thing_manager.get_indexed_players(snapshot, Object::Entity(self.as_reference()))
     }
@@ -78,36 +79,28 @@ impl<'a> Entity<'a> {
 impl<'a> ConceptAPI<'a> for Entity<'a> {}
 
 impl<'a> ThingAPI<'a> for Entity<'a> {
-    fn set_modified<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) {
+    fn set_modified(&self, snapshot: &mut impl WritableSnapshot, thing_manager: &ThingManager) {
         if matches!(self.get_status(snapshot, thing_manager), ConceptStatus::Persisted) {
             thing_manager.lock_existing(snapshot, self.as_reference());
         }
     }
 
-    fn get_status<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> ConceptStatus {
+    fn get_status(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> ConceptStatus {
         thing_manager.get_status(snapshot, self.vertex().as_storage_key())
     }
 
-    fn errors<Snapshot: WritableSnapshot>(
+    fn errors(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         todo!()
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
+    fn delete(
         self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<(), ConceptWriteError> {
         let has = self
             .get_has_unordered(snapshot, thing_manager)

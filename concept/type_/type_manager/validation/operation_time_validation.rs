@@ -55,23 +55,18 @@ macro_rules! get_label {
 pub struct OperationTimeValidation {}
 
 impl OperationTimeValidation {
-    pub(crate) fn validate_type_exists<Snapshot, T>(snapshot: &Snapshot, type_: T) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
-    {
+    pub(crate) fn validate_type_exists(
+        snapshot: &impl ReadableSnapshot,
+        type_: impl KindAPI<'static>,
+    ) -> Result<(), SchemaValidationError> {
         TypeReader::get_label(snapshot, type_).map_err(|err| SchemaValidationError::ConceptRead(err))?;
         Ok(())
     }
 
-    pub(crate) fn validate_type_is_not_root<Snapshot, T>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_type_is_not_root<T: KindAPI<'static>>(
+        snapshot: &impl ReadableSnapshot,
         type_: T,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let label = TypeReader::get_label(snapshot, type_).map_err(SchemaValidationError::ConceptRead)?.unwrap();
         let is_root = TypeReader::check_type_is_root(&label, T::ROOT_KIND);
         if is_root {
@@ -81,11 +76,10 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_no_subtypes<Snapshot, T>(snapshot: &Snapshot, type_: T) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
-    {
+    pub(crate) fn validate_no_subtypes(
+        snapshot: &impl ReadableSnapshot,
+        type_: impl KindAPI<'static>,
+    ) -> Result<(), SchemaValidationError> {
         let no_subtypes =
             TypeReader::get_subtypes(snapshot, type_.clone()).map_err(SchemaValidationError::ConceptRead)?.is_empty();
         if no_subtypes {
@@ -95,8 +89,8 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_label_uniqueness<'a, Snapshot: ReadableSnapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_label_uniqueness<'a>(
+        snapshot: &impl ReadableSnapshot,
         new_label: &Label<'static>,
     ) -> Result<(), SchemaValidationError> {
         let attribute_clash = TypeReader::get_labelled_type::<AttributeType<'static>>(snapshot, &new_label)
@@ -131,14 +125,10 @@ impl OperationTimeValidation {
             Err(SchemaValidationError::IncompatibleValueTypes(subtype_value_type, supertype_value_type))
         }
     }
-    pub(crate) fn validate_type_is_abstract<T, Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_type_is_abstract<T: KindAPI<'static>>(
+        snapshot: &impl ReadableSnapshot,
         type_: T,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let is_abstract = TypeReader::get_type_annotations(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?
             .contains(&T::AnnotationType::from(Annotation::Abstract(AnnotationAbstract)));
@@ -149,15 +139,11 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_sub_does_not_create_cycle<T, Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_sub_does_not_create_cycle<T: KindAPI<'static>>(
+        snapshot: &impl ReadableSnapshot,
         type_: T,
         supertype: T,
-    ) -> Result<(), SchemaValidationError>
-    where
-        T: KindAPI<'static>,
-        Snapshot: ReadableSnapshot,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let existing_supertypes = TypeReader::get_supertypes_transitive(snapshot, supertype.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
         if supertype == type_ || existing_supertypes.contains(&type_) {
@@ -170,14 +156,11 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_role_is_inherited<Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_role_is_inherited(
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
         role_type: RoleType<'static>,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let super_relation =
             TypeReader::get_supertype(snapshot, relation_type).map_err(SchemaValidationError::ConceptRead)?;
         if super_relation.is_none() {
@@ -194,14 +177,11 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_owns_is_inherited<Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_owns_is_inherited(
+        snapshot: &impl ReadableSnapshot,
         owner: ObjectType<'static>,
         attribute: AttributeType<'static>,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let res = object_type_match!(owner, {
             let super_owner =
                 TypeReader::get_supertype(snapshot, owner.clone()).map_err(SchemaValidationError::ConceptRead)?;
@@ -221,15 +201,11 @@ impl OperationTimeValidation {
         res
     }
 
-    pub(crate) fn validate_overridden_is_supertype<Snapshot, T>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_overridden_is_supertype<T: KindAPI<'static>>(
+        snapshot: &impl ReadableSnapshot,
         type_: T,
         overridden: T,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let supertypes = TypeReader::get_supertypes_transitive(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
 
@@ -243,14 +219,11 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_plays_is_inherited<Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_plays_is_inherited(
+        snapshot: &impl ReadableSnapshot,
         player: ObjectType<'static>,
         role_type: RoleType<'static>,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let is_inherited = object_type_match!(player, {
             let super_player =
                 TypeReader::get_supertype(snapshot, player.clone()).map_err(SchemaValidationError::ConceptRead)?;
@@ -269,14 +242,11 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_plays_is_declared<Snapshot>(
-        snapshot: &Snapshot,
+    pub(crate) fn validate_plays_is_declared(
+        snapshot: &impl ReadableSnapshot,
         player: ObjectType<'static>,
         role_type: RoleType<'static>,
-    ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-    {
+    ) -> Result<(), SchemaValidationError> {
         let plays = Plays::new(ObjectType::new(player.clone().into_vertex()), role_type.clone());
         let is_declared = TypeReader::get_implemented_interfaces::<Plays<'static>>(snapshot, player.clone())
             .map_err(SchemaValidationError::ConceptRead)?
@@ -289,9 +259,9 @@ impl OperationTimeValidation {
     }
 
     // TODO: Refactor
-    pub(crate) fn validate_exact_type_no_instances_entity<Snapshot: ReadableSnapshot>(
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+    pub(crate) fn validate_exact_type_no_instances_entity(
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         entity_type: EntityType<'_>,
     ) -> Result<(), SchemaValidationError> {
         let mut entity_iterator = thing_manager.get_entities_in(snapshot, entity_type.clone());
@@ -301,9 +271,9 @@ impl OperationTimeValidation {
             Some(Err(concept_read_error)) => Err(SchemaValidationError::ConceptRead(concept_read_error)),
         }
     }
-    pub(crate) fn validate_exact_type_no_instances_relation<Snapshot: ReadableSnapshot>(
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+    pub(crate) fn validate_exact_type_no_instances_relation(
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         relation_type: RelationType<'_>,
     ) -> Result<(), SchemaValidationError> {
         let mut relation_iterator = thing_manager.get_relations_in(snapshot, relation_type.clone());
@@ -314,9 +284,9 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_exact_type_no_instances_attribute<Snapshot: ReadableSnapshot>(
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+    pub(crate) fn validate_exact_type_no_instances_attribute(
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         attribute_type: AttributeType<'_>,
     ) -> Result<(), SchemaValidationError> {
         let mut attribute_iterator = thing_manager
@@ -329,9 +299,9 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_exact_type_no_instances_role<Snapshot: ReadableSnapshot>(
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+    pub(crate) fn validate_exact_type_no_instances_role(
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'_>,
     ) -> Result<(), SchemaValidationError> {
         // TODO: See if we can use existing methods from the ThingManager

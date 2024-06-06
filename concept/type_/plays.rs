@@ -35,18 +35,18 @@ impl<'a> Plays<'a> {
         self.role.clone()
     }
 
-    pub fn get_override<'this, Snapshot: ReadableSnapshot>(
-        &'this self,
-        snapshot: &Snapshot,
-        type_manager: &'this TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'this, Option<Plays<'static>>>, ConceptReadError> {
+    pub fn get_override<'m>(
+        &self,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
+    ) -> Result<MaybeOwns<'m, Option<Plays<'static>>>, ConceptReadError> {
         type_manager.get_plays_overridden(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_override<Snapshot: WritableSnapshot>(
+    pub fn set_override(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         overridden: Plays<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation

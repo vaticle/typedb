@@ -40,29 +40,29 @@ impl<'a> Owns<'a> {
         self.attribute.clone().into_owned()
     }
 
-    pub fn is_key<Snapshot: ReadableSnapshot>(
+    pub fn is_key(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_effective_annotations(snapshot, type_manager)?;
         Ok(annotations.contains_key(&OwnsAnnotation::Key(AnnotationKey)))
     }
 
-    pub fn is_unique<Snapshot: ReadableSnapshot>(
+    pub fn is_unique(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_effective_annotations(snapshot, type_manager)?;
         Ok(annotations.contains_key(&OwnsAnnotation::Unique(AnnotationUnique))
             || annotations.contains_key(&OwnsAnnotation::Key(AnnotationKey)))
     }
 
-    pub fn is_distinct<Snapshot: ReadableSnapshot>(
+    pub fn is_distinct(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         let is_ordered = false; // TODO
         if is_ordered {
@@ -73,10 +73,10 @@ impl<'a> Owns<'a> {
         }
     }
 
-    pub fn get_cardinality<Snapshot: ReadableSnapshot>(
+    pub fn get_cardinality(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Option<AnnotationCardinality>, ConceptReadError> {
         let annotations = self.get_effective_annotations(snapshot, type_manager)?;
         for annotation in annotations.keys() {
@@ -90,36 +90,36 @@ impl<'a> Owns<'a> {
     }
 
     // TODO: Should it be 'this or just 'tm on type_manager?
-    pub fn get_override<'this, Snapshot: ReadableSnapshot>(
+    pub fn get_override<'this>(
         &'this self,
-        snapshot: &Snapshot,
-        type_manager: &'this TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'this TypeManager,
     ) -> Result<MaybeOwns<'this, Option<Owns<'static>>>, ConceptReadError> {
         type_manager.get_owns_overridden(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_override<Snapshot: WritableSnapshot>(
+    pub fn set_override(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         overridden: Owns<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
         type_manager.set_owns_overridden(snapshot, self.clone().into_owned(), overridden)
     }
 
-    pub fn get_effective_annotations<'this, Snapshot: ReadableSnapshot>(
+    pub fn get_effective_annotations<'this>(
         &'this self,
-        snapshot: &Snapshot,
-        type_manager: &'this TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'this TypeManager,
     ) -> Result<MaybeOwns<'this, HashMap<OwnsAnnotation, Owns<'static>>>, ConceptReadError> {
         type_manager.get_owns_effective_annotations(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_annotation<Snapshot: WritableSnapshot>(
+    pub fn set_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: OwnsAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
@@ -133,10 +133,10 @@ impl<'a> Owns<'a> {
         Ok(()) // TODO
     }
 
-    pub fn unset_annotation<Snapshot: WritableSnapshot>(
+    pub fn unset_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: OwnsAnnotation,
     ) {
         match annotation {
@@ -147,19 +147,14 @@ impl<'a> Owns<'a> {
         }
     }
 
-    pub fn set_ordering<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-        ordering: Ordering,
-    ) {
+    pub fn set_ordering(&self, snapshot: &mut impl WritableSnapshot, type_manager: &TypeManager, ordering: Ordering) {
         type_manager.set_owns_ordering(snapshot, self.clone(), ordering)
     }
 
-    pub fn get_ordering<Snapshot: ReadableSnapshot>(
+    pub fn get_ordering(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Ordering, ConceptReadError> {
         type_manager.get_owns_ordering(snapshot, self.clone().into_owned())
     }
