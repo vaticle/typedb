@@ -122,7 +122,6 @@ fn create_entity() {
     let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage).unwrap();
 
     assert_statistics_eq!(synchronised, manually_tracked);
-    drop(_guard)
 }
 
 #[test]
@@ -159,5 +158,4 @@ fn create_then_delete_twice_concurrently() {
     let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage).unwrap();
 
     assert_statistics_eq!(synchronised, manually_tracked);
-    drop(_guard)
 }
