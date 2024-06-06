@@ -99,19 +99,6 @@ macro_rules! assert_statistics_eq {
     };
 }
 
-fn setup() -> (Arc<MVCCStorage<WALClient>>, TempDir) {
-    init_logging();
-    let storage_path = create_tmp_dir(); // NOTE: dir is deleted when TempDir goes out of scope
-    let wal = WAL::create(&storage_path).unwrap();
-    let storage =
-        Arc::new(MVCCStorage::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap());
-    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
-        .unwrap();
-    (storage, storage_path)
-}
-
 fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingManager) -> Statistics {
     let snapshot = storage.clone().open_snapshot_read();
 
@@ -179,20 +166,32 @@ fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingMan
     statistics
 }
 
-#[test]
-fn create_entity() {
-    let (storage, _guard) = setup();
+fn setup() -> (Arc<MVCCStorage<WALClient>>, Arc<TypeManager>, ThingManager, TempDir) {
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage =
+        Arc::new(MVCCStorage::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap());
+    let _guard = storage_path;
 
     let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+
     let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-    let type_manager =
-        Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), None));
+    let type_manager = Arc::new(TypeManager::new(definition_key_generator, type_vertex_generator, None));
+    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
+    (storage, type_manager, thing_manager, _guard)
+}
+
+#[test]
+fn create_entity() {
+    let (storage, type_manager, thing_manager, _guard) = setup();
 
     let person_label = Label::build("person");
 
     let mut snapshot = storage.clone().open_snapshot_schema();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
     thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
@@ -210,31 +209,22 @@ fn create_entity() {
 
 #[test]
 fn create_then_delete_twice_concurrently() {
-    let (storage, _guard) = setup();
+    let (storage, type_manager, thing_manager, _guard) = setup();
 
     let person_label = Label::build("person");
 
-    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-    let type_manager =
-        Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), None));
-
     let mut snapshot = storage.clone().open_snapshot_schema();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
     let person = thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     let create_commit_seq = snapshot.commit().unwrap().unwrap();
 
     let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     person.clone().delete(&mut snapshot, &thing_manager).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 
     let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     person.clone().delete(&mut snapshot, &thing_manager).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
@@ -246,19 +236,12 @@ fn create_then_delete_twice_concurrently() {
 
 #[test]
 fn put_ownership_twice() {
-    let (storage, _guard) = setup();
+    let (storage, type_manager, thing_manager, _guard) = setup();
 
     let person_label = Label::build("person");
     let name_label = Label::build("name");
 
-    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-    let type_manager =
-        Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), None));
-
     let mut snapshot = storage.clone().open_snapshot_schema();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
     let name_type = type_manager.create_attribute_type(&mut snapshot, &name_label, false).unwrap();
     name_type.set_value_type(&mut snapshot, &type_manager, ValueType::String).unwrap();
@@ -269,13 +252,11 @@ fn put_ownership_twice() {
     let create_commit_seq = snapshot.commit().unwrap().unwrap();
 
     let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     person.set_has_unordered(&mut snapshot, &thing_manager, name.as_reference()).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 
     let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
-    let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
     person.set_has_unordered(&mut snapshot, &thing_manager, name.as_reference()).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();

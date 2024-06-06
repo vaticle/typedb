@@ -5,7 +5,6 @@
  */
 
 use std::{
-    any::Any,
     marker::PhantomData,
     sync::atomic::{AtomicU64, Ordering::Relaxed},
 };
@@ -32,12 +31,12 @@ use crate::{
 pub type TypeVertexAllocator = SchemaIDAllocator<TypeVertex<'static>>;
 pub type DefinitionKeyAllocator = SchemaIDAllocator<DefinitionKey<'static>>;
 
-trait SchemaID: Sized {
+pub trait SchemaID: Sized {
     const MIN_ID: u64;
     const MAX_ID: u64;
 
     fn object_from_id(prefix: Prefix, id: u64) -> Self;
-    fn id_from_key<'b>(key: StorageKey<'b, BUFFER_KEY_INLINE>) -> u64;
+    fn id_from_key(key: StorageKey<'_, BUFFER_KEY_INLINE>) -> u64;
     fn ids_exhausted_error(prefix: Prefix) -> EncodingError;
 }
 
@@ -81,13 +80,13 @@ impl<'a, T: SchemaID + Keyable<'a, BUFFER_KEY_INLINE>> SchemaIDAllocator<T> {
     pub fn allocate<Snapshot: WritableSnapshot>(&self, snapshot: &mut Snapshot) -> Result<T, EncodingError> {
         let found = self.find_unallocated_id(snapshot, self.last_allocated_type_id.load(Relaxed))?;
         if let Some(allocated_id) = found {
-            self.last_allocated_type_id.store(allocated_id.clone(), Relaxed);
+            self.last_allocated_type_id.store(allocated_id, Relaxed);
             Ok(T::object_from_id(self.prefix, allocated_id))
         } else {
             match self.find_unallocated_id(snapshot, 0)? {
                 None => Err(T::ids_exhausted_error(self.prefix)),
                 Some(allocated_id) => {
-                    self.last_allocated_type_id.store(allocated_id.clone(), Relaxed);
+                    self.last_allocated_type_id.store(allocated_id, Relaxed);
                     Ok(T::object_from_id(self.prefix, allocated_id))
                 }
             }
@@ -100,11 +99,11 @@ impl SchemaID for TypeVertex<'static> {
     const MAX_ID: u64 = TypeIDUInt::MAX as u64;
 
     fn object_from_id(prefix: Prefix, id: u64) -> TypeVertex<'static> {
-        debug_assert!(id >= Self::MIN_ID && id <= Self::MAX_ID);
+        debug_assert!((Self::MIN_ID..=Self::MAX_ID).contains(&id));
         TypeVertex::build(prefix.prefix_id(), TypeID::build(id as TypeIDUInt))
     }
 
-    fn id_from_key<'b>(key: StorageKey<'b, BUFFER_KEY_INLINE>) -> u64 {
+    fn id_from_key(key: StorageKey<'_, BUFFER_KEY_INLINE>) -> u64 {
         TypeVertex::new(Bytes::reference(key.bytes())).type_id_().as_u16() as u64
     }
 
@@ -125,11 +124,11 @@ impl SchemaID for DefinitionKey<'static> {
     const MAX_ID: u64 = DefinitionIDUInt::MAX as u64;
 
     fn object_from_id(prefix: Prefix, id: u64) -> Self {
-        debug_assert!(id >= Self::MIN_ID && id <= Self::MAX_ID);
+        debug_assert!((Self::MIN_ID..=Self::MAX_ID).contains(&id));
         DefinitionKey::build(prefix, DefinitionID::build(id as DefinitionIDUInt))
     }
 
-    fn id_from_key<'b>(key: StorageKey<'b, BUFFER_KEY_INLINE>) -> u64 {
+    fn id_from_key(key: StorageKey<'_, BUFFER_KEY_INLINE>) -> u64 {
         DefinitionKey::new(Bytes::reference(key.bytes())).definition_id().as_uint() as u64
     }
 
