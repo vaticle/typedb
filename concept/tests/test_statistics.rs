@@ -6,11 +6,14 @@
 
 #![deny(unused_must_use)]
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use concept::{
     thing::{object::ObjectAPI, statistics::Statistics, thing_manager::ThingManager, ThingAPI},
-    type_::{type_manager::TypeManager, ObjectTypeAPI, Ordering, OwnerAPI},
+    type_::{
+        annotation::AnnotationCardinality, role_type::RoleTypeAnnotation, type_manager::TypeManager, ObjectTypeAPI,
+        Ordering, OwnerAPI,
+    },
 };
 use durability::wal::WAL;
 use encoding::{
@@ -23,7 +26,7 @@ use encoding::{
 };
 use lending_iterator::LendingIterator;
 use storage::{
-    durability_client::WALClient,
+    durability_client::{DurabilityClient, WALClient},
     sequence_number::SequenceNumber,
     snapshot::{CommittableSnapshot, ReadableSnapshot},
     MVCCStorage,
@@ -151,6 +154,7 @@ fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingMan
                 .or_default() += count;
         }
         let mut relates_iter = relation.get_players(&snapshot, &thing_manager);
+        let mut this_relation_players = BTreeMap::<_, u64>::new();
         while let Some(relates) = relates_iter.next() {
             let (roleplayer, count) = relates.unwrap();
             let role = roleplayer.role_type();
@@ -158,9 +162,22 @@ fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingMan
             *statistics.role_counts.entry(role.clone()).or_default() += count;
             *statistics.relation_role_counts.entry(relation.type_()).or_default().entry(role.clone()).or_default() +=
                 count;
-            *statistics.role_player_counts.entry(player.type_()).or_default().entry(role.clone()).or_default() +=
-                count;
-            // TODO role_player_index_counts
+            *statistics.role_player_counts.entry(player.type_()).or_default().entry(role.clone()).or_default() += count;
+            *this_relation_players.entry(player.type_()).or_default() += 1;
+        }
+        for (player_1, count_1) in &this_relation_players {
+            for (player_2, count_2) in &this_relation_players {
+                let link_count = if player_1 == player_2 { count_1 * (count_2 - 1) } else { count_1 * count_2 };
+                if link_count == 0 {
+                    continue;
+                }
+                *statistics
+                    .player_index_counts
+                    .entry(player_1.clone())
+                    .or_default()
+                    .entry(player_2.clone())
+                    .or_default() += link_count;
+            }
         }
     }
 
@@ -171,19 +188,21 @@ fn read_statistics(storage: Arc<MVCCStorage<WALClient>>, thing_manager: ThingMan
         *statistics.attribute_counts.entry(attribute.type_()).or_default() += 1;
     }
 
-    statistics.total_has_count = statistics.has_attribute_counts.values().map(|map| map.len() as u64).sum();
     statistics.total_thing_count =
         statistics.total_entity_count + statistics.total_relation_count + statistics.total_attribute_count;
+    statistics.total_has_count = statistics.has_attribute_counts.values().map(|map| map.len() as u64).sum();
+    statistics.total_role_count = statistics.role_counts.values().sum();
 
     statistics
 }
 
 fn setup() -> (Arc<MVCCStorage<WALClient>>, Arc<TypeManager>, ThingManager, TempDir) {
     init_logging();
-    let storage_path = create_tmp_dir();
+    let storage_path = create_tmp_dir(); // NOTE: dir is deleted when TempDir goes out of scope
     let wal = WAL::create(&storage_path).unwrap();
-    let storage =
-        Arc::new(MVCCStorage::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap());
+    let mut wal_client = WALClient::new(wal);
+    wal_client.register_record_type::<Statistics>();
+    let storage = Arc::new(MVCCStorage::create::<EncodingKeyspace>("storage", &storage_path, wal_client).unwrap());
     let _guard = storage_path;
 
     let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
@@ -270,6 +289,43 @@ fn put_has_twice() {
 
     let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
     person.set_has_unordered(&mut snapshot, &thing_manager, name.as_reference()).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
+    snapshot.commit().unwrap().unwrap();
+
+    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage.clone()).unwrap();
+
+    assert_statistics_eq!(synchronised, read_statistics(storage, thing_manager));
+}
+
+#[test]
+fn put_plays() {
+    let (storage, type_manager, thing_manager, _guard) = setup();
+
+    let person_label = Label::build("person");
+    let friendship_label = Label::build("friendship");
+    let friend_role_name = "friend";
+
+    let mut snapshot = storage.clone().open_snapshot_schema();
+    let person_type = type_manager.create_entity_type(&mut snapshot, &person_label, false).unwrap();
+    let friendship_type = type_manager.create_relation_type(&mut snapshot, &friendship_label, false).unwrap();
+    let friend_role =
+        friendship_type.create_relates(&mut snapshot, &type_manager, friend_role_name, Ordering::Unordered).unwrap();
+    friend_role
+        .set_annotation(
+            &mut snapshot,
+            &type_manager,
+            RoleTypeAnnotation::Cardinality(AnnotationCardinality::new(1, Some(4))),
+        )
+        .unwrap();
+    let person = thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
+    let friendship = thing_manager.create_relation(&mut snapshot, friendship_type.clone()).unwrap();
+    friendship.add_player(&mut snapshot, &thing_manager, friend_role.clone(), person.into_owned_object()).unwrap();
+    thing_manager.finalise(&mut snapshot).unwrap();
+    let create_commit_seq = snapshot.commit().unwrap().unwrap();
+
+    let mut snapshot = storage.clone().open_snapshot_write_at(create_commit_seq).unwrap();
+    let person_2 = thing_manager.create_entity(&mut snapshot, person_type.clone()).unwrap();
+    friendship.add_player(&mut snapshot, &thing_manager, friend_role.clone(), person_2.into_owned_object()).unwrap();
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 

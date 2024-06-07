@@ -198,9 +198,9 @@ impl Statistics {
                 let edge = ThingEdgeRolePlayer::new(Bytes::Reference(key_reference.byte_ref()));
                 let role_type = RoleType::build_from_type_id(edge.role_id());
                 self.update_role_player(
-                    Object::new(edge.from()).type_(),
+                    Object::new(edge.to()).type_(),
                     role_type,
-                    Relation::new(edge.to()).type_(),
+                    Relation::new(edge.from()).type_(),
                     delta,
                 )
             } else if ThingEdgeRelationIndex::is_index(key_reference) {
