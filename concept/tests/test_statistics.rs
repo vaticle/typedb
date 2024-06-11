@@ -233,7 +233,8 @@ fn create_entity() {
     manually_tracked.total_entity_count += 1;
     *manually_tracked.entity_counts.entry(person_type).or_default() += 1;
 
-    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage.clone()).unwrap();
+    let mut synchronised = Statistics::new(SequenceNumber::MIN);
+    synchronised.may_synchronise(&storage).unwrap();
 
     assert_statistics_eq!(synchronised, read_statistics(storage, thing_manager));
 }
@@ -260,7 +261,8 @@ fn delete_twice() {
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 
-    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage.clone()).unwrap();
+    let mut synchronised = Statistics::new(SequenceNumber::MIN);
+    synchronised.may_synchronise(&storage).unwrap();
 
     assert_statistics_eq!(synchronised, read_statistics(storage, thing_manager));
 }
@@ -292,7 +294,8 @@ fn put_has_twice() {
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 
-    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage.clone()).unwrap();
+    let mut synchronised = Statistics::new(SequenceNumber::MIN);
+    synchronised.may_synchronise(&storage).unwrap();
 
     assert_statistics_eq!(synchronised, read_statistics(storage, thing_manager));
 }
@@ -329,7 +332,8 @@ fn put_plays() {
     thing_manager.finalise(&mut snapshot).unwrap();
     snapshot.commit().unwrap().unwrap();
 
-    let synchronised = Statistics::new(SequenceNumber::MIN).may_synchronise(storage.clone()).unwrap();
+    let mut synchronised = Statistics::new(SequenceNumber::MIN);
+    synchronised.may_synchronise(&storage).unwrap();
 
     assert_statistics_eq!(synchronised, read_statistics(storage, thing_manager));
 }

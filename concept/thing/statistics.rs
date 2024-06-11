@@ -101,16 +101,13 @@ impl Statistics {
         }
     }
 
-    pub fn may_synchronise(
-        mut self,
-        storage: Arc<MVCCStorage<impl DurabilityClient>>,
-    ) -> Result<Statistics, StatisticsInitialiseError> {
-        use StatisticsInitialiseError::{DataRead, DurablyWrite, ReloadCommitData};
+    pub fn may_synchronise(&mut self, storage: &MVCCStorage<impl DurabilityClient>) -> Result<(), StatisticsError> {
+        use StatisticsError::{DataRead, ReloadCommitData};
 
         let storage_watermark = storage.read_watermark();
         debug_assert!(self.sequence_number <= storage_watermark);
         if self.sequence_number == storage_watermark {
-            return Ok(self);
+            return Ok(());
         }
 
         let mut data_commits = BTreeMap::new();
@@ -128,8 +125,8 @@ impl Statistics {
                         data_commits.insert(seq, writes);
                     }
                     CommitType::Schema => {
-                        self.update_writes(&data_commits, &storage).map_err(|err| DataRead { source: err })?;
-                        storage.durability().unsequenced_write(&self).map_err(|err| DurablyWrite { source: err })?;
+                        self.update_writes(&data_commits, storage).map_err(|err| DataRead { source: err })?;
+                        self.durably_write(storage)?;
 
                         data_commits.clear();
 
@@ -139,7 +136,7 @@ impl Statistics {
                         };
                         let mut commits = BTreeMap::new();
                         commits.insert(seq, writes);
-                        self.update_writes(&commits, &storage).map_err(|err| DataRead { source: err })?;
+                        self.update_writes(&commits, storage).map_err(|err| DataRead { source: err })?;
                     }
                 }
             } else {
@@ -147,8 +144,14 @@ impl Statistics {
             }
         }
 
-        self.update_writes(&data_commits, &storage).map_err(|err| DataRead { source: err })?;
-        Ok(self)
+        self.update_writes(&data_commits, storage).map_err(|err| DataRead { source: err })?;
+        Ok(())
+    }
+
+    pub fn durably_write(&mut self, storage: &MVCCStorage<impl DurabilityClient>) -> Result<(), StatisticsError> {
+        use StatisticsError::DurablyWrite;
+        storage.durability().unsequenced_write(self).map_err(|err| DurablyWrite { source: err })?;
+        Ok(())
     }
 
     fn update_writes<D>(
@@ -398,19 +401,19 @@ struct CommittedWrites {
 }
 
 #[derive(Debug)]
-pub enum StatisticsInitialiseError {
+pub enum StatisticsError {
     DurablyWrite { source: DurabilityClientError },
     ReloadCommitData { source: CommitRecoveryError },
     DataRead { source: MVCCReadError },
 }
 
-impl fmt::Display for StatisticsInitialiseError {
+impl fmt::Display for StatisticsError {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }
 
-impl Error for StatisticsInitialiseError {
+impl Error for StatisticsError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DurablyWrite { source } => Some(source),
