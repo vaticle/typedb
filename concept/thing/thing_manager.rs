@@ -26,6 +26,7 @@ use encoding::{
     layout::prefix::Prefix,
     value::{
         boolean_bytes::BooleanBytes,
+        date_bytes::DateBytes,
         date_time_bytes::DateTimeBytes,
         date_time_tz_bytes::DateTimeTZBytes,
         decimal_bytes::DecimalBytes,
@@ -223,6 +224,10 @@ impl ThingManager {
                 let attribute_id = attribute.vertex().attribute_id().unwrap_decimal();
                 Ok(Value::Decimal(DecimalBytes::new(attribute_id.bytes()).as_decimal()))
             }
+            ValueType::Date => {
+                let attribute_id = attribute.vertex().attribute_id().unwrap_date();
+                Ok(Value::Date(DateBytes::new(attribute_id.bytes()).as_naive_date()))
+            }
             ValueType::DateTime => {
                 let attribute_id = attribute.vertex().attribute_id().unwrap_date_time();
                 Ok(Value::DateTime(DateTimeBytes::new(attribute_id.bytes()).as_naive_date_time()))
@@ -276,6 +281,7 @@ impl ThingManager {
             | ValueType::Long
             | ValueType::Double
             | ValueType::Decimal
+            | ValueType::Date
             | ValueType::DateTime
             | ValueType::DateTimeTZ
             | ValueType::Duration => {
@@ -400,10 +406,10 @@ impl ThingManager {
         )
     }
 
-    pub fn get_attributes_by_struct_field<'this, 'a, Snapshot: ReadableSnapshot>(
+    pub fn get_attributes_by_struct_field<'this, Snapshot: ReadableSnapshot>(
         &'this self,
         snapshot: &'this Snapshot,
-        attribute_type: AttributeType<'a>,
+        attribute_type: AttributeType<'_>,
         path_to_field: Vec<StructFieldIDUInt>,
         value: Value<'_>,
     ) -> Result<StructIndexToAttributeIterator<'_, Snapshot>, ConceptReadError> {
@@ -901,6 +907,14 @@ impl<'txn> ThingManager {
                     self.vertex_generator.create_attribute_decimal(
                         attribute_type.vertex().type_id_(),
                         encoded_decimal,
+                        snapshot,
+                    )
+                }
+                Value::Date(date) => {
+                    let encoded_date = DateBytes::build(date);
+                    self.vertex_generator.create_attribute_date(
+                        attribute_type.vertex().type_id_(),
+                        encoded_date,
                         snapshot,
                     )
                 }

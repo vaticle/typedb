@@ -18,8 +18,7 @@ use storage::{
 };
 
 use super::vertex_attribute::{
-    BooleanAttributeID, DateTimeAttributeID, DateTimeTZAttributeID, DecimalAttributeID, DoubleAttributeID,
-    DurationAttributeID, StructAttributeID,
+    BooleanAttributeID, DateAttributeID, DateTimeAttributeID, DateTimeTZAttributeID, DecimalAttributeID, DoubleAttributeID, DurationAttributeID, StructAttributeID
 };
 use crate::{
     error::EncodingError,
@@ -33,9 +32,7 @@ use crate::{
     },
     layout::prefix::Prefix,
     value::{
-        boolean_bytes::BooleanBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes,
-        decimal_bytes::DecimalBytes, double_bytes::DoubleBytes, duration_bytes::DurationBytes, long_bytes::LongBytes,
-        string_bytes::StringBytes, struct_bytes::StructBytes, value_type::ValueTypeCategory,
+        boolean_bytes::BooleanBytes, date_bytes::DateBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes, decimal_bytes::DecimalBytes, double_bytes::DoubleBytes, duration_bytes::DurationBytes, long_bytes::LongBytes, string_bytes::StringBytes, struct_bytes::StructBytes, value_type::ValueTypeCategory
     },
     AsBytes, Keyable, Prefixed,
 };
@@ -216,6 +213,21 @@ impl ThingVertexGenerator {
         vertex
     }
 
+    pub fn create_attribute_date<Snapshot>(
+        &self,
+        type_id: TypeID,
+        value: DateBytes,
+        snapshot: &mut Snapshot,
+    ) -> AttributeVertex<'static>
+    where
+        Snapshot: WritableSnapshot,
+    {
+        let date_attribute_id = self.create_attribute_id_date(value);
+        let vertex = AttributeVertex::build(ValueTypeCategory::Date, type_id, AttributeID::Date(date_attribute_id));
+        snapshot.put(vertex.as_storage_key().into_owned_array());
+        vertex
+    }
+
     pub fn create_attribute_date_time<Snapshot>(
         &self,
         type_id: TypeID,
@@ -281,6 +293,10 @@ impl ThingVertexGenerator {
 
     pub fn create_attribute_id_decimal(&self, value: DecimalBytes) -> DecimalAttributeID {
         DecimalAttributeID::build(value)
+    }
+
+    pub fn create_attribute_id_date(&self, value: DateBytes) -> DateAttributeID {
+        DateAttributeID::build(value)
     }
 
     pub fn create_attribute_id_date_time(&self, value: DateTimeBytes) -> DateTimeAttributeID {

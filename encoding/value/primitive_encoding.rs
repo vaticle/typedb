@@ -20,6 +20,14 @@ pub(super) fn encode_u32(value: u32) -> [u8; 4] {
     value.to_be_bytes()
 }
 
+pub(super) fn decode_i32(bytes: [u8; 4]) -> i32 {
+    i32::from_be_bytes(bytes) ^ i32::MIN
+}
+
+pub(super) fn encode_i32(value: i32) -> [u8; 4] {
+    (value ^ i32::MIN).to_be_bytes()
+}
+
 pub fn decode_u64(bytes: [u8; 8]) -> u64 {
     u64::from_be_bytes(bytes)
 }

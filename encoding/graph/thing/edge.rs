@@ -281,6 +281,7 @@ impl<'a> ThingEdgeHasReverse<'a> {
             Prefix::VertexAttributeLong => EncodingKeyspace::Data,
             Prefix::VertexAttributeDouble => EncodingKeyspace::Data,
             Prefix::VertexAttributeDecimal => EncodingKeyspace::Data,
+            Prefix::VertexAttributeDate => EncodingKeyspace::Data,
             Prefix::VertexAttributeDateTime => EncodingKeyspace::Data,
             Prefix::VertexAttributeDateTimeTZ => EncodingKeyspace::Data,
             Prefix::VertexAttributeDuration => EncodingKeyspace::Data,

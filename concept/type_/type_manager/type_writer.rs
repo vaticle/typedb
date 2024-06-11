@@ -25,7 +25,7 @@ use storage::snapshot::WritableSnapshot;
 
 use crate::type_::{
     attribute_type::AttributeType, owns::Owns, relates::Relates, relation_type::RelationType, role_type::RoleType,
-    sub::Sub, type_manager::type_reader::TypeReader, EdgeOverride, KindAPI, Ordering, TypeAPI,
+    sub::Sub, type_manager::type_reader::TypeReader, EdgeOverride, KindAPI, Ordering,
 };
 
 pub struct TypeWriter<Snapshot: WritableSnapshot> {

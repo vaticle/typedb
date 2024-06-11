@@ -20,10 +20,10 @@ use crate::{
         r#struct::StructDefinition,
     },
     value::{
-        boolean_bytes::BooleanBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes,
-        decimal_bytes::DecimalBytes, double_bytes::DoubleBytes, duration_bytes::DurationBytes, long_bytes::LongBytes,
-        string_bytes::StringBytes, value::Value, value_struct::StructValue, value_type::ValueTypeCategory,
-        ValueEncodable,
+        boolean_bytes::BooleanBytes, date_bytes::DateBytes, date_time_bytes::DateTimeBytes,
+        date_time_tz_bytes::DateTimeTZBytes, decimal_bytes::DecimalBytes, double_bytes::DoubleBytes,
+        duration_bytes::DurationBytes, long_bytes::LongBytes, string_bytes::StringBytes, value::Value,
+        value_struct::StructValue, value_type::ValueTypeCategory, ValueEncodable,
     },
     AsBytes,
 };
@@ -96,6 +96,7 @@ fn encode_struct_into<'a>(struct_value: &StructValue<'a>, buf: &mut Vec<u8>) -> 
             Value::Long(value) => buf.extend_from_slice(&LongBytes::build(*value).bytes()),
             Value::Double(value) => buf.extend_from_slice(&DoubleBytes::build(*value).bytes()),
             Value::Decimal(value) => buf.extend_from_slice(&DecimalBytes::build(*value).bytes()),
+            Value::Date(value) => buf.extend_from_slice(&DateBytes::build(*value).bytes()),
             Value::DateTime(value) => buf.extend_from_slice(&DateTimeBytes::build(*value).bytes()),
             Value::DateTimeTZ(value) => buf.extend_from_slice(&DateTimeTZBytes::build(*value).bytes()),
             Value::Duration(value) => buf.extend_from_slice(&DurationBytes::build(*value).bytes()),
@@ -146,6 +147,9 @@ fn decode_struct_increment_offset(offset: &mut usize, buf: &[u8]) -> Result<Stru
             ),
             ValueTypeCategory::Decimal => Value::Decimal(
                 DecimalBytes::new(read_bytes_increment_offset::<{ DecimalBytes::LENGTH }>(offset, buf)?).as_decimal(),
+            ),
+            ValueTypeCategory::Date => Value::Date(
+                DateBytes::new(read_bytes_increment_offset::<{ DateBytes::LENGTH }>(offset, buf)?).as_naive_date(),
             ),
             ValueTypeCategory::DateTime => Value::DateTime(
                 DateTimeBytes::new(read_bytes_increment_offset::<{ DateTimeBytes::LENGTH }>(offset, buf)?)
