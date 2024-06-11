@@ -9,7 +9,6 @@ use std::{
     error::Error,
     fmt,
     ops::Bound,
-    sync::Arc,
 };
 
 use bytes::Bytes;

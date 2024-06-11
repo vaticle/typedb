@@ -23,7 +23,7 @@ use crate::{
         Typed,
     },
     layout::prefix::{Prefix, PrefixID},
-    value::value_type::{ValueType, ValueTypeCategory},
+    value::value_type::ValueTypeCategory,
     AsBytes, EncodingKeyspace, Keyable, Prefixed,
 };
 

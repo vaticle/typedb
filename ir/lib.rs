@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{error::Error, fmt, fmt::Display};
+use std::{error::Error, fmt};
 
 use crate::pattern::{
     constraint::Constraint,

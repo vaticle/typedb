@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use chrono::{DateTime, NaiveDateTime};
+use chrono::DateTime;
 use chrono_tz::Tz;
 
 use super::{

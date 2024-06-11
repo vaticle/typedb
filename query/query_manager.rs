@@ -5,7 +5,6 @@
  */
 
 use function::function::Function;
-use ir::pattern::conjunction::Conjunction;
 
 struct QueryManager {}
 
