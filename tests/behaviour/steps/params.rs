@@ -54,7 +54,7 @@ impl FromStr for MayError {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "fails" => Self::True,
+            "; fails" => Self::True,
             "" => Self::False,
             invalid => return Err(format!("Invalid `MayError`: {invalid}")),
         })
@@ -77,6 +77,7 @@ macro_rules! check_boolean {
     };
 }
 pub(crate) use check_boolean;
+use concept::type_::annotation::{AnnotationDistinct, AnnotationUnique};
 
 impl FromStr for Boolean {
     type Err = String;
@@ -341,6 +342,44 @@ impl FromStr for Annotation {
             "@abstract" => TypeDBAnnotation::Abstract(AnnotationAbstract),
             "@independent" => TypeDBAnnotation::Independent(AnnotationIndependent),
             "@key" => TypeDBAnnotation::Key(AnnotationKey),
+            "@unique" => TypeDBAnnotation::Unique(AnnotationUnique),
+            "@distinct" => TypeDBAnnotation::Distinct(AnnotationDistinct),
+            "@cascade" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Cascade(AnnotationCascade),
+            "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Replace(AnnotationReplace),
+            subkey if subkey.starts_with("@subkey") => {
+                return Err("Not implemented!".to_owned())
+                // assert!(
+                //     subkey.starts_with(r#"@subkey("#) && subkey.ends_with(r#")"#),
+                //     r#"Invalid @subkey format: {subkey:?}. Expected "@subkey(LABEL)""#
+                // );
+                // let label = &subkey[r#"@subkey("#.len()..subkey.len() - r#")"#.len()];
+                // TypeDBAnnotation::Subkey(AnnotationSubkey::new(label.to_owned()))
+            }
+            values if values.starts_with("@values") => {
+                return Err("Not implemented!".to_owned())
+                // assert!(
+                //     values.starts_with("@values(") && values.ends_with(')'),
+                //     r#"Invalid @values format: {values:?}. Expected "@values(val1, val2, ..., valN)""#
+                // );
+                // let values = values["@card(".len()..values.len() - ")".len()].trim();
+                // let values =
+                //     values.split(',');
+                // TypeDBAnnotation::Values(AnnotationValues::new(values))
+            }
+            range if range.starts_with("@range") => {
+                return Err("Not implemented!".to_owned())
+                // assert!(
+                //     range.starts_with("@range(") && range.ends_with(')'),
+                //     r#"Invalid @range format: {range:?}. Expected "@range(min, max)""#
+                // );
+                // let range = range["@range(".len()..range.len() - ")".len()].trim();
+                // let (min, max) =
+                //     range.split_once(',').map(|(min, max)| (min.trim(), Some(max.trim()))).unwrap_or((range, None));
+                // TypeDBAnnotation::Range(AnnotationRange::new(
+                //     min.parse().unwrap(),
+                //     max.map(str::parse).transpose().unwrap(),
+                // ))
+            }
             regex if regex.starts_with("@regex") => {
                 assert!(
                     regex.starts_with(r#"@regex(""#) && regex.ends_with(r#"")"#),

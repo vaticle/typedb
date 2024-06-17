@@ -28,6 +28,11 @@ pub enum Annotation {
     Key(AnnotationKey),
     Cardinality(AnnotationCardinality),
     Regex(AnnotationRegex),
+    // TODO: Subkey
+    // TODO: Values
+    // TODO: Range
+    // TODO: Cascade
+    // TODO: Replace
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]

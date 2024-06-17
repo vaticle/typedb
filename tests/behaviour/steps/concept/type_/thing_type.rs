@@ -4,6 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use std::ascii::escape_default;
 use concept::type_::{object_type::ObjectType, PlayerAPI, TypeAPI};
 use cucumber::gherkin::Step;
 use encoding::graph::type_::Kind;
@@ -58,8 +59,8 @@ pub(super) fn get_as_object_type(context: &mut Context, kind: Kind, label: &Labe
 }
 
 #[apply(generic_step)]
-#[step(expr = "put {root_label} type: {type_label}")]
-pub async fn type_put(context: &mut Context, root_label: RootLabel, type_label: Label) {
+#[step(expr = "create {root_label} type: {type_label}")]
+pub async fn type_create(context: &mut Context, root_label: RootLabel, type_label: Label) {
     with_schema_tx!(context, |tx| {
         match root_label.to_typedb() {
             Kind::Entity => {

@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[apply(generic_step)]
-#[step(expr = "connection opens {word} transaction for database: {word}")]
+#[step(expr = "connection open {word} transaction for database: {word}")]
 pub async fn connection_open_transaction(context: &mut Context, tx_type: String, db_name: String) {
     let db = context.databases().get(&db_name).unwrap();
     let tx = match tx_type.as_str() {

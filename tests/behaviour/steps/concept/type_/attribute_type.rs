@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[apply(generic_step)]
-#[step(expr = "attribute\\({type_label}\\) set value-type: {value_type}")]
+#[step(expr = "attribute\\({type_label}\\) set value type: {value_type}")]
 pub async fn attribute_type_set_value_type(
     context: &mut Context,
     type_label: params::Label,
