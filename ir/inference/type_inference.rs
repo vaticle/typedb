@@ -48,7 +48,7 @@ enum ConstraintTypeAnnotations {
                                                      //       in other words, they are always right to left or deal only in value types.
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct LeftRightAnnotations {
     left_to_right: BTreeMap<Type, BTreeSet<Type>>,
     right_to_left: BTreeMap<Type, BTreeSet<Type>>,
@@ -62,13 +62,13 @@ struct LeftRightFilteredAnnotations {
     // filter_to_right
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct TypeInferenceGraph {
     vertices: BTreeMap<Variable, BTreeSet<Type>>,
     edges: Vec<TypeInferenceEdge>
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct TypeInferenceEdge {
     left: Variable,
     right: Variable,
@@ -201,7 +201,6 @@ pub mod tests {
         // dog sub animal, owns dog-name; cat sub animal owns cat-name;
         // cat-name sub animal-name; dog-name sub animal-name;
 
-
         // Some version of `$a isa animal, has name $n;`
         let var_animal = Variable::new(0);
         let var_name = Variable::new(1);
@@ -235,8 +234,16 @@ pub mod tests {
             };
 
             tig.run_type_inference();
-            println!("{:?}", tig);
-            // todo!("assert_eq!(expected_tig, tig)");
+
+            let expected_left_right = LeftRightAnnotations {
+                left_to_right: BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]),
+                right_to_left: BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]),
+            };
+            let expected_tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()])), (var_name, BTreeSet::from([type_catname.clone()]))]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, expected_left_right)],
+            };
+            assert_eq!(expected_tig, tig);
         }
 
         {
@@ -246,9 +253,9 @@ pub mod tests {
             let types_n = BTreeSet::from([type_catname.clone()]);
             let left_right = LeftRightAnnotations {
                 left_to_right: BTreeMap::from([
+                    (type_animal.clone(), all_names.clone()),
                     (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                     (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
-                    (type_animal.clone(), BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]))
                 ]),
                 right_to_left: BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]),
             };
@@ -258,8 +265,16 @@ pub mod tests {
             };
 
             tig.run_type_inference();
-            println!("{:?}", tig);
-            // todo!("assert_eq!(expected_tig, tig)");
+
+            let expected_left_right = LeftRightAnnotations {
+                left_to_right: BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]),
+                right_to_left: BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]),
+            };
+            let expected_tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()])), (var_name, BTreeSet::from([type_catname.clone()]))]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, expected_left_right)],
+            };
+            assert_eq!(expected_tig, tig);
         }
 
         {
@@ -276,10 +291,13 @@ pub mod tests {
             };
 
             tig.run_type_inference();
-            println!("{:?}", tig);
-            // todo!("assert_eq!(expected_tig, tig)");
-        }
 
+            let expected_tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, BTreeSet::new()), (var_name, BTreeSet::new())]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, LeftRightAnnotations { left_to_right: BTreeMap::new(), right_to_left: BTreeMap::new() })],
+            };
+            assert_eq!(expected_tig, tig);
+        }
 
         {
             // Case 4: $a isa animal, has name $n; // Just to be sure
@@ -287,25 +305,29 @@ pub mod tests {
             let types_n = all_names.clone();
             let left_right = LeftRightAnnotations {
                 left_to_right: BTreeMap::from([
+                    (type_animal.clone(), all_names.clone()),
                     (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                     (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
-                    (type_animal.clone(), BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]))
                 ]),
                 right_to_left: BTreeMap::from([
                     (type_name.clone(), all_animals.clone()),
                     (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
-                    (type_dogname.clone(), BTreeSet::from([type_dog.clone()]))
+                    (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
                 ])
             };
+
             let mut tig = TypeInferenceGraph {
-                vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
-                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_right)],
+                vertices: BTreeMap::from([(var_animal, types_a.clone()), (var_name, types_n.clone())]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_right.clone())],
             };
 
             tig.run_type_inference();
-            println!("{:?}", tig);
-            // todo!("assert_eq!(expected_tig, tig)");
+
+            let expected_tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_right)],
+            };
+            assert_eq!(expected_tig, tig);
         }
-        todo!("Check the results!!!")
     }
 }

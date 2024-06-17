@@ -585,7 +585,7 @@ pub mod tests {
     use crate::pattern::constraint::Type;
     use answer::variable::Variable;
 
-    pub(crate) fn tests__new_type(var: Variable, type_: String) -> Type {
-        Type { var, type_ }
+    pub(crate) fn tests__new_type(var: Variable, type_: String) -> Type<Variable> {
+        Type::new(var, type_)
     }
 }
