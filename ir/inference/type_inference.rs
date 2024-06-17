@@ -96,6 +96,7 @@ impl TypeInferenceEdge {
     }
 
     fn populate_support(support: &mut BTreeMap<Type, usize>, reverse_annotations: &BTreeMap<Type, BTreeSet<Type>>, annotations: &BTreeMap<Type, BTreeSet<Type>>) {
+        // TODO: There is a bug because the support for the types is not correct in the final graph.
         for (_, types) in reverse_annotations {
             for type_ in types {
                 if !annotations.contains_key(&type_) {continue;} // Don't even bother inserting
@@ -238,13 +239,49 @@ pub mod tests {
 
             tig.run_type_inference();
             println!("{:?}", tig);
-            todo!();
+            // todo!("assert_eq!(expected_tig, tig)");
         }
 
+        {
+            // Case 2: $a isa animal, has cat-name $n;
+            let types_a = all_animals.clone();
+            let types_n = BTreeSet::from([type_catname.clone()]);
+            let left_right = LeftRightAnnotations {
+                left_to_right: BTreeMap::from([
+                    (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
+                    (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
+                    (type_animal.clone(), BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]))
+                ]),
+                right_to_left: BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]),
+            };
+            let mut tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_right)],
+            };
 
-        // Case 2: $a isa animal, has cat-name $n;
+            tig.run_type_inference();
+            println!("{:?}", tig);
+            // todo!("assert_eq!(expected_tig, tig)");
+        }
 
-        // Case 3: $a isa cat, has dog-name $n;
+        {
+            // Case 3: $a isa cat, has dog-name $n;
+            let types_a = BTreeSet::from([type_cat.clone()]);
+            let types_n = BTreeSet::from([type_dogname.clone()]);
+            let left_right = LeftRightAnnotations {
+                left_to_right: BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]),
+                right_to_left: BTreeMap::from([(type_dogname.clone(), BTreeSet::from([type_dog.clone()]))]),
+            };
+            let mut tig = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_right)],
+            };
+
+            tig.run_type_inference();
+            println!("{:?}", tig);
+            todo!("assert_eq!(expected_tig, tig)");
+        }
+        todo!("The three TODOs")
     }
 
 }
