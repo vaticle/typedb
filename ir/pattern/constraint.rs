@@ -579,7 +579,6 @@ impl<ID: IrID> Display for Comparison<ID> {
     }
 }
 
-
 #[cfg(test)]
 pub mod tests {
     use crate::pattern::constraint::Type;
