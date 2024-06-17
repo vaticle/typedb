@@ -578,3 +578,14 @@ impl<ID: IrID> Display for Comparison<ID> {
         todo!()
     }
 }
+
+
+#[cfg(test)]
+pub mod tests {
+    use crate::pattern::constraint::Type;
+    use crate::pattern::variable::Variable;
+
+    pub(crate) fn tests__new_type(var: Variable, type_: String) -> Type {
+        Type { var, type_ }
+    }
+}
