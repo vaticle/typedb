@@ -82,19 +82,23 @@ impl TypeInferenceEdge {
 
     // Construction
     fn new(left: Variable, right: Variable, left_right_annotations: LeftRightAnnotations) -> TypeInferenceEdge {
-        // (Assuming) the binary constraints were built based on the unary constraints of the variable on the same-side,
-        // We must construct the support set in a way that left_to_right and right_to_left are made consistent.
+        // The constructed support sets must be consistent with each other. i.e.
+        //      left_support.keys() == left_to_right.keys() == flatten(right_to_left.values()) AND
+        //      right_support.keys() == right_to_left.keys() == flatten(left_to_right.values())
         // This is a pre-condition to the type-inference loop.
         let mut left_support: BTreeMap<Type, usize> = BTreeMap::new();
+        Self::populate_support(&mut left_support, &left_right_annotations.right_to_left, &left_right_annotations.left_to_right);
+
         let mut right_support: BTreeMap<Type, usize> = BTreeMap::new();
-        Self::populate_support(&mut right_support, &left_right_annotations.left_to_right);
-        Self::populate_support(&mut left_support, &left_right_annotations.right_to_left);
+        Self::populate_support(&mut right_support, &left_right_annotations.left_to_right, &left_right_annotations.right_to_left);
+
         TypeInferenceEdge { left, right, left_support, right_support, left_right_annotations }
     }
 
-    fn populate_support(support: &mut BTreeMap<Type, usize>, reverse_annotations: &BTreeMap<Type, BTreeSet<Type>>) {
+    fn populate_support(support: &mut BTreeMap<Type, usize>, reverse_annotations: &BTreeMap<Type, BTreeSet<Type>>, annotations: &BTreeMap<Type, BTreeSet<Type>>) {
         for (_, types) in reverse_annotations {
             for type_ in types {
+                if !annotations.contains_key(&type_) {continue;} // Don't even bother inserting
                 if !support.contains_key(&type_) {
                     support.insert(type_.clone(), 0);
                 }
@@ -116,6 +120,7 @@ impl TypeInferenceEdge {
     }
 
     fn remove_type_and_decrement_support(type_: Type, remove_from_side: &mut BTreeMap<Type, usize>, propagate_to_side: &mut BTreeMap<Type, usize>, annotations: &BTreeMap<Type, BTreeSet<Type>>) {
+        println!("Remove {:?} \n\tfrom {:?} \n\tand {:?}", type_, remove_from_side, annotations);
         debug_assert!(remove_from_side.contains_key(&type_) && annotations.contains_key(&type_));
         remove_from_side.remove(&type_);
         for other_type in annotations.get(&type_).unwrap() {
@@ -149,13 +154,17 @@ impl TypeInferenceGraph {
             {
                 let left_vertices = self.vertices.get_mut(&edge.left).unwrap();
                 // let prune_left: Vec<Type> = (edge.left_support.keys() - left_vertices);
-                let prune_left: Vec<Type> = edge.left_support.iter().filter_map(|(k, _)| { left_vertices.get(k).cloned() }).collect();
+                let prune_left: Vec<Type> = edge.left_support.iter().filter_map(|(k, _)| {
+                    if left_vertices.contains(k) { None } else { Some(k.clone()) }
+                }).collect();
                 prune_left.into_iter().for_each(|type_| { edge.remove_type(edge.left, type_) });
             }
             {
                 let right_vertices = self.vertices.get_mut(&edge.right).unwrap();
                 // let prune_right: Vec<Type> = (edge.right_support.keys() - right_vertices);
-                let prune_right: Vec<Type> = edge.right_support.iter().filter_map(|(k, _)| { right_vertices.get(k).cloned() }).collect();
+                let prune_right: Vec<Type> = edge.right_support.iter().filter_map(|(k, _)| {
+                    if right_vertices.contains(k) { None } else { Some(k.clone()) }
+                }).collect();
                 prune_right.into_iter().for_each(|type_| { edge.remove_type(edge.right, type_) })
             }
         }
@@ -216,7 +225,11 @@ pub mod tests {
             let types_n = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
             let left_right = LeftRightAnnotations {
                 left_to_right: BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]),
-                right_to_left: BTreeMap::from([(type_name.clone(), all_animals.clone())])
+                right_to_left: BTreeMap::from([
+                    (type_name.clone(), all_animals.clone()),
+                    (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
+                    (type_dogname.clone(), BTreeSet::from([type_dog.clone()]))
+                ])
             };
             let mut tig = TypeInferenceGraph {
                 vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
@@ -224,7 +237,7 @@ pub mod tests {
             };
 
             tig.run_type_inference();
-            println!("{:#?}", tig);
+            println!("{:?}", tig);
             todo!();
         }
 
@@ -232,8 +245,6 @@ pub mod tests {
         // Case 2: $a isa animal, has cat-name $n;
 
         // Case 3: $a isa cat, has dog-name $n;
-
-
     }
 
 }
