@@ -6,10 +6,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::inference::type_inference::VertexConstraints;
-use crate::pattern::constraint::Type;
-use crate::pattern::variable::Variable;
-
+use crate::{
+    inference::type_inference::VertexConstraints,
+    pattern::{constraint::Type, variable::Variable},
+};
 
 // TODO: Resolve questions in the comment below & delete
 /*
@@ -126,7 +126,6 @@ impl TypeInferenceEdge {
         remove_key: &mut BTreeMap<Type, BTreeSet<Type>>,
         remove_values: &mut BTreeMap<Type, BTreeSet<Type>>,
     ) {
-        println!("Remove {:?} \n\tfrom keys of {:?} \n\tand values of {:?}", type_, remove_key, remove_values);
         for other_type in remove_key.get(&type_).unwrap() {
             let remaining_size = Self::remove_from_value_set(remove_values, other_type, type_);
             if 0 == remaining_size {

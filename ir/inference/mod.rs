@@ -58,6 +58,6 @@ On error, show the inferred types for variables (in minimal original query forma
 In the order that are connected to the variable.
  */
 
+mod pattern_type_inference;
 mod type_inference;
 mod value_type_inference;
-mod pattern_type_inference;

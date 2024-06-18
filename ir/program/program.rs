@@ -36,6 +36,10 @@ impl Program {
         let mut variables = context.get_variables();
         variables.all(|var| context.get_variable_category(var).is_some())
     }
+
+    pub(crate) fn functions(&self) -> &HashMap<DefinitionKey<'static>, FunctionIR> {
+        &self.functions
+    }
 }
 
 impl FunctionalBlock for Program {
