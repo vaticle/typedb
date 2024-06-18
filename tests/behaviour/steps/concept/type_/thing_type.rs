@@ -59,18 +59,18 @@ pub(super) fn get_as_object_type(context: &mut Context, kind: Kind, label: &Labe
 }
 
 #[apply(generic_step)]
-#[step(expr = "create {root_label} type: {type_label}")]
-pub async fn type_create(context: &mut Context, root_label: RootLabel, type_label: Label) {
+#[step(expr = "create {root_label} type: {type_label}{may_error}")]
+pub async fn type_create(context: &mut Context, root_label: RootLabel, type_label: Label, may_error: MayError) {
     with_schema_tx!(context, |tx| {
         match root_label.to_typedb() {
             Kind::Entity => {
-                tx.type_manager.create_entity_type(&mut tx.snapshot, &type_label.to_typedb(), false).unwrap();
+                may_error.check(&tx.type_manager.create_entity_type(&mut tx.snapshot, &type_label.to_typedb(), false));
             }
             Kind::Relation => {
-                tx.type_manager.create_relation_type(&mut tx.snapshot, &type_label.to_typedb(), false).unwrap();
+                may_error.check(&tx.type_manager.create_relation_type(&mut tx.snapshot, &type_label.to_typedb(), false));
             }
             Kind::Attribute => {
-                tx.type_manager.create_attribute_type(&mut tx.snapshot, &type_label.to_typedb(), false).unwrap();
+                may_error.check(&tx.type_manager.create_attribute_type(&mut tx.snapshot, &type_label.to_typedb(), false));
             }
             Kind::Role => unreachable!(),
         }
@@ -87,6 +87,7 @@ pub async fn type_delete(context: &mut Context, root_label: RootLabel, type_labe
         });
     });
 }
+
 //
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) {exists_or_doesnt}")]
@@ -124,6 +125,17 @@ pub async fn type_set_label(context: &mut Context, root_label: RootLabel, type_l
 }
 
 #[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get name: {type_label}")]
+pub async fn type_get_name(context: &mut Context, root_label: RootLabel, type_label: Label, expected: Label) {
+    with_read_tx!(context, |tx| {
+        with_type!(tx, root_label, type_label, type_, {
+            let actual_label = type_.get_label(&tx.snapshot, &tx.type_manager);
+            assert_eq!(expected.to_typedb().name(), actual_label.unwrap().name());
+        });
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get label: {type_label}")]
 pub async fn type_get_label(context: &mut Context, root_label: RootLabel, type_label: Label, expected: Label) {
     with_read_tx!(context, |tx| {
@@ -146,6 +158,23 @@ pub async fn type_set_annotation(
     with_write_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
             let res = type_.set_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+            may_error.check(&res);
+        });
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) unset annotation: {annotation}{may_error}")]
+pub async fn type_unset_annotation(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    annotation: Annotation,
+    may_error: MayError,
+) {
+    with_write_tx!(context, |tx| {
+        with_type!(tx, root_label, type_label, type_, {
+            let res = type_.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
             may_error.check(&res);
         });
     });
@@ -341,7 +370,9 @@ pub async fn unset_plays_role(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get plays role: {type_label}; set override: {type_label}{may_error}")]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays role: {type_label}; set override: {type_label}{may_error}"
+)]
 pub async fn get_plays_set_override(
     context: &mut Context,
     root_label: RootLabel,

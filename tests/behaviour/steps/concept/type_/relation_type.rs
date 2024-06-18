@@ -14,6 +14,7 @@ use crate::{
     transaction_context::{with_read_tx, with_schema_tx},
     util, Context,
 };
+use crate::params::MayError;
 
 #[apply(generic_step)]
 #[step(expr = r"relation\({type_label}\) create role: {type_label}{may_error}")]
@@ -363,12 +364,13 @@ pub async fn get_overridden_role_label(
 }
 
 #[apply(generic_step)]
-#[step(expr = r"relation\({type_label}\) get role\({type_label}\) set annotation: {annotation}")]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) set annotation: {annotation}{may_error}")]
 pub async fn relation_role_set_annotation(
     context: &mut Context,
     relation_label: params::Label,
     role_label: params::Label,
     annotation: params::Annotation,
+    may_error: MayError,
 ) {
     with_schema_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.to_typedb()).unwrap().unwrap();
@@ -378,7 +380,30 @@ pub async fn relation_role_set_annotation(
             .unwrap()
             .unwrap()
             .role();
-        role.set_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into()).unwrap();
+        let res = role.set_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) unset annotation: {annotation}{may_error}")]
+pub async fn relation_role_unset_annotation(
+    context: &mut Context,
+    relation_label: params::Label,
+    role_label: params::Label,
+    annotation: params::Annotation,
+    may_error: MayError,
+) {
+    with_schema_tx!(context, |tx| {
+        let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.to_typedb()).unwrap().unwrap();
+        let role = tx
+            .type_manager
+            .resolve_relates(&tx.snapshot, relation, role_label.to_typedb().name().as_str())
+            .unwrap()
+            .unwrap()
+            .role();
+        let res = role.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        may_error.check(&res);
     });
 }
 

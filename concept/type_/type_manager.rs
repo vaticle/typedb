@@ -1216,7 +1216,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationAbstract>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationAbstract>(snapshot, type_)
     }
@@ -1226,7 +1226,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationDistinct>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationDistinct>(snapshot, type_)
     }
@@ -1236,7 +1236,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationIndependent>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationIndependent>(snapshot, type_)
     }
@@ -1251,7 +1251,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationCardinality>(snapshot, type_, Some(annotation))
     }
 
-    pub(crate) fn delete_annotation_cardinality(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_cardinality(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
         TypeWriter::storage_delete_type_vertex_property::<AnnotationCardinality>(snapshot, type_)
     }
 
@@ -1264,7 +1264,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex))
     }
 
-    pub(crate) fn delete_annotation_regex(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_regex(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
         // TODO debug assert that stored regex matches
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationRegex>(snapshot, type_)

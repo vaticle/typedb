@@ -117,6 +117,26 @@ pub async fn get_owns_set_annotation(
 }
 
 #[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns: {type_label}, unset annotation: {annotation}{may_error}")]
+pub async fn get_owns_unset_annotation(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    annotation: params::Annotation,
+    may_error: params::MayError,
+) {
+    let object_type = get_as_object_type(context, root_label.to_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.to_typedb()).unwrap().unwrap();
+        let owns = object_type.get_owns_attribute(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        let res = owns.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
 #[step(
     expr = "{root_label}\\({type_label}\\) get owns: {type_label}; get annotations {contains_or_doesnt}: {annotation}"
 )]

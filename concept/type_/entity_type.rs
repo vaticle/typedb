@@ -199,17 +199,18 @@ impl<'a> EntityType<'a> {
         Ok(())
     }
 
-    fn delete_annotation<Snapshot: WritableSnapshot>(
+    pub fn unset_annotation<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         annotation: EntityTypeAnnotation,
-    ) {
+    ) -> Result<(), ConceptWriteError> {
         match annotation {
             EntityTypeAnnotation::Abstract(_) => {
-                type_manager.delete_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())
             }
         }
+        Ok(()) // TODO
     }
 
     pub fn into_owned(self) -> EntityType<'static> {
