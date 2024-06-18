@@ -48,6 +48,22 @@ pub async fn attribute_type_get_value_type(
 }
 
 #[apply(generic_step)]
+#[step(expr = "attribute\\({type_label}\\) get value type is null")]
+pub async fn attribute_type_get_value_type_is_null(
+    context: &mut Context,
+    type_label: params::Label,
+) {
+    with_read_tx!(context, |tx| {
+        let attribute_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+        assert_eq!(
+            None,
+            attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap()
+        );
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "attribute\\({type_label}\\) get owners {contains_or_doesnt}:")]
 pub async fn get_owners_contain(
     context: &mut Context,

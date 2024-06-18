@@ -200,6 +200,24 @@ pub async fn type_annotations_contain(
     });
 }
 
+// TODO: {empty_or_not}
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get annotations is empty")]
+pub async fn type_annotations_contain(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+) {
+    with_read_tx!(context, |tx| {
+        with_type!(tx, root_label, type_label, type_, {
+            let actual_is_empty = type_
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap().is_empty();
+            assert_eq!(true, actual_is_empty);
+        });
+    });
+}
+
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) set supertype: {type_label}{may_error}")]
 pub async fn type_set_supertype(

@@ -242,7 +242,7 @@ impl FromStr for ObjectRootLabel {
 }
 
 #[derive(Debug, Parameter)]
-#[param(name = "value_type", regex = "(boolean|long|double|datetime(?:tz)?|duration|string)")]
+#[param(name = "value_type", regex = "(boolean|long|double|decimal|datetime(?:tz)?|duration|string)")]
 pub(crate) enum ValueType {
     Boolean,
     Long,

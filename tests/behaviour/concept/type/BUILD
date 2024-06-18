@@ -35,6 +35,26 @@ rust_test(
     data = ["@vaticle_typedb_behaviour//concept/type:relationtype.feature"],
 )
 
+rust_test(
+    name = "plays",
+    srcs = ["plays.rs"],
+    deps = [
+        "//tests/behaviour/steps:steps",
+        "@crates//:tokio",
+    ],
+    data = ["@vaticle_typedb_behaviour//concept/type:plays.feature"],
+)
+
+rust_test(
+    name = "owns",
+    srcs = ["owns.rs"],
+    deps = [
+        "//tests/behaviour/steps:steps",
+        "@crates//:tokio",
+    ],
+    data = ["@vaticle_typedb_behaviour//concept/type:owns.feature"],
+)
+
 checkstyle_test(
     name = "checkstyle",
     include = glob(["*"]),

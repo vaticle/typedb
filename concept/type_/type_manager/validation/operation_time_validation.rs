@@ -121,8 +121,8 @@ impl OperationTimeValidation {
         supertype_value_type: Option<ValueType>,
     ) -> Result<(), SchemaValidationError> {
         let is_compatible = match (&subtype_value_type, &supertype_value_type) {
-            (None, None) => true,
-            (Some(_), None) | (None, Some(_)) => false,
+            ((None, None) | (Some(_), None)) => true,
+            (None, Some(_)) => false,
             (Some(sub), Some(sup)) => sup == sub,
         };
         if is_compatible {

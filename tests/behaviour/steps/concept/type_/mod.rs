@@ -8,3 +8,4 @@ pub mod attribute_type;
 mod owns;
 mod relation_type;
 mod thing_type;
+mod struct_type;

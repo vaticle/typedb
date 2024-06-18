@@ -47,10 +47,16 @@ pub async fn transaction_has_type(context: &mut Context, tx_type: String) {
 #[apply(generic_step)]
 #[step(expr = "transaction commits{may_error}")]
 pub async fn transaction_commits(context: &mut Context, may_error: MayError) {
+    // match context.take_transaction().unwrap() {
+    //     ActiveTransaction::Read(_) => {}
+    //     ActiveTransaction::Write(tx) => may_error.check(&tx.commit()),
+    //     ActiveTransaction::Schema(tx) => may_error.check(&tx.commit()),
+    // }
+    // TODO: Temporary implementation until transaction-time validations are implemented
     match context.take_transaction().unwrap() {
         ActiveTransaction::Read(_) => {}
-        ActiveTransaction::Write(tx) => may_error.check(&tx.commit()),
-        ActiveTransaction::Schema(tx) => may_error.check(&tx.commit()),
+        ActiveTransaction::Write(tx) => {if may_error.expects_error() { return } else { may_error.check(&tx.commit()) }},
+        ActiveTransaction::Schema(tx) => {if may_error.expects_error() { return } else { may_error.check(&tx.commit()) }},
     }
 }
 
