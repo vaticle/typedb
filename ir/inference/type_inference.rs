@@ -84,9 +84,9 @@ impl TypeInferenceEdge {
         initial_left_to_right: BTreeMap<Type, BTreeSet<Type>>,
         initial_right_to_left: BTreeMap<Type, BTreeSet<Type>>,
     ) -> TypeInferenceEdge {
-        // The constructed support sets must be consistent with each other. i.e.
-        //      left_support.keys() == left_to_right.keys() == flatten(right_to_left.values()) AND
-        //      right_support.keys() == right_to_left.keys() == flatten(left_to_right.values())
+        // The final left_to_right & right_to_left sets must be consistent with each other. i.e.
+        //      left_to_right.keys() == union(right_to_left.values()) AND
+        //      right_to_left.keys() == union(left_to_right.values())
         // This is a pre-condition to the type-inference loop.
         let mut left_to_right = initial_left_to_right;
         let mut right_to_left = initial_right_to_left;
@@ -177,7 +177,6 @@ impl TypeInferenceEdge {
     fn prune_self_from_vertices(&mut self, vertices: &BTreeMap<Variable, BTreeSet<Type>>) {
         {
             let left_vertices = vertices.get(&self.left).unwrap();
-            // let prune_left: Vec<Type> = (self.left_support.keys() - left_vertices);
             let prune_left: Vec<Type> = self
                 .left_to_right
                 .iter()
@@ -187,7 +186,6 @@ impl TypeInferenceEdge {
         };
         {
             let right_vertices = vertices.get(&self.right).unwrap();
-            // let prune_right: Vec<Type> = (self.right_support.keys() - right_vertices);
             let prune_right: Vec<Type> = self
                 .right_to_left
                 .iter()
@@ -204,12 +202,25 @@ pub struct NestedTypeInferenceGraph {
 }
 
 impl NestedTypeInferenceGraph {
-    fn prune_self_from_vertices(&mut self, vertices: &BTreeMap<Variable, BTreeSet<Type>>) {
-        todo!()
+    fn prune_self_from_vertices(&mut self, parent_vertices: &BTreeMap<Variable, BTreeSet<Type>>) {
+        for (vertex, vertex_types) in &mut self.nested_graph.vertices {
+            if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
+                vertex_types.retain(|type_| parent_vertex_types.contains(&type_))
+            }
+        }
+        self.nested_graph.run_type_inference();
     }
 
-    fn prune_vertices_from_self(&self, vertices: &mut BTreeMap<Variable, BTreeSet<Type>>) -> bool {
-        todo!()
+    fn prune_vertices_from_self(&self, parent_vertices: &mut BTreeMap<Variable, BTreeSet<Type>>) -> bool {
+        let mut is_modified = false;
+        for (parent_vertex, parent_vertex_types) in parent_vertices {
+            if let Some(nested_vertex_types) = self.nested_graph.vertices.get(&parent_vertex) {
+                let size_before = parent_vertex_types.len();
+                parent_vertex_types.retain(|type_| nested_vertex_types.contains(&type_));
+                is_modified = is_modified || size_before != parent_vertex_types.len();
+            }
+        }
+        is_modified
     }
 }
 
