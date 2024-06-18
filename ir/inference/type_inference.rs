@@ -267,7 +267,7 @@ pub mod tests {
             let types_n = all_names.clone();
             let left_to_right = BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]);
             let right_to_left = BTreeMap::from([
-                (type_name.clone(), all_animals.clone()),
+                (type_name.clone(), BTreeSet::from([type_animal.clone()])),
                 (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
                 (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
             ]);
@@ -304,7 +304,7 @@ pub mod tests {
             let types_n = BTreeSet::from([type_catname.clone()]);
 
             let left_to_right = BTreeMap::from([
-                (type_animal.clone(), all_names.clone()),
+                (type_animal.clone(), BTreeSet::from([type_name.clone()])),
                 (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                 (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
             ]);
@@ -364,12 +364,12 @@ pub mod tests {
             let types_n = all_names.clone();
 
             let left_to_right = BTreeMap::from([
-                (type_animal.clone(), all_names.clone()),
+                (type_animal.clone(), BTreeSet::from([type_name.clone()])),
                 (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                 (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
             ]);
             let right_to_left = BTreeMap::from([
-                (type_name.clone(), all_animals.clone()),
+                (type_name.clone(), BTreeSet::from([type_animal.clone()])),
                 (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
                 (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
             ]);
@@ -424,12 +424,12 @@ pub mod tests {
             };
 
             let left_to_right = BTreeMap::from([
-                (type_animal.clone(), all_names.clone()),
+                (type_animal.clone(), BTreeSet::from([type_name.clone()])),
                 (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                 (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
             ]);
             let right_to_left = BTreeMap::from([
-                (type_name.clone(), all_animals.clone()),
+                (type_name.clone(), BTreeSet::from([type_animal.clone()])),
                 (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
                 (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
             ]);
