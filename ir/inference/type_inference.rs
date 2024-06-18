@@ -32,7 +32,7 @@ pub fn infer_types(program: &Program) {
     todo!()
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeInferenceGraph {
     vertices: BTreeMap<Variable, BTreeSet<Type>>,
     edges: Vec<TypeInferenceEdge>,
@@ -68,7 +68,7 @@ impl TypeInferenceGraph {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeInferenceEdge {
     left: Variable,
     right: Variable,
@@ -159,19 +159,20 @@ impl TypeInferenceEdge {
 
     // prune_vertices
     fn prune_vertices_from_self(&self, vertices: &mut BTreeMap<Variable, BTreeSet<Type>>) -> bool {
-        let first_modified = {
+        let mut is_modified = false;
+         {
             let left_vertices = vertices.get_mut(&self.left).unwrap();
             let size_before = left_vertices.len();
             left_vertices.retain(|k| self.left_to_right.contains_key(k));
-            size_before != left_vertices.len()
+            is_modified = is_modified || size_before != left_vertices.len();
         };
-        let second_modified = {
+        {
             let right_vertices = vertices.get_mut(&self.right).unwrap();
             let size_before = right_vertices.len();
             right_vertices.retain(|k| self.right_to_left.contains_key(k));
-            size_before != right_vertices.len()
+            is_modified = is_modified || size_before != right_vertices.len();
         };
-        first_modified || second_modified
+        is_modified
     }
 
     fn prune_self_from_vertices(&mut self, vertices: &BTreeMap<Variable, BTreeSet<Type>>) {
@@ -196,29 +197,35 @@ impl TypeInferenceEdge {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedTypeInferenceGraph {
-    nested_graph: TypeInferenceGraph,
+    nested_graph_disjunction: Vec<TypeInferenceGraph>,
 }
 
 impl NestedTypeInferenceGraph {
     fn prune_self_from_vertices(&mut self, parent_vertices: &BTreeMap<Variable, BTreeSet<Type>>) {
-        for (vertex, vertex_types) in &mut self.nested_graph.vertices {
-            if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
-                vertex_types.retain(|type_| parent_vertex_types.contains(&type_))
+        for nested_graph in &mut self.nested_graph_disjunction {
+            for (vertex, vertex_types) in &mut nested_graph.vertices {
+                if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
+                    vertex_types.retain(|type_| parent_vertex_types.contains(&type_))
+                }
             }
+            nested_graph.run_type_inference();
         }
-        self.nested_graph.run_type_inference();
     }
 
     fn prune_vertices_from_self(&self, parent_vertices: &mut BTreeMap<Variable, BTreeSet<Type>>) -> bool {
         let mut is_modified = false;
         for (parent_vertex, parent_vertex_types) in parent_vertices {
-            if let Some(nested_vertex_types) = self.nested_graph.vertices.get(&parent_vertex) {
-                let size_before = parent_vertex_types.len();
-                parent_vertex_types.retain(|type_| nested_vertex_types.contains(&type_));
-                is_modified = is_modified || size_before != parent_vertex_types.len();
-            }
+            let size_before = parent_vertex_types.len();
+            parent_vertex_types.retain(|type_| {
+                self.nested_graph_disjunction.iter().any(|nested_graph| {
+                    nested_graph.vertices.get(&parent_vertex)
+                        .map(|nested_types| nested_types.contains(&type_))
+                        .unwrap_or(true)
+                })
+            });
+            is_modified = is_modified || size_before != parent_vertex_types.len();
         }
         is_modified
     }
@@ -232,9 +239,10 @@ pub mod tests {
     use crate::{
         inference::type_inference::{TypeInferenceEdge, TypeInferenceGraph},
     };
+    use crate::inference::type_inference::NestedTypeInferenceGraph;
 
     #[test]
-    fn basic() {
+    fn basic_binary_edges() {
         // dog sub animal, owns dog-name; cat sub animal owns cat-name;
         // cat-name sub animal-name; dog-name sub animal-name;
 
@@ -380,6 +388,77 @@ pub mod tests {
                 nested_graphs: vec![],
             };
             assert_eq!(expected_tig, tig);
+        }
+    }
+
+    #[test]
+    fn basic_nested_graphs() {
+
+        // dog sub animal, owns dog-name; cat sub animal owns cat-name;
+        // cat-name sub animal-name; dog-name sub animal-name;
+
+        // Some version of `$a isa animal, has name $n;`
+        let var_animal = Variable::new(0);
+        let var_name = Variable::new(1);
+
+        let type_animal = tests__new_type(var_animal, "animal".to_owned());
+        let type_cat = tests__new_type(var_animal, "cat".to_owned());
+        let type_dog = tests__new_type(var_animal, "dog".to_owned());
+
+        let type_name = tests__new_type(var_name, "name".to_owned());
+        let type_catname = tests__new_type(var_name, "cat-name".to_owned());
+        let type_dogname = tests__new_type(var_name, "dog-name".to_owned());
+
+        let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
+        let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+
+        {
+            // Case 1: {$a isa cat;} or {$a isa dog;} $a has animal-name $n;
+            let branch_1_graph = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()]))]),
+                edges: vec![], nested_graphs: vec![],
+            };
+            let branch_2_graph = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_dog.clone()]))]),
+                edges: vec![], nested_graphs: vec![],
+            };
+
+            let left_to_right = BTreeMap::from([
+                (type_animal.clone(), all_names.clone()),
+                (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
+                (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
+            ]);
+            let right_to_left = BTreeMap::from([
+                (type_name.clone(), all_animals.clone()),
+                (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
+                (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
+            ]);
+            let mut top_level_graph = TypeInferenceGraph {
+                vertices: BTreeMap::from([(var_animal, all_animals.clone()), (var_name, all_names.clone())]),
+                edges: vec![ TypeInferenceEdge::new(var_animal, var_name, left_to_right, right_to_left) ],
+                nested_graphs: vec![NestedTypeInferenceGraph { nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()] } ],
+            };
+            top_level_graph.run_type_inference();
+
+
+
+            let expected_left_to_right = BTreeMap::from([
+                (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
+                (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
+            ]);
+            let expected_right_to_left = BTreeMap::from([
+                (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
+                (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
+            ]);
+            let expected_graph = TypeInferenceGraph {
+                vertices: BTreeMap::from([
+                    (var_animal, BTreeSet::from([type_cat.clone(), type_dog.clone()])),
+                    (var_name, BTreeSet::from([type_catname.clone(), type_dogname.clone()])),
+                ]),
+                edges: vec![ TypeInferenceEdge::new(var_animal, var_name, expected_left_to_right, expected_right_to_left)],
+                nested_graphs: vec![NestedTypeInferenceGraph { nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()] } ],
+            };
+            assert_eq!(expected_graph, top_level_graph);
         }
     }
 }
