@@ -9,7 +9,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use answer::{variable::Variable, Type};
 use encoding::graph::definition::definition_key::DefinitionKey;
 
-use crate::{pattern::constraint::Constraint, program::program::Program};
+use crate::{
+    pattern::{
+        constraint::{Constraint, Type},
+    },
+    program::{program::Program, FunctionalBlock},
+};
 
 /*
 Design:
@@ -25,12 +30,19 @@ Note: On function call boundaries, can assume the current set of schema types pe
       However, we should then recurse into the sub-function IRs and tighten their input/output types based on their type inference.
 
  */
+//
+// pub fn infer_types(program: &Program) {
+//     let mut entry_type_annotations = TypeAnnotations::new();
+//     let mut function_type_annotations: HashMap<DefinitionKey<'static>, TypeAnnotations> = HashMap::new();
+//     todo!()
+// }
 
-pub fn infer_types(program: &Program) {
-    // let mut entry_type_annotations = TypeAnnotations::new();
-    // let mut function_type_annotations: HashMap<DefinitionKey<'static>, TypeAnnotations> = HashMap::new();
-    todo!()
-}
+// TODO: Resolve questions in the comment below & delete
+/*
+The basic algorithm for a single pattern (with nested disjunctions, e.g.) is implemented below.
+We can model a function as a set of unary (i.e. BTreeMap<Variable, BTreeSet<Type>>) constraints
+    determined from the declared types, or by doing type-inference on it in isolation.
+*/
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeInferenceGraph {
