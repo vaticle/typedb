@@ -160,7 +160,7 @@ impl TypeInferenceEdge {
     // prune_vertices
     fn prune_vertices_from_self(&self, vertices: &mut BTreeMap<Variable, BTreeSet<Type>>) -> bool {
         let mut is_modified = false;
-         {
+        {
             let left_vertices = vertices.get_mut(&self.left).unwrap();
             let size_before = left_vertices.len();
             left_vertices.retain(|k| self.left_to_right.contains_key(k));
@@ -220,7 +220,9 @@ impl NestedTypeInferenceGraph {
             let size_before = parent_vertex_types.len();
             parent_vertex_types.retain(|type_| {
                 self.nested_graph_disjunction.iter().any(|nested_graph| {
-                    nested_graph.vertices.get(&parent_vertex)
+                    nested_graph
+                        .vertices
+                        .get(&parent_vertex)
                         .map(|nested_types| nested_types.contains(&type_))
                         .unwrap_or(true)
                 })
@@ -239,7 +241,6 @@ pub mod tests {
     use crate::{
         inference::type_inference::{TypeInferenceEdge, TypeInferenceGraph},
     };
-    use crate::inference::type_inference::NestedTypeInferenceGraph;
 
     #[test]
     fn basic_binary_edges() {
@@ -393,7 +394,6 @@ pub mod tests {
 
     #[test]
     fn basic_nested_graphs() {
-
         // dog sub animal, owns dog-name; cat sub animal owns cat-name;
         // cat-name sub animal-name; dog-name sub animal-name;
 
@@ -416,11 +416,13 @@ pub mod tests {
             // Case 1: {$a isa cat;} or {$a isa dog;} $a has animal-name $n;
             let branch_1_graph = TypeInferenceGraph {
                 vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()]))]),
-                edges: vec![], nested_graphs: vec![],
+                edges: vec![],
+                nested_graphs: vec![],
             };
             let branch_2_graph = TypeInferenceGraph {
                 vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_dog.clone()]))]),
-                edges: vec![], nested_graphs: vec![],
+                edges: vec![],
+                nested_graphs: vec![],
             };
 
             let left_to_right = BTreeMap::from([
@@ -435,12 +437,12 @@ pub mod tests {
             ]);
             let mut top_level_graph = TypeInferenceGraph {
                 vertices: BTreeMap::from([(var_animal, all_animals.clone()), (var_name, all_names.clone())]),
-                edges: vec![ TypeInferenceEdge::new(var_animal, var_name, left_to_right, right_to_left) ],
-                nested_graphs: vec![NestedTypeInferenceGraph { nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()] } ],
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_to_right, right_to_left)],
+                nested_graphs: vec![NestedTypeInferenceGraph {
+                    nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()],
+                }],
             };
             top_level_graph.run_type_inference();
-
-
 
             let expected_left_to_right = BTreeMap::from([
                 (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
@@ -455,8 +457,15 @@ pub mod tests {
                     (var_animal, BTreeSet::from([type_cat.clone(), type_dog.clone()])),
                     (var_name, BTreeSet::from([type_catname.clone(), type_dogname.clone()])),
                 ]),
-                edges: vec![ TypeInferenceEdge::new(var_animal, var_name, expected_left_to_right, expected_right_to_left)],
-                nested_graphs: vec![NestedTypeInferenceGraph { nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()] } ],
+                edges: vec![TypeInferenceEdge::new(
+                    var_animal,
+                    var_name,
+                    expected_left_to_right,
+                    expected_right_to_left,
+                )],
+                nested_graphs: vec![NestedTypeInferenceGraph {
+                    nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()],
+                }],
             };
             assert_eq!(expected_graph, top_level_graph);
         }
