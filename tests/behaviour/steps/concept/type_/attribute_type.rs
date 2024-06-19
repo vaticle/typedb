@@ -48,7 +48,7 @@ pub async fn attribute_type_get_value_type(
 }
 
 #[apply(generic_step)]
-#[step(expr = "attribute\\({type_label}\\) get value type is null")]
+#[step(expr = "attribute\\({type_label}\\) get value type is none")]
 pub async fn attribute_type_get_value_type_is_null(
     context: &mut Context,
     type_label: params::Label,

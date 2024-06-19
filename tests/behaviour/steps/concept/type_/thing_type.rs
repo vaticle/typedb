@@ -182,7 +182,7 @@ pub async fn type_unset_annotation(
 
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}")]
-pub async fn type_annotations_contain(
+pub async fn type_get_annotations_contain(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
@@ -203,7 +203,7 @@ pub async fn type_annotations_contain(
 // TODO: {empty_or_not}
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get annotations is empty")]
-pub async fn type_annotations_contain(
+pub async fn type_get_annotations_is_empty(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,

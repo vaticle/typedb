@@ -323,7 +323,7 @@ impl FromStr for Value {
 }
 
 #[derive(Debug, Parameter)]
-#[param(name = "annotation", regex = r"@[a-z]+(?:\([^)]+\))?")]
+#[param(name = "annotation", regex = r"@[a-z]+(?:\(.+\))?")]
 pub(crate) struct Annotation {
     typedb_annotation: TypeDBAnnotation,
 }

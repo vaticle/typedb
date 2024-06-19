@@ -77,7 +77,7 @@ pub trait TypeAPI<'a>: ConceptAPI<'a> + TypeVertexEncoding<'a> + Sized + Clone +
     ) -> Result<MaybeOwns<'m, Label<'static>>, ConceptReadError>;
 }
 
-pub trait KindAPI<'a>: TypeAPI<'a> + PrefixedTypeVertexEncoding<'a> {
+pub trait KindAPI<'a>: TypeAPI<'a> {
     type AnnotationType: Hash + Eq + From<Annotation>;
     const ROOT_KIND: Kind;
 }

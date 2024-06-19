@@ -55,9 +55,10 @@ use crate::{
         relation_type::{RelationType, RelationTypeAnnotation},
         role_type::{RoleType, RoleTypeAnnotation},
         type_manager::type_reader::TypeReader,
-        InterfaceImplementation, KindAPI, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
+        InterfaceImplementation, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, KindAPI,
     },
 };
+use crate::type_::TypeAPI;
 
 pub mod type_cache;
 pub mod type_reader;
@@ -1025,13 +1026,14 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     }
 
     fn set_supertype<K>(&self, snapshot: &mut Snapshot, subtype: K, supertype: K) -> Result<(), ConceptWriteError>
-    where
-        K: KindAPI<'static>,
+        where
+            K: KindAPI<'static>,
     {
         debug_assert! {
-            OperationTimeValidation::validate_type_exists(snapshot, subtype.clone()).is_ok()  &&
-            OperationTimeValidation::validate_type_exists(snapshot, supertype.clone()).is_ok()
+            OperationTimeValidation::validate_type_exists(snapshot, subtype.clone()).is_ok() &&
+                OperationTimeValidation::validate_type_exists(snapshot, supertype.clone()).is_ok()
         };
+
         // TODO: Validation. This may have to split per type.
         OperationTimeValidation::validate_sub_does_not_create_cycle(snapshot, subtype.clone(), supertype.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
@@ -1051,7 +1053,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
             TypeReader::get_value_type(snapshot, subtype.clone())?,
             TypeReader::get_value_type(snapshot, supertype.clone())?,
         )
-        .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         OperationTimeValidation::validate_type_is_abstract(snapshot, supertype.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1167,7 +1169,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
             ObjectType::new(player.clone().into_vertex()),
             role.clone(),
         )
-        .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         let plays = Plays::new(ObjectType::new(player.into_vertex()), role);
         TypeWriter::storage_delete_interface_impl(snapshot, plays);
@@ -1211,32 +1213,43 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property(snapshot, role, Some(ordering))
     }
 
-    pub(crate) fn set_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn set_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationAbstract>(snapshot, type_, None)
     }
 
-    pub(crate) fn unset_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
-        // TODO: Validation
+    pub(crate) fn unset_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         TypeWriter::storage_delete_type_vertex_property::<AnnotationAbstract>(snapshot, type_)
     }
 
-    pub(crate) fn set_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_attribute_type_annotation_abstract(
+        &self,
+        snapshot: &mut Snapshot,
+        type_: impl KindAPI<'static>)
+        -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_no_subtypes(snapshot, type_.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        Self::unset_annotation_abstract(self, snapshot, type_);
+        Ok(())
+    }
+
+    pub(crate) fn set_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationDistinct>(snapshot, type_, None)
     }
 
-    pub(crate) fn unset_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationDistinct>(snapshot, type_)
     }
 
-    pub(crate) fn set_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn set_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationIndependent>(snapshot, type_, None)
     }
 
-    pub(crate) fn unset_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationIndependent>(snapshot, type_)
     }
@@ -1244,27 +1257,32 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn set_annotation_cardinality(
         &self,
         snapshot: &mut Snapshot,
-        type_: impl TypeAPI<'static>,
+        type_: impl KindAPI<'static>,
         annotation: AnnotationCardinality,
     ) {
         // TODO: Validation
-        TypeWriter::storage_put_type_vertex_property::<AnnotationCardinality>(snapshot, type_, Some(annotation))
+        TypeWriter::storage_insert_type_vertex_property::<AnnotationCardinality>(snapshot, type_, Some(annotation))
     }
 
-    pub(crate) fn unset_annotation_cardinality(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_cardinality(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         TypeWriter::storage_delete_type_vertex_property::<AnnotationCardinality>(snapshot, type_)
     }
 
     pub(crate) fn set_annotation_regex(
         &self,
         snapshot: &mut Snapshot,
-        type_: impl TypeAPI<'static>,
+        type_: AttributeType<'static>,
         regex: AnnotationRegex,
-    ) {
-        TypeWriter::storage_put_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex))
+    ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_annotation_regex_compatible_value_type(
+            TypeReader::get_value_type(snapshot, type_.clone())?
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        TypeWriter::storage_insert_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex));
+        Ok(())
     }
 
-    pub(crate) fn unset_annotation_regex(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn unset_annotation_regex(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) {
         // TODO debug assert that stored regex matches
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationRegex>(snapshot, type_)
@@ -1304,7 +1322,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         edge: impl TypeEdgeEncoding<'b>,
         annotation: AnnotationCardinality,
     ) {
-        TypeWriter::storage_put_type_edge_property::<AnnotationCardinality>(snapshot, edge, Some(annotation))
+        TypeWriter::storage_insert_type_edge_property::<AnnotationCardinality>(snapshot, edge, Some(annotation))
     }
 
     pub(crate) fn delete_edge_annotation_cardinality<'b>(

@@ -121,16 +121,32 @@ impl OperationTimeValidation {
         supertype_value_type: Option<ValueType>,
     ) -> Result<(), SchemaValidationError> {
         let is_compatible = match (&subtype_value_type, &supertype_value_type) {
-            ((None, None) | (Some(_), None)) => true,
-            (None, Some(_)) => false,
+            ((None, None) | (None, Some(_)) | (Some(_), None)) => true,
             (Some(sub), Some(sup)) => sup == sub,
         };
+
         if is_compatible {
             Ok(())
         } else {
             Err(SchemaValidationError::IncompatibleValueTypes(subtype_value_type, supertype_value_type))
         }
     }
+
+    pub(crate) fn validate_annotation_regex_compatible_value_type(
+        value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError> {
+        let is_compatible = match &value_type {
+            Some(ValueType::String) => true,
+            _ => false
+        };
+
+        if is_compatible {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::IncompatibleValueType(value_type))
+        }
+    }
+
     pub(crate) fn validate_type_is_abstract<T, Snapshot>(
         snapshot: &Snapshot,
         type_: T,

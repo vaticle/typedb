@@ -214,7 +214,7 @@ impl<'a> AttributeType<'a> {
                 type_manager.set_annotation_independent(snapshot, self.clone().into_owned())
             }
             AttributeTypeAnnotation::Regex(regex) => {
-                type_manager.set_annotation_regex(snapshot, self.clone().into_owned(), regex)
+                type_manager.set_annotation_regex(snapshot, self.clone().into_owned(), regex)?
             }
         };
         Ok(())
@@ -228,7 +228,7 @@ impl<'a> AttributeType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             AttributeTypeAnnotation::Abstract(_) => {
-                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_attribute_type_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Independent(_) => {
                 type_manager.unset_annotation_independent(snapshot, self.clone().into_owned())

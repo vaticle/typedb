@@ -40,11 +40,11 @@ impl SnapshotRangeIterator {
         }
 
         match self.ready_item_source? {
-            ReadyItemSource::Storage | ReadyItemSource::Both => match self.storage_iterator.peek()? {
+            ReadyItemSource::Storage => match self.storage_iterator.peek()? {
                 &Ok(ok) => Some(Ok(ok)),
                 Err(error) => Some(Err(Arc::new(SnapshotIteratorError::MVCCRead { source: error.clone() }))),
             },
-            ReadyItemSource::Buffered => self.buffered_peek(),
+            ReadyItemSource::Buffered | ReadyItemSource::Both => self.buffered_peek(),
         }
     }
 
@@ -92,7 +92,10 @@ impl SnapshotRangeIterator {
                         self.storage_iterator.next();
                         self.buffered_iterator.next();
                     } else {
-                        debug_assert_eq!(storage_value.bytes(), buffered_write.get_value().bytes());
+                        #[cfg(debug_assertions)]
+                        if let Write::Put {value, ..} = buffered_write {
+                            debug_assert_eq!(storage_value.bytes(), value.bytes());
+                        }
                         // ACCEPT both
                         self.ready_item_source = Some(ReadyItemSource::Both);
                     }
@@ -171,6 +174,7 @@ impl SnapshotRangeIterator {
         item.transpose().map(|option| option.map(|(key, value)| (key.into_owned_array(), value.into_array())))
     }
 
+    #[must_use]
     fn storage_next(
         &mut self,
     ) -> Option<Result<(StorageKey<'_, BUFFER_KEY_INLINE>, Bytes<'_, BUFFER_VALUE_INLINE>), Arc<SnapshotIteratorError>>>
@@ -188,6 +192,7 @@ impl SnapshotRangeIterator {
         }
     }
 
+    #[must_use]
     fn buffered_next(
         &mut self,
     ) -> Option<Result<(StorageKey<'_, BUFFER_KEY_INLINE>, Bytes<'_, BUFFER_VALUE_INLINE>), Arc<SnapshotIteratorError>>>
@@ -217,8 +222,8 @@ impl LendingIterator for SnapshotRangeIterator {
         }
         match self.ready_item_source.take() {
             Some(ReadyItemSource::Both) => {
-                let _ = self.buffered_next();
-                self.storage_next()
+                let _ = self.storage_next();
+                self.buffered_next()
             }
             Some(ReadyItemSource::Storage) => self.storage_next(),
             Some(ReadyItemSource::Buffered) => self.buffered_next(),

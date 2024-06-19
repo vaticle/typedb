@@ -236,10 +236,10 @@ impl<'a> RoleType<'a> {
             RoleTypeAnnotation::Abstract(_) => {
                 type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
             }
-            RoleTypeAnnotation::Distinct(_) => {
+            RoleTypeAnnotation::Distinct(_) => { // TODO: Move to relates (edge!)
                 type_manager.set_annotation_distinct(snapshot, self.clone().into_owned())
             }
-            RoleTypeAnnotation::Cardinality(cardinality) => {
+            RoleTypeAnnotation::Cardinality(cardinality) => { // TODO: Move to relates (edge!)
                 type_manager.set_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)
             }
         };
