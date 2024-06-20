@@ -84,7 +84,7 @@ async fn object_set_has_list(
     let object = context.objects[&object_var.name].as_ref().unwrap().object.to_owned();
     object_root.assert(&object.type_());
     let attribute_type = with_read_tx!(context, |tx| {
-        tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.to_typedb()).unwrap().unwrap()
+        tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap()
     });
     let attributes = attribute_vars
         .names
@@ -121,7 +121,7 @@ async fn object_get_has_list(
     object_root.assert(&object.type_());
     let attributes = with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap();
         object
             .get_has_ordered(&tx.snapshot, &tx.thing_manager, attribute_type)
             .unwrap()
@@ -171,7 +171,7 @@ async fn object_get_has_type(
     let attribute = context.attributes[&attribute_var.name].as_ref().unwrap();
     let actuals = with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap();
         object
             .get_has_type(&tx.snapshot, &tx.thing_manager, attribute_type)
             .unwrap()

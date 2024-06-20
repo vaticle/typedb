@@ -40,8 +40,8 @@ use crate::{
 macro_rules! object_type_match {
     ($obj_var:ident, $block:block) => {
         match &$obj_var {
-            ObjectType::Entity($obj_var) => $block,
-            ObjectType::Relation($obj_var) => $block,
+            ObjectType::Entity($obj_var) => $block
+            ObjectType::Relation($obj_var) => $block
         }
     };
 }
@@ -56,9 +56,9 @@ pub struct OperationTimeValidation {}
 
 impl OperationTimeValidation {
     pub(crate) fn validate_type_exists<Snapshot, T>(snapshot: &Snapshot, type_: T) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
     {
         TypeReader::get_label(snapshot, type_).map_err(|err| SchemaValidationError::ConceptRead(err))?;
         Ok(())
@@ -68,9 +68,9 @@ impl OperationTimeValidation {
         snapshot: &Snapshot,
         type_: T,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
     {
         let label = TypeReader::get_label(snapshot, type_).map_err(SchemaValidationError::ConceptRead)?.unwrap();
         let is_root = TypeReader::check_type_is_root(&label, T::ROOT_KIND);
@@ -82,9 +82,9 @@ impl OperationTimeValidation {
     }
 
     pub(crate) fn validate_no_subtypes<Snapshot, T>(snapshot: &Snapshot, type_: T) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
     {
         let no_subtypes =
             TypeReader::get_subtypes(snapshot, type_.clone()).map_err(SchemaValidationError::ConceptRead)?.is_empty();
@@ -115,6 +115,42 @@ impl OperationTimeValidation {
             Ok(())
         }
     }
+
+    fn validate_role_name_uniqueness_non_transitive<'a, Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        relation_type: RelationType<'static>,
+        new_label: &Label<'static>,
+    ) -> Result<(), SchemaValidationError> {
+        let scoped_label = Label::build_scoped(
+            new_label.name.as_str(),
+            TypeReader::get_label(snapshot, relation_type).unwrap().unwrap().name().as_str(),
+        );
+
+        if TypeReader::get_labelled_type::<RoleType<'static>>(snapshot, &scoped_label)
+            .map_err(SchemaValidationError::ConceptRead)?
+            .is_some() {
+            Err(SchemaValidationError::RoleNameUniqueness(new_label.clone()))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_role_name_uniqueness<'a, Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        relation_type: RelationType<'static>,
+        label: &Label<'static>,
+    ) -> Result<(), SchemaValidationError> {
+        let existing_relation_supertypes = TypeReader::get_supertypes_transitive(snapshot, relation_type.clone().into_owned())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        Self::validate_role_name_uniqueness_non_transitive(snapshot, relation_type, label)?;
+        for relation_supertype in existing_relation_supertypes {
+            Self::validate_role_name_uniqueness_non_transitive(snapshot, relation_supertype, label)?;
+        }
+
+        Ok(())
+    }
+
 
     pub(crate) fn validate_value_types_compatible(
         subtype_value_type: Option<ValueType>,
@@ -151,9 +187,9 @@ impl OperationTimeValidation {
         snapshot: &Snapshot,
         type_: T,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
     {
         let is_abstract = TypeReader::get_type_annotations(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?
@@ -170,9 +206,9 @@ impl OperationTimeValidation {
         type_: T,
         supertype: T,
     ) -> Result<(), SchemaValidationError>
-    where
-        T: KindAPI<'static>,
-        Snapshot: ReadableSnapshot,
+        where
+            T: KindAPI<'static>,
+            Snapshot: ReadableSnapshot,
     {
         let existing_supertypes = TypeReader::get_supertypes_transitive(snapshot, supertype.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
@@ -191,8 +227,8 @@ impl OperationTimeValidation {
         relation_type: RelationType<'static>,
         role_type: RoleType<'static>,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
+        where
+            Snapshot: ReadableSnapshot,
     {
         let super_relation =
             TypeReader::get_supertype(snapshot, relation_type).map_err(SchemaValidationError::ConceptRead)?;
@@ -215,8 +251,8 @@ impl OperationTimeValidation {
         owner: ObjectType<'static>,
         attribute: AttributeType<'static>,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
+        where
+            Snapshot: ReadableSnapshot,
     {
         let res = object_type_match!(owner, {
             let super_owner =
@@ -242,9 +278,9 @@ impl OperationTimeValidation {
         type_: T,
         overridden: T,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
-        T: KindAPI<'static>,
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
     {
         let supertypes = TypeReader::get_supertypes_transitive(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
@@ -264,8 +300,8 @@ impl OperationTimeValidation {
         player: ObjectType<'static>,
         role_type: RoleType<'static>,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
+        where
+            Snapshot: ReadableSnapshot,
     {
         let is_inherited = object_type_match!(player, {
             let super_player =
@@ -290,8 +326,8 @@ impl OperationTimeValidation {
         player: ObjectType<'static>,
         role_type: RoleType<'static>,
     ) -> Result<(), SchemaValidationError>
-    where
-        Snapshot: ReadableSnapshot,
+        where
+            Snapshot: ReadableSnapshot,
     {
         let plays = Plays::new(ObjectType::new(player.clone().into_vertex()), role_type.clone());
         let is_declared = TypeReader::get_implemented_interfaces::<Plays<'static>>(snapshot, player.clone())

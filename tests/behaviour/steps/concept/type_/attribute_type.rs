@@ -25,8 +25,8 @@ pub async fn attribute_type_set_value_type(
 ) {
     with_schema_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
-        attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, value_type.to_typedb()).unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, value_type.into_typedb()).unwrap();
     });
 }
 
@@ -39,9 +39,9 @@ pub async fn attribute_type_get_value_type(
 ) {
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         assert_eq!(
-            value_type.to_typedb(),
+            value_type.into_typedb(),
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap()
         );
     });
@@ -55,7 +55,7 @@ pub async fn attribute_type_get_value_type_is_null(
 ) {
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         assert_eq!(
             None,
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap()
@@ -74,7 +74,7 @@ pub async fn get_owners_contain(
     let expected_labels = util::iter_table(step).map(|str| str.to_owned()).collect_vec();
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
         attribute_type.get_owners_transitive(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(
@@ -105,7 +105,7 @@ pub async fn get_declaring_owners_contain(
     let expected_labels = util::iter_table(step).map(|str| str.to_owned()).collect_vec();
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
         attribute_type.get_owner_owns(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(|owns| {

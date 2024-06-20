@@ -35,7 +35,7 @@ fn object_create_instance_impl(
 ) -> Result<Object<'static>, ConceptWriteError> {
     with_write_tx!(context, |tx| {
         let object_type =
-            tx.type_manager.get_object_type(&tx.snapshot, &object_type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_object_type(&tx.snapshot, &object_type_label.into_typedb()).unwrap().unwrap();
         match object_type {
             ObjectType::Entity(entity_type) => {
                 tx.thing_manager.create_entity(&mut tx.snapshot, entity_type).map(Object::Entity)
@@ -112,7 +112,7 @@ async fn object_has_type(
     let object_type = context.objects[&var.name].as_ref().unwrap().object.type_();
     object_root.assert(&object_type);
     with_read_tx!(context, |tx| {
-        assert_eq!(object_type.get_label(&tx.snapshot, &tx.type_manager).unwrap(), type_label.to_typedb())
+        assert_eq!(object_type.get_label(&tx.snapshot, &tx.type_manager).unwrap(), type_label.into_typedb())
     });
 }
 
@@ -134,7 +134,7 @@ async fn object_get_instance_with_value(
 
     let owner = with_read_tx!(context, |tx| {
         let object_type =
-            tx.type_manager.get_object_type(&tx.snapshot, &object_type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_object_type(&tx.snapshot, &object_type_label.into_typedb()).unwrap().unwrap();
         object_root.assert(&object_type);
         let mut owners = key.get_owners_by_type(&tx.snapshot, &tx.thing_manager, object_type);
         let owner = owners.next().transpose().unwrap().map(|(owner, count)| {
@@ -155,7 +155,7 @@ async fn object_instances_is_empty(
     type_label: params::Label,
 ) {
     with_read_tx!(context, |tx| {
-        let object_type = tx.type_manager.get_object_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+        let object_type = tx.type_manager.get_object_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         object_root.assert(&object_type);
         assert_matches!(tx.thing_manager.get_objects_in(&tx.snapshot, object_type).next(), None);
     });
@@ -173,7 +173,7 @@ async fn object_instances_contain(
     let object = &context.objects.get(&var.name).expect("no variable {} in context.").as_ref().unwrap().object;
     object_root.assert(&object.type_());
     with_read_tx!(context, |tx| {
-        let object_type = tx.type_manager.get_object_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+        let object_type = tx.type_manager.get_object_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let actuals = tx.thing_manager.get_objects_in(&tx.snapshot, object_type).collect_cloned();
         containment.check(std::slice::from_ref(object), &actuals);
     });

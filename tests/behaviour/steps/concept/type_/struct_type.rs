@@ -24,7 +24,7 @@ use crate::params::ValueType;
 pub async fn struct_type_create(context: &mut Context, type_label: Label, may_error: MayError) {
     with_schema_tx!(context, |tx| {
         unreachable!("Not implemented")
-        // may_error.check(&tx.type_manager.create_struct_type(&mut tx.snapshot, &type_label.to_typedb(), false));
+        // may_error.check(&tx.type_manager.create_struct_type(&mut tx.snapshot, &type_label.into_typedb(), false));
     });
 }
 
@@ -41,8 +41,8 @@ pub async fn struct_type_delete(context: &mut Context, type_label: Label, may_er
 pub async fn struct_type_exists(context: &mut Context, type_label: Label, exists: ExistsOrDoesnt) {
     with_read_tx!(context, |tx| {
         unreachable!("Not implemented")
-        // let type_ = tx.type_manager.get_struct_type(&tx.snapshot, &type_label.to_typedb()).unwrap();
-        // exists.check(&type_, &format!("type {}", type_label.to_typedb()));
+        // let type_ = tx.type_manager.get_struct_type(&tx.snapshot, &type_label.into_typedb()).unwrap();
+        // exists.check(&type_, &format!("type {}", type_label.into_typedb()));
     });
 }
 

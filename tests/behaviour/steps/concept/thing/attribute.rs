@@ -25,7 +25,7 @@ pub fn attribute_put_instance_with_value_impl(
 ) -> Result<Attribute<'static>, ConceptWriteError> {
     with_write_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let value = value.into_typedb(attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap());
         tx.thing_manager.create_attribute(&mut tx.snapshot, attribute_type, value)
     })
@@ -59,7 +59,7 @@ async fn attribute_put_instance_with_value_var(
 async fn attribute_has_type(context: &mut Context, var: params::Var, type_label: params::Label) {
     let attribute_type = context.attributes[&var.name].as_ref().unwrap().type_();
     with_read_tx!(context, |tx| {
-        assert_eq!(attribute_type.get_label(&tx.snapshot, &tx.type_manager).unwrap(), type_label.to_typedb())
+        assert_eq!(attribute_type.get_label(&tx.snapshot, &tx.type_manager).unwrap(), type_label.into_typedb())
     });
 }
 
@@ -70,7 +70,7 @@ async fn attribute_has_value_type(context: &mut Context, var: params::Var, value
     with_read_tx!(context, |tx| {
         assert_eq!(
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap(),
-            value_type.to_typedb()
+            value_type.into_typedb()
         );
     });
 }
@@ -106,7 +106,7 @@ pub fn get_attribute_by_value(
 ) -> Result<Option<Attribute<'static>>, ConceptReadError> {
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let value = value.into_typedb(attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap());
         tx.thing_manager.get_attribute_with_value(&tx.snapshot, attribute_type, value)
     })
@@ -155,7 +155,7 @@ async fn attribute_instances_contain(
     let attribute = context.attributes.get(&var.name).expect("no variable {} in context.").as_ref().unwrap();
     let actuals = with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         tx.thing_manager.get_attributes_in(&tx.snapshot, attribute_type).unwrap().collect_cloned()
     });
     containment.check(std::slice::from_ref(attribute), &actuals);

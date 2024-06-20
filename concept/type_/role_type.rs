@@ -16,6 +16,7 @@ use encoding::{
     value::label::Label,
     Prefixed,
 };
+use encoding::layout::prefix::Prefix::VertexRelationType;
 use lending_iterator::higher_order::Hkt;
 use primitive::maybe_owns::MaybeOwns;
 use resource::constants::snapshot::BUFFER_KEY_INLINE;
@@ -73,7 +74,7 @@ impl<'a> RoleType<'a> {
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         ordering: Ordering,
-    ) {
+    ) -> Result<(), ConceptWriteError> {
         type_manager.set_role_ordering(snapshot, self.clone(), ordering)
     }
 }
@@ -90,7 +91,7 @@ impl<'a> PrefixedTypeVertexEncoding<'a> for RoleType<'a> {
 
 impl<'a> TypeVertexEncoding<'a> for RoleType<'a> {
     fn from_vertex(vertex: TypeVertex<'a>) -> Result<Self, EncodingError> {
-        debug_assert_eq!(vertex.prefix(), Prefix::VertexRoleType);
+        debug_assert!(Self::PREFIX == Prefix::VertexRoleType);
         if vertex.prefix() != Prefix::VertexRoleType {
             Err(UnexpectedPrefix { expected_prefix: Prefix::VertexRoleType, actual_prefix: vertex.prefix() })
         } else {
@@ -151,12 +152,14 @@ impl<'a> RoleType<'a> {
     pub fn set_name<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
-        _type_manager: &TypeManager<Snapshot>,
-        _name: &str,
-    ) {
-        // // TODO: setLabel should fail is setting label on Root type
-        // type_manager.set_storage_label(self.clone().into_owned(), label);
-        todo!()
+        type_manager: &TypeManager<Snapshot>,
+        name: &str,
+    ) -> Result<(), ConceptWriteError> {
+        if self.is_root(snapshot, type_manager)? {
+            Err(ConceptWriteError::RootModification) // TODO: Move into TypeManager?
+        } else {
+            type_manager.set_role_type_name(snapshot, self.clone().into_owned(), name)
+        }
     }
 
     pub fn get_supertype<Snapshot: ReadableSnapshot>(

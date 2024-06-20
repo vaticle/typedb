@@ -5,6 +5,7 @@
  */
 
 use std::{borrow::Cow, convert::Infallible, fmt, str::FromStr};
+use std::collections::HashSet;
 
 use chrono::NaiveDateTime;
 use concept::type_::{
@@ -119,6 +120,37 @@ impl FromStr for ExistsOrDoesnt {
 }
 
 #[derive(Debug, Parameter)]
+#[param(name = "is_empty_or_not", regex = "(is empty|is not empty)")]
+pub(crate) enum IsEmptyOrNot {
+    IsEmpty,
+    IsNotEmpty,
+}
+
+impl IsEmptyOrNot {
+    pub fn check(&self, real_is_empty: bool) {
+        match self {
+            Self::IsEmpty => {
+                debug_assert!(real_is_empty)
+            }
+            Self::IsNotEmpty => {
+                debug_assert!(!real_is_empty)
+            }
+        };
+    }
+}
+
+impl FromStr for IsEmptyOrNot {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "is empty" => Self::IsEmpty,
+            "is not empty" => Self::IsNotEmpty,
+            invalid => return Err(format!("Invalid `IsEmptyOrNot`: {invalid}")),
+        })
+    }
+}
+
+#[derive(Debug, Parameter)]
 #[param(name = "contains_or_doesnt", regex = "(contain|do not contain)")]
 pub(crate) enum ContainsOrDoesnt {
     Contains,
@@ -172,7 +204,7 @@ impl Default for Label {
 }
 
 impl Label {
-    pub fn to_typedb(&self) -> TypeDBLabel<'static> {
+    pub fn into_typedb(&self) -> TypeDBLabel<'static> {
         TypeDBLabel::build(&self.label_string)
     }
 }
@@ -191,7 +223,7 @@ pub(crate) struct RootLabel {
 }
 
 impl RootLabel {
-    pub fn to_typedb(&self) -> TypeDBTypeKind {
+    pub fn into_typedb(&self) -> TypeDBTypeKind {
         self.kind
     }
 }
@@ -216,7 +248,7 @@ pub(crate) struct ObjectRootLabel {
 }
 
 impl ObjectRootLabel {
-    pub fn to_typedb(&self) -> TypeDBTypeKind {
+    pub fn into_typedb(&self) -> TypeDBTypeKind {
         self.kind
     }
 
@@ -255,7 +287,7 @@ pub(crate) enum ValueType {
 }
 
 impl ValueType {
-    pub fn to_typedb(&self) -> TypeDBValueType {
+    pub fn into_typedb(&self) -> TypeDBValueType {
         match self {
             ValueType::Boolean => TypeDBValueType::Boolean,
             ValueType::Long => TypeDBValueType::Long,
@@ -396,9 +428,15 @@ impl FromStr for Annotation {
                 let card = card["@card(".len()..card.len() - ")".len()].trim();
                 let (min, max) =
                     card.split_once(',').map(|(min, max)| (min.trim(), Some(max.trim()))).unwrap_or((card, None));
+
                 TypeDBAnnotation::Cardinality(AnnotationCardinality::new(
                     min.parse().unwrap(),
-                    max.map(str::parse).transpose().unwrap(),
+                    max.map(|val| {
+                        match val {
+                            "*" => {Ok(None)},
+                            _ => val.parse().map(Some).map_err(|_| "Failed to parse max")
+                        }
+                    }).unwrap().unwrap()
                 ))
             }
             _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
@@ -465,5 +503,32 @@ impl FromStr for Vars {
 
     fn from_str(str: &str) -> Result<Self, Self::Err> {
         Ok(Self { names: str.split(',').map(|name| name.trim().to_owned()).collect() })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "ordering", regex = "(unordered|ordered)")]
+pub(crate) enum Ordering {
+    Unordered,
+    Ordered,
+}
+
+impl Ordering {
+    pub fn into_typedb(&self) -> concept::type_::Ordering {
+        match self {
+            Ordering::Unordered => concept::type_::Ordering::Unordered,
+            Ordering::Ordered => concept::type_::Ordering::Ordered,
+        }
+    }
+}
+
+impl FromStr for Ordering {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "unordered" => Self::Unordered,
+            "ordered" => Self::Ordered,
+            _ => panic!("Unrecognised ordering"),
+        })
     }
 }
