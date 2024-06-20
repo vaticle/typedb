@@ -65,7 +65,7 @@ pub async fn unset_owns(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get owns: {type_label}; set override: {type_label}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) set override: {type_label}{may_error}")]
 pub async fn get_owns_set_override(
     context: &mut Context,
     root_label: params::RootLabel,
@@ -97,7 +97,7 @@ pub async fn get_owns_set_override(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get owns: {type_label}, set annotation: {annotation}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) set annotation: {annotation}{may_error}")]
 pub async fn get_owns_set_annotation(
     context: &mut Context,
     root_label: params::RootLabel,
@@ -117,7 +117,7 @@ pub async fn get_owns_set_annotation(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get owns: {type_label}, unset annotation: {annotation}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) unset annotation: {annotation}{may_error}")]
 pub async fn get_owns_unset_annotation(
     context: &mut Context,
     root_label: params::RootLabel,
@@ -138,7 +138,7 @@ pub async fn get_owns_unset_annotation(
 
 #[apply(generic_step)]
 #[step(
-    expr = "{root_label}\\({type_label}\\) get owns: {type_label}; get annotations {contains_or_doesnt}: {annotation}"
+    expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}"
 )]
 pub async fn get_owns_get_annotations_contains(
     context: &mut Context,
@@ -183,6 +183,23 @@ pub async fn get_owns_contain(
             })
             .collect_vec();
         contains.check(&expected_labels, &actual_labels);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns {is_empty_or_not}")]
+pub async fn get_owns_is_empty(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    is_empty_or_not: params::IsEmptyOrNot,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let actual_is_empty = object_type
+            .get_owns_transitive(&tx.snapshot, &tx.type_manager)
+            .unwrap().is_empty();
+        is_empty_or_not.check(actual_is_empty);
     });
 }
 
@@ -257,5 +274,43 @@ pub async fn get_owns_overridden_get_label(
             .as_str()
             .to_owned();
         assert_eq!(expected_overridden.into_typedb().scoped_name().as_str().to_owned(), actual_type_label);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) set ordering: {ordering}{may_error}")]
+pub async fn get_owns_set_ordering(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    ordering: params::Ordering,
+    may_error: params::MayError,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns = object_type.get_owns_attribute(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        let res = owns.set_ordering(&mut tx.snapshot, &tx.type_manager, ordering.into_typedb().into());
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get ordering: {ordering}")]
+pub async fn get_owns_get_ordering(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    ordering: params::Ordering,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns = object_type.get_owns_attribute(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        assert_eq!(owns.get_ordering(&tx.snapshot, &tx.type_manager).unwrap(), ordering.into_typedb().into());
     });
 }

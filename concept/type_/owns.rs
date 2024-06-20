@@ -153,7 +153,7 @@ impl<'a> Owns<'a> {
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         ordering: Ordering,
-    ) {
+    ) -> Result<(), ConceptWriteError> {
         type_manager.set_owns_ordering(snapshot, self.clone(), ordering)
     }
 

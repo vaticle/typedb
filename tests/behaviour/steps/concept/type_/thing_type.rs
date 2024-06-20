@@ -390,7 +390,7 @@ pub async fn unset_plays_role(
 
 #[apply(generic_step)]
 #[step(
-    expr = "{root_label}\\({type_label}\\) get plays role: {type_label}; set override: {type_label}{may_error}"
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) set override: {type_label}{may_error}"
 )]
 pub async fn get_plays_set_override(
     context: &mut Context,
@@ -420,7 +420,7 @@ pub async fn get_plays_set_override(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get plays roles {contains_or_doesnt}:")]
+#[step(expr = "{root_label}\\({type_label}\\) get plays {contains_or_doesnt}:")]
 pub async fn get_plays_roles_contain(
     context: &mut Context,
     step: &Step,
@@ -444,7 +444,7 @@ pub async fn get_plays_roles_contain(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get plays roles explicit {contains_or_doesnt}:")]
+#[step(expr = "{root_label}\\({type_label}\\) get plays explicit {contains_or_doesnt}:")]
 pub async fn get_declared_plays_roles_contain(
     context: &mut Context,
     step: &Step,
