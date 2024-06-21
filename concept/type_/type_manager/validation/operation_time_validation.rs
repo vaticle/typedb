@@ -25,7 +25,7 @@ use crate::{
         thing_manager::ThingManager,
     },
     type_::{
-        annotation::{Annotation, AnnotationAbstract},
+        annotation::{Annotation, AnnotationAbstract, AnnotationCategory},
         attribute_type::AttributeType,
         entity_type::EntityType,
         object_type::ObjectType,
@@ -35,8 +35,10 @@ use crate::{
         role_type::RoleType,
         type_manager::{type_reader::TypeReader, validation::SchemaValidationError},
         KindAPI, TypeAPI,
+        Ordering,
     },
 };
+
 macro_rules! object_type_match {
     ($obj_var:ident, $block:block) => {
         match &$obj_var {
@@ -151,7 +153,6 @@ impl OperationTimeValidation {
         Ok(())
     }
 
-
     pub(crate) fn validate_value_types_compatible(
         subtype_value_type: Option<ValueType>,
         supertype_value_type: Option<ValueType>,
@@ -168,7 +169,53 @@ impl OperationTimeValidation {
         }
     }
 
+    pub(crate) fn validate_value_type_exists(
+        value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError> {
+        match &value_type {
+            Some(_) => Ok(()),
+            None => Err(SchemaValidationError::AbsentValueType)
+        }
+    }
+
     pub(crate) fn validate_annotation_regex_compatible_value_type(
+        value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError> {
+        let is_compatible = match &value_type {
+            Some(ValueType::String) => true,
+            _ => false
+        };
+
+        if is_compatible {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::IncompatibleValueType(value_type))
+        }
+    }
+
+    pub(crate) fn validate_owns_attribute_type_does_not_have_annotation_category_when_setting_owns_annotation<Snapshot>(
+        snapshot: &Snapshot,
+        owns: Owns<'_>,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let attribute_type = owns.attribute();
+        let owns_has_annotation = true;
+        let attribute_type_has_annotation =
+            Self::validate_type_has_annotation_category(snapshot, attribute_type.clone(), annotation_category).is_ok();
+
+        if owns_has_annotation && attribute_type_has_annotation {
+            Err(SchemaValidationError::AnnotationCanOnlyBeSetOnAttributeOrOwns(
+                get_label!(snapshot, attribute_type), annotation_category)
+            )
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_type_does_not_have_annotation_regex(
         value_type: Option<ValueType>,
     ) -> Result<(), SchemaValidationError> {
         let is_compatible = match &value_type {
@@ -191,13 +238,84 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let is_abstract = TypeReader::get_type_annotations(snapshot, type_.clone())
+        match Self::validate_type_has_annotation(snapshot, type_.clone(), Annotation::Abstract(AnnotationAbstract)) {
+            Ok(res) => Ok(res),
+            Err(_) => Err(SchemaValidationError::TypeIsNotAbstract(get_label!(snapshot, type_)))
+        }
+    }
+
+    pub(crate) fn validate_type_has_annotation<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+        annotation: Annotation,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let has_annotation = TypeReader::get_type_annotations(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?
-            .contains(&T::AnnotationType::from(Annotation::Abstract(AnnotationAbstract)));
-        if is_abstract {
+            .contains(&T::AnnotationType::from(annotation));
+
+        if has_annotation {
             Ok(())
         } else {
-            Err(SchemaValidationError::TypeIsNotAbstract(get_label!(snapshot, type_)))
+            Err(SchemaValidationError::TypeDoesNotHaveAnnotation(get_label!(snapshot, type_)))
+        }
+    }
+
+    pub(crate) fn validate_type_has_annotation_category<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let has_annotation = TypeReader::get_type_annotations(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?
+            .iter().map(|annotation| annotation.clone().into().category())
+            .any(|annotation| annotation == annotation_category);
+
+        if has_annotation {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::TypeDoesNotHaveAnnotation(get_label!(snapshot, type_)))
+        }
+    }
+
+    pub(crate) fn validate_type_ordering<Snapshot>(
+        snapshot: &Snapshot,
+        role_type: RoleType<'_>,
+        expected_ordering: Ordering,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let ordering = TypeReader::get_type_ordering(snapshot, role_type)
+            .map_err(SchemaValidationError::ConceptRead)?;
+        if ordering == expected_ordering {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::TypeOrderingIsIncompatible(ordering))
+        }
+    }
+
+    pub(crate) fn validate_type_edge_ordering<Snapshot>(
+        snapshot: &Snapshot,
+        owns: Owns<'_>,
+        expected_ordering: Ordering,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let ordering = TypeReader::get_type_edge_ordering(snapshot, owns)
+            .map_err(SchemaValidationError::ConceptRead)?;
+        if ordering == expected_ordering {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::TypeOrderingIsIncompatible(ordering))
         }
     }
 

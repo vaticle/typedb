@@ -92,6 +92,36 @@ impl AnnotationRegex {
     }
 }
 
+impl Annotation {
+    pub fn category(&self) -> AnnotationCategory {
+        match self {
+            Self::Abstract(_) => AnnotationCategory::Abstract,
+            Self::Distinct(_) => AnnotationCategory::Distinct,
+            Self::Independent(_) => AnnotationCategory::Independent,
+            Self::Unique(_) => AnnotationCategory::Unique,
+            Self::Key(_) => AnnotationCategory::Key,
+            Self::Cardinality(_) => AnnotationCategory::Cardinality,
+            Self::Regex(_) => AnnotationCategory::Regex,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum AnnotationCategory {
+    Abstract,
+    Distinct,
+    Independent,
+    Unique,
+    Key,
+    Cardinality,
+    Regex,
+    // TODO: Subkey
+    // TODO: Values
+    // TODO: Range
+    // TODO: Cascade
+    // TODO: Replace
+}
+
 macro_rules! empty_type_vertex_property_encoding {
     ($property:ident, $infix:ident) => {
         impl<'a> TypeVertexPropertyEncoding<'a> for $property {
@@ -171,5 +201,18 @@ impl<'a> TypeEdgePropertyEncoding<'a> for AnnotationCardinality {
 
     fn to_value_bytes(self) -> Option<Bytes<'a, BUFFER_VALUE_INLINE>> {
         Some(Bytes::copy(bincode::serialize(&self).unwrap().as_slice()))
+    }
+}
+
+impl<'a> TypeEdgePropertyEncoding<'a> for AnnotationRegex {
+    const INFIX: Infix = Infix::PropertyAnnotationRegex;
+    fn from_value_bytes<'b>(value: ByteReference<'b>) -> Self {
+        // TODO this .unwrap() should be handled as an error
+        // although it does indicate data corruption
+        AnnotationRegex::new(std::str::from_utf8(value.bytes()).unwrap().to_owned())
+    }
+
+    fn to_value_bytes(self) -> Option<Bytes<'a, BUFFER_VALUE_INLINE>> {
+        Some(Bytes::Array(ByteArray::copy(self.regex().as_bytes())))
     }
 }

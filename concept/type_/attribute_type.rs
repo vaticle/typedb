@@ -208,10 +208,10 @@ impl<'a> AttributeType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             AttributeTypeAnnotation::Abstract(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Independent(_) => {
-                type_manager.set_annotation_independent(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_independent(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Regex(regex) => {
                 type_manager.set_annotation_regex(snapshot, self.clone().into_owned(), regex)?
@@ -231,10 +231,10 @@ impl<'a> AttributeType<'a> {
                 type_manager.unset_attribute_type_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Independent(_) => {
-                type_manager.unset_annotation_independent(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_independent(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Regex(_) => {
-                type_manager.unset_annotation_regex(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_regex(snapshot, self.clone().into_owned())?
             }
         }
         Ok(()) // TODO
@@ -287,6 +287,16 @@ impl From<Annotation> for AttributeTypeAnnotation {
             Annotation::Unique(_) => unreachable!("Unique annotation not available for Attribute type."),
             Annotation::Key(_) => unreachable!("Key annotation not available for Attribute type."),
             Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Attribute type."),
+        }
+    }
+}
+
+impl Into<Annotation> for AttributeTypeAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            AttributeTypeAnnotation::Abstract(annotation)=> Annotation::Abstract(annotation),
+            AttributeTypeAnnotation::Independent(annotation)=> Annotation::Independent(annotation),
+            AttributeTypeAnnotation::Regex(annotation)=> Annotation::Regex(annotation),
         }
     }
 }

@@ -13,7 +13,7 @@ use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
-        annotation::{Annotation, AnnotationCardinality, AnnotationDistinct, AnnotationKey, AnnotationUnique},
+        annotation::{Annotation, AnnotationCardinality, AnnotationDistinct, AnnotationKey, AnnotationUnique, AnnotationRegex},
         attribute_type::AttributeType,
         object_type::ObjectType,
         type_manager::TypeManager,
@@ -64,12 +64,12 @@ impl<'a> Owns<'a> {
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
-        let is_ordered = false; // TODO
-        if is_ordered {
-            let annotations = self.get_effective_annotations(snapshot, type_manager)?;
-            Ok(annotations.contains_key(&OwnsAnnotation::Distinct(AnnotationDistinct)))
-        } else {
-            Ok(true)
+        match self.get_ordering(snapshot, type_manager)? {
+            Ordering::Ordered => {
+                let annotations = self.get_effective_annotations(snapshot, type_manager)?;
+                Ok(annotations.contains_key(&OwnsAnnotation::Distinct(AnnotationDistinct)))
+            },
+            Ordering::Unordered => Ok(true)
         }
     }
 
@@ -123,12 +123,13 @@ impl<'a> Owns<'a> {
         annotation: OwnsAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
-            OwnsAnnotation::Distinct(_) => type_manager.set_edge_annotation_distinct(snapshot, self.clone()),
-            OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone()),
+            OwnsAnnotation::Distinct(_) => type_manager.set_edge_annotation_distinct(snapshot, self.clone())?,
+            OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone())?,
             OwnsAnnotation::Cardinality(cardinality) => {
-                type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)
+                type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)?
             }
-            OwnsAnnotation::Unique(_) => type_manager.set_edge_annotation_unique(snapshot, self.clone()),
+            OwnsAnnotation::Unique(_) => type_manager.set_edge_annotation_unique(snapshot, self.clone())?,
+            OwnsAnnotation::Regex(regex) => type_manager.set_edge_annotation_regex(snapshot, self.clone(), regex)?,
         }
         Ok(()) // TODO
     }
@@ -140,10 +141,12 @@ impl<'a> Owns<'a> {
         annotation: OwnsAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
-            OwnsAnnotation::Distinct(_) => type_manager.delete_edge_annotation_distinct(snapshot, self.clone()),
-            OwnsAnnotation::Key(_) => type_manager.delete_edge_annotation_key(snapshot, self.clone()),
-            OwnsAnnotation::Cardinality(_) => type_manager.delete_edge_annotation_cardinality(snapshot, self.clone()),
-            OwnsAnnotation::Unique(_) => type_manager.delete_edge_annotation_unique(snapshot, self.clone()),
+            // TODO: Add check that we unset annotation with same arguments??
+            OwnsAnnotation::Distinct(_) => type_manager.delete_edge_annotation_distinct(snapshot, self.clone())?,
+            OwnsAnnotation::Key(_) => type_manager.delete_edge_annotation_key(snapshot, self.clone())?,
+            OwnsAnnotation::Cardinality(_) => type_manager.delete_edge_annotation_cardinality(snapshot, self.clone())?,
+            OwnsAnnotation::Unique(_) => type_manager.delete_edge_annotation_unique(snapshot, self.clone())?,
+            OwnsAnnotation::Regex(_) => type_manager.delete_edge_annotation_regex(snapshot, self.clone())?,
         }
         Ok(()) // TODO
     }
@@ -208,16 +211,18 @@ impl<'a> InterfaceImplementation<'a> for Owns<'a> {
             OwnsAnnotation::Key(key) => Annotation::Key(key),
             OwnsAnnotation::Cardinality(cardinality) => Annotation::Cardinality(cardinality),
             OwnsAnnotation::Unique(unique) => Annotation::Unique(unique),
+            OwnsAnnotation::Regex(regex) => Annotation::Regex(regex),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum OwnsAnnotation {
     Distinct(AnnotationDistinct),
     Unique(AnnotationUnique),
     Key(AnnotationKey),
     Cardinality(AnnotationCardinality),
+    Regex(AnnotationRegex),
 }
 
 impl From<Annotation> for OwnsAnnotation {
@@ -227,10 +232,22 @@ impl From<Annotation> for OwnsAnnotation {
             Annotation::Unique(annotation) => OwnsAnnotation::Unique(annotation),
             Annotation::Key(annotation) => OwnsAnnotation::Key(annotation),
             Annotation::Cardinality(annotation) => OwnsAnnotation::Cardinality(annotation),
+            Annotation::Regex(annotation) => OwnsAnnotation::Regex(annotation),
 
             Annotation::Abstract(_) => unreachable!("Independent annotation not available for Owns."),
             Annotation::Independent(_) => unreachable!("Independent annotation not available for Owns."),
-            Annotation::Regex(_) => unreachable!("Regex annotation not available for Owns."),
+        }
+    }
+}
+
+impl Into<Annotation> for OwnsAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            OwnsAnnotation::Distinct(annotation) => Annotation::Distinct(annotation),
+            OwnsAnnotation::Unique(annotation) => Annotation::Unique(annotation),
+            OwnsAnnotation::Key(annotation) => Annotation::Key(annotation),
+            OwnsAnnotation::Cardinality(annotation) => Annotation::Cardinality(annotation),
+            OwnsAnnotation::Regex(annotation) => Annotation::Regex(annotation),
         }
     }
 }

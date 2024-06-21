@@ -237,13 +237,13 @@ impl<'a> RoleType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             RoleTypeAnnotation::Abstract(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             RoleTypeAnnotation::Distinct(_) => { // TODO: Move to relates (edge!)
-                type_manager.set_annotation_distinct(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_distinct(snapshot, self.clone().into_owned())?
             }
             RoleTypeAnnotation::Cardinality(cardinality) => { // TODO: Move to relates (edge!)
-                type_manager.set_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)
+                type_manager.set_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)?
             }
         };
         Ok(())
@@ -257,13 +257,13 @@ impl<'a> RoleType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             RoleTypeAnnotation::Abstract(_) => {
-                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             RoleTypeAnnotation::Distinct(_) => {
-                type_manager.unset_annotation_distinct(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_distinct(snapshot, self.clone().into_owned())?
             }
             RoleTypeAnnotation::Cardinality(_) => {
-                type_manager.unset_annotation_cardinality(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_cardinality(snapshot, self.clone().into_owned())?
             }
         }
         Ok(()) // TODO
@@ -312,6 +312,16 @@ impl From<Annotation> for RoleTypeAnnotation {
             Annotation::Unique(_) => unreachable!("Unique annotation not available for Role type."),
             Annotation::Key(_) => unreachable!("Key annotation not available for Role type."),
             Annotation::Regex(_) => unreachable!("Regex annotation not available for Role type."),
+        }
+    }
+}
+
+impl Into<Annotation> for RoleTypeAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            RoleTypeAnnotation::Abstract(annotation) => Annotation::Abstract(annotation),
+            RoleTypeAnnotation::Distinct(annotation) => Annotation::Distinct(annotation),
+            RoleTypeAnnotation::Cardinality(annotation) => Annotation::Cardinality(annotation),
         }
     }
 }

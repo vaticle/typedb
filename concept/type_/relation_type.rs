@@ -196,7 +196,7 @@ impl<'a> RelationType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             RelationTypeAnnotation::Abstract(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             }
         };
         Ok(())
@@ -210,7 +210,7 @@ impl<'a> RelationType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             RelationTypeAnnotation::Abstract(_) => {
-                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())?
             }
         }
         Ok(()) // TODO
@@ -286,7 +286,7 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<Owns<'static>, ConceptWriteError> {
-        type_manager.set_owns(snapshot, self.clone().into_owned(), attribute_type.clone(), ordering);
+        type_manager.set_owns(snapshot, self.clone().into_owned(), attribute_type.clone(), ordering)?;
         Ok(Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type))
     }
 
@@ -297,7 +297,7 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: error if not owned?
-        type_manager.delete_owns(snapshot, self.clone().into_owned(), attribute_type);
+        type_manager.delete_owns(snapshot, self.clone().into_owned(), attribute_type)?;
         Ok(())
     }
 
@@ -392,6 +392,14 @@ impl From<Annotation> for RelationTypeAnnotation {
             Annotation::Key(_) => unreachable!("Key annotation not available for Relation type."),
             Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Relation type."),
             Annotation::Regex(_) => unreachable!("Regex annotation not available for Relation type."),
+        }
+    }
+}
+
+impl Into<Annotation> for RelationTypeAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            RelationTypeAnnotation::Abstract(annotation) => Annotation::Abstract(annotation),
         }
     }
 }

@@ -373,7 +373,9 @@ impl TypeReader {
                     Infix::PropertyAnnotationCardinality => Annotation::Cardinality(
                         <AnnotationCardinality as TypeVertexPropertyEncoding>::from_value_bytes(value),
                     ),
-                    Infix::PropertyAnnotationRegex => Annotation::Regex(AnnotationRegex::from_value_bytes(value)),
+                    Infix::PropertyAnnotationRegex => Annotation::Regex(
+                        <AnnotationRegex as TypeVertexPropertyEncoding>::from_value_bytes(value),
+                    ),
                     | Infix::_PropertyAnnotationLast
                     | Infix::PropertyAnnotationUnique
                     | Infix::PropertyAnnotationKey
@@ -415,7 +417,9 @@ impl TypeReader {
                     Infix::PropertyAnnotationCardinality => Annotation::Cardinality(
                         <AnnotationCardinality as TypeEdgePropertyEncoding>::from_value_bytes(value),
                     ),
-                    Infix::PropertyAnnotationRegex => Annotation::Regex(AnnotationRegex::from_value_bytes(value)),
+                    Infix::PropertyAnnotationRegex => Annotation::Regex(
+                        <AnnotationRegex as TypeEdgePropertyEncoding>::from_value_bytes(value),
+                    ),
                     | Infix::_PropertyAnnotationLast
                     | Infix::PropertyAnnotationAbstract
                     | Infix::PropertyLabel

@@ -29,7 +29,7 @@ pub(crate) fn are_annotations_compatible(
     Ok(())
 }
 
-fn validate_cardinalty_is_compatible_with(
+fn validate_cardinality_is_compatible_with(
     subtype_cardinality: AnnotationCardinality,
     supertype_annotations: &Vec<Annotation>,
 ) -> Result<(), SchemaValidationError> {
