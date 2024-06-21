@@ -76,7 +76,6 @@ impl<'a> OwnerAPI<'a> for ObjectType<'a> {
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<Owns<'static>, ConceptWriteError> {
-        // TODO: decide behaviour (ok or error) if already owning
         match self {
             ObjectType::Entity(entity) => entity.set_owns(snapshot, type_manager, attribute_type, ordering),
             ObjectType::Relation(relation) => relation.set_owns(snapshot, type_manager, attribute_type, ordering),

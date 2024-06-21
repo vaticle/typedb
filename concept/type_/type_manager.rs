@@ -1115,14 +1115,13 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn set_owns(
         &self,
         snapshot: &mut Snapshot,
-        owner: impl OwnerAPI<'static>,
+        owner: impl ObjectTypeAPI<'static> + KindAPI<'static>,
         attribute: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
-        // TODO: Needs KindAPI, while OwnerAPI is only TypeAPI (validate that both are abstract or both are not abstract!)
-        // OperationTimeValidation::validate_type_is_abstract(snapshot, supertype.clone())
-        //     .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+        OperationTimeValidation::validate_ownership_abstractness(snapshot, owner.clone(), attribute.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         let owns = Owns::new(ObjectType::new(owner.clone().into_vertex()), attribute.clone());
         TypeWriter::storage_put_interface_impl(snapshot, owns.clone());
@@ -1260,11 +1259,20 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     }
 
     pub(crate) fn unset_annotation_abstract(
-        &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
+        &self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationAbstract>(snapshot, type_);
         Ok(())
+    }
+
+    pub(crate) fn unset_owner_annotation_abstract(
+        &self, snapshot: &mut Snapshot, type_: impl ObjectTypeAPI<'static>
+    ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_no_abstract_attribute_types_owned(snapshot, type_.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        Self::unset_annotation_abstract(self, snapshot, type_)
     }
 
     pub(crate) fn unset_attribute_type_annotation_abstract(
@@ -1276,8 +1284,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         OperationTimeValidation::validate_value_type_exists(
             TypeReader::get_value_type(snapshot, type_.clone())?,
-        )
-            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         Self::unset_annotation_abstract(self, snapshot, type_)
     }
@@ -1338,6 +1345,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         OperationTimeValidation::validate_annotation_regex_compatible_value_type(
             TypeReader::get_value_type(snapshot, type_.clone())?
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+        // TODO: Validate that regex value is correct
         // TODO: Verify that there is no regex on owns
 
         TypeWriter::storage_insert_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex));

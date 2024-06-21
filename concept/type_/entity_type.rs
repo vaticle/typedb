@@ -207,7 +207,7 @@ impl<'a> EntityType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             EntityTypeAnnotation::Abstract(_) => {
-                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())?
+                type_manager.unset_owner_annotation_abstract(snapshot, self.clone().into_owned())?
             }
         }
         Ok(()) // TODO

@@ -234,7 +234,7 @@ impl From<Annotation> for OwnsAnnotation {
             Annotation::Cardinality(annotation) => OwnsAnnotation::Cardinality(annotation),
             Annotation::Regex(annotation) => OwnsAnnotation::Regex(annotation),
 
-            Annotation::Abstract(_) => unreachable!("Independent annotation not available for Owns."),
+            Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Owns."),
             Annotation::Independent(_) => unreachable!("Independent annotation not available for Owns."),
         }
     }

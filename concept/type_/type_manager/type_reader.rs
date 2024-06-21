@@ -159,7 +159,7 @@ impl TypeReader {
 
     pub(crate) fn get_label<'a>(
         snapshot: &impl ReadableSnapshot,
-        type_: impl KindAPI<'a>,
+        type_: impl TypeAPI<'a>,
     ) -> Result<Option<Label<'static>>, ConceptReadError> {
         Self::get_type_property::<Label<'static>>(snapshot, type_)
     }

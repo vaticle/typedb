@@ -35,34 +35,38 @@ pub async fn set_owns(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) set owns: {type_label}[]")]
+#[step(expr = "{root_label}\\({type_label}\\) set owns: {type_label}[]{may_error}")]
 pub async fn set_owns_ordered(
     context: &mut Context,
     root_label: params::RootLabel,
     type_label: params::Label,
     attribute_type_label: params::Label,
+    may_error: params::MayError,
 ) {
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_schema_tx!(context, |tx| {
         let attr_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap();
-        object_type.set_owns(&mut tx.snapshot, &tx.type_manager, attr_type, Ordering::Ordered).unwrap();
+        let res = object_type.set_owns(&mut tx.snapshot, &tx.type_manager, attr_type, Ordering::Ordered);
+        may_error.check(&res);
     });
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) unset owns: {type_label}")]
+#[step(expr = "{root_label}\\({type_label}\\) unset owns: {type_label}{may_error}")]
 pub async fn unset_owns(
     context: &mut Context,
     root_label: params::RootLabel,
     type_label: params::Label,
     attribute_type_label: params::Label,
+    may_error: params::MayError,
 ) {
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_schema_tx!(context, |tx| {
         let attr_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap();
-        object_type.delete_owns(&mut tx.snapshot, &tx.type_manager, attr_type).unwrap();
+        let res = object_type.delete_owns(&mut tx.snapshot, &tx.type_manager, attr_type);
+        may_error.check(&res);
     });
 }
 

@@ -34,7 +34,7 @@ use crate::{
         relation_type::RelationType,
         role_type::RoleType,
         type_manager::{type_reader::TypeReader, validation::SchemaValidationError},
-        KindAPI, TypeAPI,
+        KindAPI, TypeAPI, ObjectTypeAPI,
         Ordering,
     },
 };
@@ -95,6 +95,27 @@ impl OperationTimeValidation {
         } else {
             Err(SchemaValidationError::DeletingTypeWithSubtypes(get_label!(snapshot, type_)))
         }
+    }
+
+    pub(crate) fn validate_no_abstract_attribute_types_owned<Snapshot, T>(
+        snapshot: &Snapshot,
+        type_: T) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: ObjectTypeAPI<'static>,
+    {
+        TypeReader::get_implemented_interfaces(snapshot, type_)
+            .map_err(SchemaValidationError::ConceptRead)?
+            .iter().map(Owns::attribute)
+            .try_for_each(|attribute_type: AttributeType<'static>| {
+                if Self::type_is_abstract(snapshot, attribute_type.clone())? {
+                    Err(SchemaValidationError::OwnsAbstractType(get_label!(snapshot, attribute_type)))
+                } else {
+                    Ok(())
+                }
+            })?;
+
+        Ok(())
     }
 
     pub(crate) fn validate_label_uniqueness<'a, Snapshot: ReadableSnapshot>(
@@ -204,7 +225,7 @@ impl OperationTimeValidation {
         let attribute_type = owns.attribute();
         let owns_has_annotation = true;
         let attribute_type_has_annotation =
-            Self::validate_type_has_annotation_category(snapshot, attribute_type.clone(), annotation_category).is_ok();
+            Self::type_has_annotation_category(snapshot, attribute_type.clone(), annotation_category)?;
 
         if owns_has_annotation && attribute_type_has_annotation {
             Err(SchemaValidationError::AnnotationCanOnlyBeSetOnAttributeOrOwns(
@@ -238,9 +259,40 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        match Self::validate_type_has_annotation(snapshot, type_.clone(), Annotation::Abstract(AnnotationAbstract)) {
-            Ok(res) => Ok(res),
-            Err(_) => Err(SchemaValidationError::TypeIsNotAbstract(get_label!(snapshot, type_)))
+        if Self::type_is_abstract(snapshot, type_.clone())? {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::TypeIsNotAbstract(get_label!(snapshot, type_)))
+        }
+    }
+
+    pub(crate) fn type_is_abstract<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+    ) -> Result<bool, SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        Self::type_has_annotation(snapshot, type_.clone(), Annotation::Abstract(AnnotationAbstract))
+    }
+
+    pub(crate) fn validate_ownership_abstractness<Snapshot>(
+        snapshot: &Snapshot,
+        owner: impl KindAPI<'static>,
+        attribute: AttributeType<'static>,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let is_owner_abstract = Self::type_is_abstract(snapshot, owner.clone())?;
+        let is_attribute_abstract = Self::type_is_abstract(snapshot, attribute.clone())?;
+
+        match (&is_owner_abstract, &is_attribute_abstract) {
+            (true, true) | (false, false) | (true, false) => Ok(()),
+            (false, true) => Err(SchemaValidationError::NonAbstractCannotOwnAbstract(
+                get_label!(snapshot, owner), get_label!(snapshot, attribute))
+            ),
         }
     }
 
@@ -253,15 +305,26 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let has_annotation = TypeReader::get_type_annotations(snapshot, type_.clone())
-            .map_err(SchemaValidationError::ConceptRead)?
-            .contains(&T::AnnotationType::from(annotation));
-
-        if has_annotation {
+        if Self::type_has_annotation(snapshot, type_.clone(), annotation)? {
             Ok(())
         } else {
             Err(SchemaValidationError::TypeDoesNotHaveAnnotation(get_label!(snapshot, type_)))
         }
+    }
+
+    fn type_has_annotation<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+        annotation: Annotation,
+    ) -> Result<bool, SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let has = TypeReader::get_type_annotations(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?
+            .contains(&T::AnnotationType::from(annotation));
+        Ok(has)
     }
 
     pub(crate) fn validate_type_has_annotation_category<T, Snapshot>(
@@ -273,16 +336,27 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let has_annotation = TypeReader::get_type_annotations(snapshot, type_.clone())
-            .map_err(SchemaValidationError::ConceptRead)?
-            .iter().map(|annotation| annotation.clone().into().category())
-            .any(|annotation| annotation == annotation_category);
-
-        if has_annotation {
+        if Self::type_has_annotation_category(snapshot, type_.clone(), annotation_category)? {
             Ok(())
         } else {
             Err(SchemaValidationError::TypeDoesNotHaveAnnotation(get_label!(snapshot, type_)))
         }
+    }
+
+    fn type_has_annotation_category<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+        annotation_category: AnnotationCategory,
+    ) -> Result<bool, SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let has = TypeReader::get_type_annotations(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?
+            .iter().map(|annotation| annotation.clone().into().category())
+            .any(|annotation| annotation == annotation_category);
+        Ok(has)
     }
 
     pub(crate) fn validate_type_ordering<Snapshot>(
