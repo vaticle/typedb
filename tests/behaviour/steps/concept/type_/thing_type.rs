@@ -11,12 +11,7 @@ use encoding::graph::type_::Kind;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
 
-use crate::{
-    generic_step,
-    params::{Annotation, ContainsOrDoesnt, ExistsOrDoesnt, Label, MayError, RootLabel},
-    transaction_context::{with_read_tx, with_schema_tx, with_write_tx},
-    util, with_type, Context,
-};
+use crate::{generic_step, params::{Annotation, ContainsOrDoesnt, ExistsOrDoesnt, Label, MayError, RootLabel}, transaction_context::{with_read_tx, with_schema_tx, with_write_tx}, util, with_type, Context, params};
 use crate::params::IsEmptyOrNot;
 
 #[macro_export]
@@ -522,7 +517,7 @@ pub async fn get_plays_get_annotations_contains(
     annotation: Annotation,
 ) {
     let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
-    with_schema_tx!(context, |tx| {
+    with_read_tx!(context, |tx| {
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
         let actual_contains = plays
@@ -530,5 +525,26 @@ pub async fn get_plays_get_annotations_contains(
             .unwrap()
             .contains_key(&annotation.into_typedb().into());
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get annotations {is_empty_or_not}")]
+pub async fn get_owns_get_annotations_is_empty(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    is_empty_or_not: IsEmptyOrNot,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let actual_is_empty = plays
+            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .is_empty();
+        is_empty_or_not.check(actual_is_empty);
     });
 }
