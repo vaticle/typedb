@@ -50,15 +50,14 @@ use crate::{
         entity_type::{EntityType, EntityTypeAnnotation},
         object_type::ObjectType,
         owns::{Owns, OwnsAnnotation},
-        plays::Plays,
+        plays::{Plays, PlaysAnnotation},
         relates::Relates,
         relation_type::{RelationType, RelationTypeAnnotation},
         role_type::{RoleType, RoleTypeAnnotation},
         type_manager::type_reader::TypeReader,
-        InterfaceImplementation, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, KindAPI,
+        InterfaceImplementation, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, KindAPI, TypeAPI
     },
 };
-use crate::type_::TypeAPI;
 
 pub mod type_cache;
 pub mod type_reader;
@@ -725,6 +724,23 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         match ordering {
             Ordering::Unordered => AnnotationCardinality::new(1, Some(1)),
             Ordering::Ordered => AnnotationCardinality::new(0, None),
+        }
+    }
+
+    pub(crate) fn get_plays_effective_annotations<'this>(
+        &'this self,
+        snapshot: &Snapshot,
+        plays: Plays<'static>,
+    ) -> Result<MaybeOwns<'this, HashMap<PlaysAnnotation, Plays<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_plays_effective_annotations(plays)))
+        } else {
+            let annotations: HashMap<PlaysAnnotation, Plays<'static>> =
+                TypeReader::get_effective_type_edge_annotations(snapshot, plays)?
+                    .into_iter()
+                    .map(|(annotation, plays)| (PlaysAnnotation::from(annotation), plays))
+                    .collect();
+            Ok(MaybeOwns::Owned(annotations))
         }
     }
 }

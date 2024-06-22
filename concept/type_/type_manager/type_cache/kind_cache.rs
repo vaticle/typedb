@@ -26,7 +26,7 @@ use crate::type_::{
     entity_type::EntityType,
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
-    plays::Plays,
+    plays::{Plays, PlaysAnnotation},
     relates::Relates,
     relation_type::RelationType,
     role_type::RoleType,
@@ -76,6 +76,7 @@ pub(crate) struct OwnsCache {
 #[derive(Debug)]
 pub(crate) struct PlaysCache {
     pub(super) overrides: Option<Plays<'static>>,
+    pub(super) effective_annotations: HashMap<PlaysAnnotation, Plays<'static>>,
 }
 
 #[derive(Debug)]
@@ -236,10 +237,15 @@ impl PlaysCache {
             let player = ObjectType::new(edge.from().into_owned());
             let role = RoleType::new(edge.to().into_owned());
             let plays = Plays::new(player, role);
-            map.insert(
-                plays.clone(),
-                PlaysCache { overrides: TypeReader::get_implementation_override(snapshot, plays.clone()).unwrap() },
-            );
+            let cache = PlaysCache {
+                overrides: TypeReader::get_implementation_override(snapshot, plays.clone()).unwrap(),
+                effective_annotations: TypeReader::get_effective_type_edge_annotations(snapshot, plays.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|(annotation, plays)| (PlaysAnnotation::from(annotation), plays))
+                    .collect(),
+            };
+            map.insert(plays.clone(), cache);
         }
         map
     }

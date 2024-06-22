@@ -25,7 +25,7 @@ use crate::type_::{
     entity_type::EntityType,
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
-    plays::Plays,
+    plays::{Plays, PlaysAnnotation},
     relates::Relates,
     relation_type::RelationType,
     role_type::RoleType,
@@ -319,6 +319,13 @@ impl TypeCache {
 
     pub(crate) fn get_plays_override<'c>(&'c self, plays: Plays<'c>) -> &'c Option<Plays<'static>> {
         &self.plays.get(&plays).unwrap().overrides
+    }
+
+    pub(crate) fn get_plays_effective_annotations<'c>(
+        &'c self,
+        plays: Plays<'c>,
+    ) -> &'c HashMap<PlaysAnnotation, Plays<'static>> {
+        &self.plays.get(&plays).unwrap().effective_annotations
     }
 
     pub(crate) fn get_struct_definition_key(&self, label: &str) -> Option<DefinitionKey<'static>> {

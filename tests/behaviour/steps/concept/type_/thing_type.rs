@@ -353,9 +353,9 @@ pub async fn get_subtypes_is_empty(context: &mut Context, root_label: RootLabel,
     });
 }
 
-// Plays
+// Plays (TODO: Move to another file)
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) set plays role: {type_label}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) set plays: {type_label}{may_error}")]
 pub async fn set_plays_role(
     context: &mut Context,
     root_label: RootLabel,
@@ -372,7 +372,7 @@ pub async fn set_plays_role(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) unset plays role: {type_label}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) unset plays: {type_label}{may_error}")]
 pub async fn unset_plays_role(
     context: &mut Context,
     root_label: RootLabel,
@@ -385,37 +385,6 @@ pub async fn unset_plays_role(
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let res = object_type.delete_plays(&mut tx.snapshot, &tx.type_manager, role_type);
         may_error.check(&res);
-    });
-}
-
-#[apply(generic_step)]
-#[step(
-    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) set override: {type_label}{may_error}"
-)]
-pub async fn get_plays_set_override(
-    context: &mut Context,
-    root_label: RootLabel,
-    type_label: Label,
-    role_label: Label,
-    overridden_role_label: Label,
-    may_error: MayError,
-) {
-    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
-    with_schema_tx!(context, |tx| {
-        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
-        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
-
-        let player_supertype = player_type.get_supertype(&tx.snapshot, &tx.type_manager).unwrap().unwrap();
-        let overridden_role_type =
-            tx.type_manager.get_role_type(&tx.snapshot, &overridden_role_label.into_typedb()).unwrap().unwrap();
-        let overridden_plays_opt =
-            player_supertype.get_plays_role_transitive(&tx.snapshot, &tx.type_manager, overridden_role_type).unwrap();
-        if let Some(overridden_plays) = overridden_plays_opt.as_ref() {
-            let res = plays.set_override(&mut tx.snapshot, &tx.type_manager, overridden_plays_opt.unwrap());
-            may_error.check(&res);
-        } else {
-            assert!(may_error.expects_error());
-        }
     });
 }
 
@@ -464,5 +433,102 @@ pub async fn get_declared_plays_roles_contain(
             })
             .collect_vec();
         contains.check(&expected_labels, &actual_labels);
+    });
+}
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) set override: {type_label}{may_error}"
+)]
+pub async fn get_plays_set_override(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    overridden_role_label: Label,
+    may_error: MayError,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+
+        let player_supertype = player_type.get_supertype(&tx.snapshot, &tx.type_manager).unwrap().unwrap();
+        let overridden_role_type =
+            tx.type_manager.get_role_type(&tx.snapshot, &overridden_role_label.into_typedb()).unwrap().unwrap();
+        let overridden_plays_opt =
+            player_supertype.get_plays_role_transitive(&tx.snapshot, &tx.type_manager, overridden_role_type).unwrap();
+        if let Some(overridden_plays) = overridden_plays_opt.as_ref() {
+            let res = plays.set_override(&mut tx.snapshot, &tx.type_manager, overridden_plays_opt.unwrap());
+            may_error.check(&res);
+        } else {
+            assert!(may_error.expects_error());
+        }
+    });
+}
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) set annotation: {annotation}{may_error}"
+)]
+pub async fn get_plays_set_annotation(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    annotation: Annotation,
+    may_error: MayError,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let res = plays.set_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) unset annotation: {annotation}{may_error}"
+)]
+pub async fn get_plays_unset_annotation(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    annotation: Annotation,
+    may_error: MayError,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let res = plays.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}"
+)]
+pub async fn get_plays_get_annotations_contains(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation: Annotation,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let actual_contains = plays
+            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .contains_key(&annotation.into_typedb().into());
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });
 }

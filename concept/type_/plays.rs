@@ -4,6 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use std::collections::HashMap;
 use encoding::{graph::type_::edge::TypeEdgeEncoding, layout::prefix::Prefix};
 use primitive::maybe_owns::MaybeOwns;
 use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
@@ -11,7 +12,8 @@ use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
-        annotation::Annotation, object_type::ObjectType, role_type::RoleType, type_manager::TypeManager,
+        annotation::{Annotation, AnnotationCardinality},
+        object_type::ObjectType, role_type::RoleType, type_manager::TypeManager,
         InterfaceImplementation, TypeAPI,
     },
 };
@@ -51,6 +53,41 @@ impl<'a> Plays<'a> {
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
         type_manager.set_plays_overridden(snapshot, self.clone().into_owned(), overridden)
+    }
+
+    pub fn get_effective_annotations<'this, Snapshot: ReadableSnapshot>(
+        &'this self,
+        snapshot: &Snapshot,
+        type_manager: &'this TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'this, HashMap<PlaysAnnotation, Plays<'static>>>, ConceptReadError> {
+        type_manager.get_plays_effective_annotations(snapshot, self.clone().into_owned())
+    }
+
+    pub fn set_annotation<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+        annotation: PlaysAnnotation,
+    ) -> Result<(), ConceptWriteError> {
+        match annotation {
+            PlaysAnnotation::Cardinality(cardinality) => {
+                type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)?
+            }
+        }
+        Ok(()) // TODO
+    }
+
+    pub fn unset_annotation<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+        annotation: PlaysAnnotation,
+    ) -> Result<(), ConceptWriteError> {
+        match annotation {
+            // TODO: Add check that we unset annotation with same arguments??
+            PlaysAnnotation::Cardinality(_) => type_manager.delete_edge_annotation_cardinality(snapshot, self.clone())?,
+        }
+        Ok(()) // TODO
     }
 
     fn into_owned(self) -> Plays<'static> {
@@ -95,5 +132,55 @@ impl<'a> InterfaceImplementation<'a> for Plays<'a> {
 
     fn unwrap_annotation(annotation: __PlaceholderPlaysAnnotation) -> Annotation {
         unreachable!();
+    }
+}
+
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum PlaysAnnotation {
+    Cardinality(AnnotationCardinality),
+}
+
+impl From<Annotation> for PlaysAnnotation {
+    fn from(annotation: Annotation) -> Self {
+        match annotation {
+            Annotation::Cardinality(annotation) => PlaysAnnotation::Cardinality(annotation),
+
+            Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Plays."),
+            Annotation::Independent(_) => unreachable!("Independent annotation not available for Plays."),
+            Annotation::Distinct(annotation) => unreachable!("Distinct annotation not available for Plays."),
+            Annotation::Unique(annotation) => unreachable!("Unique annotation not available for Plays."),
+            Annotation::Key(annotation) => unreachable!("Key annotation not available for Plays."),
+            Annotation::Regex(annotation) => unreachable!("Regex annotation not available for Plays."),
+        }
+    }
+}
+
+impl Into<Annotation> for PlaysAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            PlaysAnnotation::Cardinality(annotation) => Annotation::Cardinality(annotation),
+        }
+    }
+}
+
+impl PartialEq<Annotation> for PlaysAnnotation {
+    fn eq(&self, annotation: &Annotation) -> bool {
+        match annotation {
+            Annotation::Cardinality(other_cardinality) => {
+                if let Self::Cardinality(cardinality) = self {
+                    cardinality == other_cardinality
+                } else {
+                    false
+                }
+            }
+
+            Annotation::Abstract(_) => false,
+            Annotation::Independent(_) => false,
+            Annotation::Distinct(_) => false,
+            Annotation::Unique(_) => false,
+            Annotation::Key(_) => false,
+            Annotation::Regex(_) => false,
+        }
     }
 }
