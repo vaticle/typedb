@@ -6,6 +6,7 @@
 
 pub mod attribute_type;
 mod owns;
+mod plays;
 mod relation_type;
-mod thing_type;
 mod struct_type;
+mod thing_type;

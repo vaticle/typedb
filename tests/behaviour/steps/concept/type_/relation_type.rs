@@ -292,6 +292,7 @@ pub async fn relation_role_subtypes_contain(
     });
 }
 
+// TODO: is_empty_or_not
 #[apply(generic_step)]
 #[step(expr = r"relation\({type_label}\) get role\({type_label}\) get subtypes is empty")]
 pub async fn relation_role_subtypes_is_empty(context: &mut Context, relation_label: params::Label, role_label: params::Label) {

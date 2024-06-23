@@ -147,6 +147,7 @@ async fn object_get_instance_with_value(
     context.objects.insert(var.name, owner.map(|owner| ObjectWithKey::new_with_key(owner, key)));
 }
 
+// TODO: is_empty_or_not
 #[apply(generic_step)]
 #[step(expr = r"{object_root_label}\({type_label}\) get instances is empty")]
 async fn object_instances_is_empty(
