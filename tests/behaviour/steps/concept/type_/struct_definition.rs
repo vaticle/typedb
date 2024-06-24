@@ -18,16 +18,16 @@ use crate::{
 };
 
 #[apply(generic_step)]
-#[step(expr = "create struct definition: {type_label}{may_error}")]
-pub async fn struct_definition_create(context: &mut Context, type_label: Label, may_error: MayError) {
+#[step(expr = "create struct: {type_label}{may_error}")]
+pub async fn struct_create(context: &mut Context, type_label: Label, may_error: MayError) {
     with_schema_tx!(context, |tx| {
         may_error.check(&tx.type_manager.create_struct(&mut tx.snapshot, type_label.into_typedb().scoped_name().as_str().to_owned()));
     });
 }
 
 #[apply(generic_step)]
-#[step(expr = "delete struct definition: {type_label}{may_error}")]
-pub async fn struct_definition_delete(context: &mut Context, type_label: Label, may_error: MayError) {
+#[step(expr = "delete struct: {type_label}{may_error}")]
+pub async fn struct_delete(context: &mut Context, type_label: Label, may_error: MayError) {
     with_schema_tx!(context, |tx| {
         let definition_key = &tx.type_manager.get_struct_definition_key(&tx.snapshot, type_label.into_typedb().scoped_name().as_str()).unwrap().unwrap();
         may_error.check(&tx.type_manager.delete_struct(&mut tx.snapshot, definition_key));
@@ -36,7 +36,7 @@ pub async fn struct_definition_delete(context: &mut Context, type_label: Label, 
 
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) {exists_or_doesnt}")]
-pub async fn struct_definition_exists(context: &mut Context, type_label: Label, exists: ExistsOrDoesnt) {
+pub async fn struct_exists(context: &mut Context, type_label: Label, exists: ExistsOrDoesnt) {
     with_read_tx!(context, |tx| {
         let definition_key_opt = &tx.type_manager.get_struct_definition_key(
             &tx.snapshot, type_label.into_typedb().scoped_name().as_str()
@@ -52,7 +52,7 @@ pub async fn struct_definition_exists(context: &mut Context, type_label: Label, 
 // TODO: {value_type} should be {struct_or_value_type}
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) create field: {type_label}, with value type: {value_type}{optional}{may_error}")]
-pub async fn struct_definition_create_field_with_value_type(
+pub async fn struct_create_field_with_value_type(
     context: &mut Context,
     type_label: Label,
     field_label: Label,
@@ -72,7 +72,7 @@ pub async fn struct_definition_create_field_with_value_type(
 
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) delete field: {type_label}{may_error}")]
-pub async fn struct_definition_delete_field(
+pub async fn struct_delete_field(
     context: &mut Context,
     type_label: Label,
     field_label: Label,
@@ -90,7 +90,7 @@ pub async fn struct_definition_delete_field(
 
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) get fields {contains_or_doesnt}:")]
-pub async fn struct_definition_get_fields_contains_or_doesnt(
+pub async fn struct_get_fields_contains_or_doesnt(
     context: &mut Context,
     type_label: Label,
     contains_or_doesnt: ContainsOrDoesnt,
@@ -108,7 +108,7 @@ pub async fn struct_definition_get_fields_contains_or_doesnt(
 
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) get field\\({type_label}\\) get value type: {value_type}")]
-pub async fn struct_definition_get_field_get_value_type(
+pub async fn struct_get_field_get_value_type(
     context: &mut Context,
     type_label: Label,
     field_label: Label,
@@ -128,7 +128,7 @@ pub async fn struct_definition_get_field_get_value_type(
 
 #[apply(generic_step)]
 #[step(expr = "struct\\({type_label}\\) get field\\({type_label}\\) is optional: {boolean}")]
-pub async fn struct_definition_get_field_is_optional(
+pub async fn struct_get_field_is_optional(
     context: &mut Context,
     type_label: Label,
     field_label: Label,
@@ -144,5 +144,4 @@ pub async fn struct_definition_get_field_is_optional(
         ).unwrap().optional;
         check_boolean!(is_optional, actual_is_optional);
     });
-
 }
