@@ -4,8 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use bytes::Bytes;
+use std::collections::{BTreeMap, BTreeSet};
 use concept::type_::attribute_type::AttributeType;
 use concept::type_::entity_type::EntityType;
 use concept::type_::relation_type::RelationType;

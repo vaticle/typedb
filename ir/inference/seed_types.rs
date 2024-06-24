@@ -17,7 +17,7 @@ use crate::inference::pattern_type_inference::{TypeInferenceEdge, TypeInferenceG
 use crate::inference::type_inference::TypeAnnotation;
 use crate::pattern::variable::Variable;
 
-fn seed_types<Snapshot: ReadableSnapshot>(constraints: &Vec<Constraint>, snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>) -> TypeInferenceGraph {
+pub(crate) fn seed_types<Snapshot: ReadableSnapshot>(constraints: &Vec<Constraint>, snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>) -> TypeInferenceGraph {
     // Seed unary types
     let unary_annotations= seed_types_for_unary_constraints(constraints, snapshot, type_manager);
     let edges = seed_types_for_binary_constraints(constraints, snapshot, type_manager, &unary_annotations);
@@ -346,4 +346,6 @@ pub mod tests {
             assert_eq!(expected_tig.edges, edges);
         }
     }
+
+
 }
