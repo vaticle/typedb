@@ -7,6 +7,27 @@ load("@rules_rust//rust:defs.bzl", "rust_test")
 package(default_visibility = ["//visibility:public",])
 
 rust_test(
+    name = "test_statistics",
+    srcs = glob([
+        "test_statistics.rs",
+    ]),
+    deps = [
+        "//common/bytes",
+        "//common/lending_iterator",
+        "//common/logger",
+        "//common/primitive",
+        "//concept",
+        "//encoding",
+        "//storage",
+        "//durability",
+        "//util/test:test_utils",
+
+        "@crates//:rand",
+        "@crates//:tracing",
+    ]
+)
+
+rust_test(
     name = "test_thing",
     srcs = glob([
         "test_thing.rs",

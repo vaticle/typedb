@@ -6,8 +6,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
-    marker::PhantomData,
     sync::Arc,
 };
 
@@ -28,13 +26,12 @@ use encoding::{
         },
     },
     value::{label::Label, value_type::ValueType},
-    AsBytes, Keyable,
 };
 use primitive::maybe_owns::MaybeOwns;
 use resource::constants::encoding::StructFieldIDUInt;
 use storage::{
     durability_client::DurabilityClient,
-    snapshot::{CommittableSnapshot, ReadableSnapshot, WritableSnapshot, WriteSnapshot},
+    snapshot::{CommittableSnapshot, ReadableSnapshot, WritableSnapshot},
     MVCCStorage,
 };
 use type_cache::TypeCache;
@@ -55,7 +52,7 @@ use crate::{
         relation_type::{RelationType, RelationTypeAnnotation},
         role_type::{RoleType, RoleTypeAnnotation},
         type_manager::type_reader::TypeReader,
-        InterfaceImplementation, KindAPI, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
+        KindAPI, ObjectTypeAPI, Ordering, OwnerAPI, PlayerAPI, TypeAPI,
     },
 };
 
@@ -67,14 +64,13 @@ pub mod validation;
 // TODO: this should be parametrised into the database options? Would be great to have it be changable at runtime!
 pub(crate) const RELATION_INDEX_THRESHOLD: u64 = 8;
 
-pub struct TypeManager<Snapshot> {
+pub struct TypeManager {
     vertex_generator: Arc<TypeVertexGenerator>,
     definition_key_generator: Arc<DefinitionKeyGenerator>,
     type_cache: Option<Arc<TypeCache>>,
-    snapshot: PhantomData<Snapshot>,
 }
 
-impl<Snapshot> TypeManager<Snapshot> {
+impl TypeManager {
     pub fn initialise_types<D: DurabilityClient>(
         storage: Arc<MVCCStorage<D>>,
         definition_key_generator: Arc<DefinitionKeyGenerator>,
@@ -82,8 +78,7 @@ impl<Snapshot> TypeManager<Snapshot> {
     ) -> Result<(), ConceptWriteError> {
         let mut snapshot = storage.clone().open_snapshot_write();
         {
-            let type_manager =
-                TypeManager::<WriteSnapshot<D>>::new(definition_key_generator, vertex_generator.clone(), None);
+            let type_manager = TypeManager::new(definition_key_generator, vertex_generator.clone(), None);
             let root_entity = type_manager.create_entity_type(&mut snapshot, &Kind::Entity.root_label(), true)?;
             root_entity.set_annotation(
                 &mut snapshot,
@@ -124,7 +119,7 @@ macro_rules! get_type_methods {
     )*) => {
         $(
             pub fn $method_name(
-                &self, snapshot: &Snapshot, label: &Label<'_>
+                &self, snapshot: &impl ReadableSnapshot, label: &Label<'_>
             ) -> Result<Option<$output_type<'static>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(cache.$cache_method(label))
@@ -142,7 +137,7 @@ macro_rules! get_supertype_methods {
     )*) => {
         $(
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<Option<$type_<'static>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(cache.$cache_method(type_))
@@ -161,7 +156,7 @@ macro_rules! get_supertypes_methods {
         $(
             // WARN: supertypes currently do NOT include themselves
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, Vec<$type_<'static>>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
@@ -180,7 +175,7 @@ macro_rules! get_subtypes_methods {
     )*) => {
         $(
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, Vec<$type_<'static>>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
@@ -200,7 +195,7 @@ macro_rules! get_subtypes_transitive_methods {
         $(
             // WARN: supertypes currently do NOT include themselves
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, Vec<$type_<'static>>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
@@ -219,7 +214,7 @@ macro_rules! get_type_is_root_methods {
     )*) => {
         $(
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<bool, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(cache.$cache_method(type_))
@@ -238,7 +233,7 @@ macro_rules! get_type_label_methods {
     )*) => {
         $(
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, Label<'static>>, ConceptReadError> {
                 if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
@@ -256,7 +251,7 @@ macro_rules! get_type_annotations {
     )*) => {
         $(
             pub(crate) fn $method_name(
-                &self, snapshot: &Snapshot, type_: $type_<'static>
+                &self, snapshot: &impl ReadableSnapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, HashSet<$annotation_type>>, ConceptReadError> {
                  if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
@@ -269,18 +264,18 @@ macro_rules! get_type_annotations {
     }
 }
 
-impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
+impl TypeManager {
     pub fn new(
         definition_key_generator: Arc<DefinitionKeyGenerator>,
         vertex_generator: Arc<TypeVertexGenerator>,
         schema_cache: Option<Arc<TypeCache>>,
     ) -> Self {
-        TypeManager { definition_key_generator, vertex_generator, type_cache: schema_cache, snapshot: PhantomData }
+        TypeManager { definition_key_generator, vertex_generator, type_cache: schema_cache }
     }
 
     pub fn resolve_relates(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation: RelationType<'static>,
         role_name: &str,
     ) -> Result<Option<Relates<'static>>, ConceptReadError> {
@@ -296,7 +291,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub fn get_struct_definition_key(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         name: &str,
     ) -> Result<Option<DefinitionKey<'static>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -308,7 +303,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub fn get_struct_definition(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         definition_key: DefinitionKey<'static>,
     ) -> Result<MaybeOwns<'_, StructDefinition>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -320,7 +315,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub fn resolve_struct_field(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         fields_path: &Vec<&str>,
         definition: StructDefinition,
     ) -> Result<Vec<StructFieldIDUInt>, ConceptReadError> {
@@ -419,7 +414,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_entity_type_owns(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         entity_type: EntityType<'static>,
     ) -> Result<MaybeOwns<'_, HashSet<Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -432,7 +427,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_owns(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'_, HashSet<Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -445,7 +440,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_owns_for_attribute(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         attribute_type: AttributeType<'static>,
     ) -> Result<MaybeOwns<'_, HashSet<Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -459,7 +454,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_owners_for_attribute_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         attribute_type: AttributeType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<ObjectType<'static>, Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -475,7 +470,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_relates(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'_, HashSet<Relates<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -488,7 +483,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_relates_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<RoleType<'static>, Relates<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -501,7 +496,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_plays_for_role_type(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         role_type: RoleType<'static>,
     ) -> Result<MaybeOwns<'_, HashSet<Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -514,7 +509,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_plays_for_role_type_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         role_type: RoleType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<ObjectType<'static>, Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -530,7 +525,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_entity_type_owns_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         entity_type: EntityType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -546,7 +541,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_owns_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -562,7 +557,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn relation_index_available(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'_>,
     ) -> Result<bool, ConceptReadError> {
         // TODO: it would be good if this doesn't require recomputation
@@ -580,7 +575,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_entity_type_plays<'this>(
         &'this self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         entity_type: EntityType<'static>,
     ) -> Result<MaybeOwns<'this, HashSet<Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -592,7 +587,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
     }
     pub(crate) fn get_entity_type_plays_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         entity_type: EntityType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -608,7 +603,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_plays<'this>(
         &'this self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'this, HashSet<Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -621,7 +616,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_relation_type_plays_transitive(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         relation_type: RelationType<'static>,
     ) -> Result<MaybeOwns<'_, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -637,7 +632,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_plays_overridden(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         plays: Plays<'static>,
     ) -> Result<MaybeOwns<'_, Option<Plays<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -649,7 +644,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_attribute_type_value_type(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<ValueType>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -668,7 +663,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_owns_overridden(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         owns: Owns<'static>,
     ) -> Result<MaybeOwns<'_, Option<Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -680,7 +675,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_owns_effective_annotations<'this>(
         &'this self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         owns: Owns<'static>,
     ) -> Result<MaybeOwns<'this, HashMap<OwnsAnnotation, Owns<'static>>>, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -697,7 +692,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_owns_ordering(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         owns: Owns<'static>,
     ) -> Result<Ordering, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -709,7 +704,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn get_role_ordering(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &impl ReadableSnapshot,
         role_type: RoleType<'static>,
     ) -> Result<Ordering, ConceptReadError> {
         if let Some(cache) = &self.type_cache {
@@ -733,10 +728,10 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
 //  All validation must occur before any writes.  All writes must be done through TypeWriter
 //      (If this feels like unnecessary indirection, feel free to refactor. I just need structure)
 //  Avoid cross-calling methods if it violates the above.
-impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
+impl TypeManager {
     pub fn create_struct(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         name: String,
     ) -> Result<DefinitionKey<'static>, ConceptWriteError> {
         // TODO: Validation
@@ -750,7 +745,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub fn add_struct_field(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         definition_key: DefinitionKey<'static>,
         field_name: String,
         value_type: ValueType,
@@ -768,7 +763,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub fn delete_struct_field(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         definition_key: DefinitionKey<'static>,
         field_name: String,
     ) -> Result<(), ConceptWriteError> {
@@ -780,7 +775,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub fn finalise(self, snapshot: &Snapshot) -> Result<(), Vec<ConceptWriteError>> {
+    pub fn finalise(self, snapshot: &impl WritableSnapshot) -> Result<(), Vec<ConceptWriteError>> {
         let type_errors = CommitTimeValidation::validate(snapshot);
         match type_errors {
             Ok(errors) => {
@@ -796,7 +791,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub fn create_entity_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         label: &Label<'_>,
         is_root: bool,
     ) -> Result<EntityType<'static>, ConceptWriteError> {
@@ -821,7 +816,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub fn create_relation_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         label: &Label<'_>,
         is_root: bool,
     ) -> Result<RelationType<'static>, ConceptWriteError> {
@@ -846,7 +841,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn create_role_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         label: &Label<'_>,
         relation_type: RelationType<'static>,
         is_root: bool,
@@ -875,7 +870,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub fn create_attribute_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         label: &Label<'_>,
         is_root: bool,
     ) -> Result<AttributeType<'static>, ConceptWriteError> {
@@ -900,7 +895,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_entity_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         entity_type: EntityType<'_>,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_type_is_not_root(snapshot, entity_type.clone().into_owned())
@@ -918,7 +913,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_relation_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         relation_type: RelationType<'_>,
     ) -> Result<(), ConceptWriteError> {
         // Sufficient to guarantee the roles have no subtypes or instances either
@@ -942,7 +937,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_attribute_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         attribute_type: AttributeType<'_>,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_type_is_not_root(snapshot, attribute_type.clone().into_owned())
@@ -960,7 +955,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_role_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         role_type: RoleType<'_>,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_type_is_not_root(snapshot, role_type.clone().into_owned())
@@ -981,7 +976,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_label<T: KindAPI<'static>>(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         type_: T,
         label: &Label<'_>,
     ) -> Result<(), ConceptWriteError> {
@@ -1002,7 +997,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     // TODO: TypeWriter Refactor
     pub(crate) fn set_value_type(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         attribute: AttributeType<'static>,
         value_type: ValueType,
     ) -> Result<(), ConceptWriteError> {
@@ -1024,7 +1019,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    fn set_supertype<K>(&self, snapshot: &mut Snapshot, subtype: K, supertype: K) -> Result<(), ConceptWriteError>
+    fn set_supertype<K>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        subtype: K,
+        supertype: K,
+    ) -> Result<(), ConceptWriteError>
     where
         K: KindAPI<'static>,
     {
@@ -1043,7 +1043,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_attribute_type_supertype(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         subtype: AttributeType<'static>,
         supertype: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1060,7 +1060,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_entity_type_supertype(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         subtype: EntityType<'static>,
         supertype: EntityType<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1070,7 +1070,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_relation_type_supertype(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         subtype: RelationType<'static>,
         supertype: RelationType<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1080,7 +1080,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_role_type_supertype(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         subtype: RoleType<'static>,
         supertype: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1091,7 +1091,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     // TODO: If the validation for owns and plays can be made generic, we should see if we can make these functions generic as well.
     pub(crate) fn set_owns(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         owner: impl OwnerAPI<'static>,
         attribute: AttributeType<'static>,
         ordering: Ordering,
@@ -1105,7 +1105,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_owns(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         owner: impl ObjectTypeAPI<'static>,
         attribute: AttributeType<'static>,
     ) {
@@ -1118,7 +1118,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_owns_overridden(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         owns: Owns<'static>,
         overridden: Owns<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1134,7 +1134,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_owns_overridden(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         owns: Owns<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: validation
@@ -1144,7 +1144,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_plays(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         player: impl KindAPI<'static> + ObjectTypeAPI<'static> + PlayerAPI<'static>,
         role: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
@@ -1156,7 +1156,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_plays(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         player: impl ObjectTypeAPI<'static> + PlayerAPI<'static>,
         role: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1176,7 +1176,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn set_plays_overridden(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         plays: Plays<'static>,
         overridden: Plays<'static>,
     ) -> Result<(), ConceptWriteError> {
@@ -1191,7 +1191,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_plays_overridden(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         plays: Plays<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
@@ -1199,51 +1199,72 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn set_owns_ordering(&self, snapshot: &mut Snapshot, owns: Owns<'_>, ordering: Ordering) {
+    pub(crate) fn set_owns_ordering(&self, snapshot: &mut impl WritableSnapshot, owns: Owns<'_>, ordering: Ordering) {
         TypeWriter::storage_set_owns_ordering(snapshot, owns, ordering)
     }
 
-    pub(crate) fn delete_owns_ordering(&self, snapshot: &mut Snapshot, owns: Owns<'_>) {
+    pub(crate) fn delete_owns_ordering(&self, snapshot: &mut impl WritableSnapshot, owns: Owns<'_>) {
         TypeWriter::storage_delete_owns_ordering(snapshot, owns)
     }
 
-    pub(crate) fn set_role_ordering(&self, snapshot: &mut Snapshot, role: RoleType<'_>, ordering: Ordering) {
+    pub(crate) fn set_role_ordering(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        role: RoleType<'_>,
+        ordering: Ordering,
+    ) {
         TypeWriter::storage_put_type_vertex_property(snapshot, role, Some(ordering))
     }
 
-    pub(crate) fn set_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn set_annotation_abstract(&self, snapshot: &mut impl WritableSnapshot, type_: impl TypeAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationAbstract>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_abstract(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn delete_annotation_abstract(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        type_: impl TypeAPI<'static>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationAbstract>(snapshot, type_)
     }
 
-    pub(crate) fn set_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn set_annotation_distinct(&self, snapshot: &mut impl WritableSnapshot, type_: impl TypeAPI<'static>) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationDistinct>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn delete_annotation_distinct(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        type_: impl TypeAPI<'static>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationDistinct>(snapshot, type_)
     }
 
-    pub(crate) fn set_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn set_annotation_independent(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        type_: impl TypeAPI<'static>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_put_type_vertex_property::<AnnotationIndependent>(snapshot, type_, None)
     }
 
-    pub(crate) fn delete_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn delete_annotation_independent(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        type_: impl TypeAPI<'static>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationIndependent>(snapshot, type_)
     }
 
     pub(crate) fn set_annotation_cardinality(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         type_: impl TypeAPI<'static>,
         annotation: AnnotationCardinality,
     ) {
@@ -1251,56 +1272,84 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationCardinality>(snapshot, type_, Some(annotation))
     }
 
-    pub(crate) fn delete_annotation_cardinality(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn delete_annotation_cardinality(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        type_: impl TypeAPI<'static>,
+    ) {
         TypeWriter::storage_delete_type_vertex_property::<AnnotationCardinality>(snapshot, type_)
     }
 
     pub(crate) fn set_annotation_regex(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         type_: impl TypeAPI<'static>,
         regex: AnnotationRegex,
     ) {
         TypeWriter::storage_put_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex))
     }
 
-    pub(crate) fn delete_annotation_regex(&self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>) {
+    pub(crate) fn delete_annotation_regex(&self, snapshot: &mut impl WritableSnapshot, type_: impl TypeAPI<'static>) {
         // TODO debug assert that stored regex matches
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationRegex>(snapshot, type_)
     }
 
-    pub(crate) fn set_edge_annotation_distinct<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn set_edge_annotation_distinct<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_put_type_edge_property::<AnnotationDistinct>(snapshot, edge, None)
     }
 
-    pub(crate) fn delete_edge_annotation_distinct<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn delete_edge_annotation_distinct<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationDistinct>(snapshot, edge)
     }
 
-    pub(crate) fn set_edge_annotation_unique<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn set_edge_annotation_unique<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_put_type_edge_property::<AnnotationUnique>(snapshot, edge, None)
     }
 
-    pub(crate) fn delete_edge_annotation_unique<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn delete_edge_annotation_unique<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationUnique>(snapshot, edge)
     }
 
-    pub(crate) fn set_edge_annotation_key<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn set_edge_annotation_key<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         TypeWriter::storage_put_type_edge_property::<AnnotationKey>(snapshot, edge, None)
     }
 
-    pub(crate) fn delete_edge_annotation_key<'b>(&self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>) {
+    pub(crate) fn delete_edge_annotation_key<'b>(
+        &self,
+        snapshot: &mut impl WritableSnapshot,
+        edge: impl TypeEdgeEncoding<'b>,
+    ) {
         TypeWriter::storage_delete_type_edge_property::<AnnotationKey>(snapshot, edge)
     }
 
     pub(crate) fn set_edge_annotation_cardinality<'b>(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         edge: impl TypeEdgeEncoding<'b>,
         annotation: AnnotationCardinality,
     ) {
@@ -1309,7 +1358,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
     pub(crate) fn delete_edge_annotation_cardinality<'b>(
         &self,
-        snapshot: &mut Snapshot,
+        snapshot: &mut impl WritableSnapshot,
         edge: impl TypeEdgeEncoding<'b>,
     ) {
         TypeWriter::storage_delete_type_edge_property::<AnnotationCardinality>(snapshot, edge)

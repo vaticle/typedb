@@ -20,10 +20,10 @@ use crate::{
         r#struct::StructDefinition,
     },
     value::{
-        boolean_bytes::BooleanBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes,
-        decimal_bytes::DecimalBytes, double_bytes::DoubleBytes, duration_bytes::DurationBytes, long_bytes::LongBytes,
-        string_bytes::StringBytes, value::Value, value_struct::StructValue, value_type::ValueTypeCategory,
-        ValueEncodable,
+        boolean_bytes::BooleanBytes, date_bytes::DateBytes, date_time_bytes::DateTimeBytes,
+        date_time_tz_bytes::DateTimeTZBytes, decimal_bytes::DecimalBytes, double_bytes::DoubleBytes,
+        duration_bytes::DurationBytes, long_bytes::LongBytes, string_bytes::StringBytes, value::Value,
+        value_struct::StructValue, value_type::ValueTypeCategory, ValueEncodable,
     },
     AsBytes,
 };
@@ -43,9 +43,9 @@ impl<'a, const INLINE_LENGTH: usize> StructBytes<'a, INLINE_LENGTH> {
         StructBytes { bytes: value }
     }
 
-    pub fn build(struct_value: &Cow<StructValue<'a>>) -> StructBytes<'static, INLINE_LENGTH> {
+    pub fn build(struct_value: &StructValue<'a>) -> StructBytes<'static, INLINE_LENGTH> {
         let mut buf: Vec<u8> = Vec::new();
-        encode_struct_into(struct_value.borrow(), &mut buf).unwrap();
+        encode_struct_into(struct_value, &mut buf).unwrap();
         StructBytes::new(Bytes::Array(ByteArray::boxed(buf.into_boxed_slice())))
     }
 
@@ -96,6 +96,7 @@ fn encode_struct_into<'a>(struct_value: &StructValue<'a>, buf: &mut Vec<u8>) -> 
             Value::Long(value) => buf.extend_from_slice(&LongBytes::build(*value).bytes()),
             Value::Double(value) => buf.extend_from_slice(&DoubleBytes::build(*value).bytes()),
             Value::Decimal(value) => buf.extend_from_slice(&DecimalBytes::build(*value).bytes()),
+            Value::Date(value) => buf.extend_from_slice(&DateBytes::build(*value).bytes()),
             Value::DateTime(value) => buf.extend_from_slice(&DateTimeBytes::build(*value).bytes()),
             Value::DateTimeTZ(value) => buf.extend_from_slice(&DateTimeTZBytes::build(*value).bytes()),
             Value::Duration(value) => buf.extend_from_slice(&DurationBytes::build(*value).bytes()),
@@ -147,6 +148,9 @@ fn decode_struct_increment_offset(offset: &mut usize, buf: &[u8]) -> Result<Stru
             ValueTypeCategory::Decimal => Value::Decimal(
                 DecimalBytes::new(read_bytes_increment_offset::<{ DecimalBytes::LENGTH }>(offset, buf)?).as_decimal(),
             ),
+            ValueTypeCategory::Date => Value::Date(
+                DateBytes::new(read_bytes_increment_offset::<{ DateBytes::LENGTH }>(offset, buf)?).as_naive_date(),
+            ),
             ValueTypeCategory::DateTime => Value::DateTime(
                 DateTimeBytes::new(read_bytes_increment_offset::<{ DateTimeBytes::LENGTH }>(offset, buf)?)
                     .as_naive_date_time(),
@@ -180,7 +184,7 @@ fn read_vle_increment_offset(offset: &mut usize, buf: &[u8]) -> Result<usize, En
         Ok(u8::from_be_bytes(read_bytes_increment_offset::<1>(offset, buf)?) as usize)
     } else {
         let mut len = u32::from_be_bytes(read_bytes_increment_offset::<4>(offset, buf)?);
-        len = len & (!StructBytes::<0>::VLE_U32_LEN_MASK);
+        len &= !StructBytes::<0>::VLE_U32_LEN_MASK;
         Ok(len as usize)
     }
 }
@@ -212,6 +216,7 @@ fn read_bytes_increment_offset<const N_BYTES: usize>(
     }
 }
 
+#[cfg(test)]
 pub mod test {
     use std::{borrow::Cow, collections::HashMap};
 

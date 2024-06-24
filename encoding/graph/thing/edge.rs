@@ -23,7 +23,7 @@ use crate::{
         Typed,
     },
     layout::prefix::{Prefix, PrefixID},
-    value::value_type::{ValueType, ValueTypeCategory},
+    value::value_type::ValueTypeCategory,
     AsBytes, EncodingKeyspace, Keyable, Prefixed,
 };
 
@@ -281,6 +281,7 @@ impl<'a> ThingEdgeHasReverse<'a> {
             Prefix::VertexAttributeLong => EncodingKeyspace::Data,
             Prefix::VertexAttributeDouble => EncodingKeyspace::Data,
             Prefix::VertexAttributeDecimal => EncodingKeyspace::Data,
+            Prefix::VertexAttributeDate => EncodingKeyspace::Data,
             Prefix::VertexAttributeDateTime => EncodingKeyspace::Data,
             Prefix::VertexAttributeDateTimeTZ => EncodingKeyspace::Data,
             Prefix::VertexAttributeDuration => EncodingKeyspace::Data,

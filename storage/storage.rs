@@ -201,7 +201,10 @@ impl<Durability> MVCCStorage<Durability> {
         SchemaSnapshot::new(self, watermark)
     }
 
-    fn snapshot_commit(&self, snapshot: impl CommittableSnapshot<Durability>) -> Result<(), StorageCommitError>
+    fn snapshot_commit(
+        &self,
+        snapshot: impl CommittableSnapshot<Durability>,
+    ) -> Result<SequenceNumber, StorageCommitError>
     where
         Durability: DurabilityClient,
     {
@@ -235,7 +238,7 @@ impl<Durability> MVCCStorage<Durability> {
                 Self::persist_commit_status(true, commit_sequence_number, &self.durability_client)
                     .map_err(|error| Durability { name: self.name.clone(), source: error })?;
 
-                Ok(())
+                Ok(commit_sequence_number)
             }
             ValidatedCommit::Conflict(conflict) => {
                 Self::persist_commit_status(false, commit_sequence_number, &self.durability_client)

@@ -79,28 +79,24 @@ impl<'a> TypeAPI<'a> for RelationType<'a> {
         self.vertex.as_reference()
     }
 
-    fn is_abstract<Snapshot: ReadableSnapshot>(
+    fn is_abstract(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
         Ok(annotations.contains(&RelationTypeAnnotation::Abstract(AnnotationAbstract)))
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
-        self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-    ) -> Result<(), ConceptWriteError> {
+    fn delete(self, snapshot: &mut impl WritableSnapshot, type_manager: &TypeManager) -> Result<(), ConceptWriteError> {
         // TODO: validation (Or better, do it in type_manager)
         type_manager.delete_relation_type(snapshot, self)
     }
 
-    fn get_label<'m, Snapshot: ReadableSnapshot>(
+    fn get_label<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Label<'static>>, ConceptReadError> {
         type_manager.get_relation_type_label(snapshot, self.clone().into_owned())
     }
@@ -118,18 +114,18 @@ impl<'a> ObjectTypeAPI<'a> for RelationType<'a> {
 }
 
 impl<'a> RelationType<'a> {
-    pub fn is_root<Snapshot: ReadableSnapshot>(
+    pub fn is_root(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<bool, ConceptReadError> {
         type_manager.get_relation_type_is_root(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_label<Snapshot: WritableSnapshot>(
+    pub fn set_label(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         label: &Label<'_>,
     ) -> Result<(), ConceptWriteError> {
         if self.is_root(snapshot, type_manager)? {
@@ -139,59 +135,59 @@ impl<'a> RelationType<'a> {
         }
     }
 
-    pub fn get_supertype<Snapshot: ReadableSnapshot>(
+    pub fn get_supertype(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
     ) -> Result<Option<RelationType<'static>>, ConceptReadError> {
         type_manager.get_relation_type_supertype(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_supertype<Snapshot: WritableSnapshot>(
+    pub fn set_supertype(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         supertype: RelationType<'static>,
     ) -> Result<(), ConceptWriteError> {
         type_manager.set_relation_type_supertype(snapshot, self.clone().into_owned(), supertype)
     }
 
-    pub fn get_supertypes<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_supertypes<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RelationType<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_supertypes(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_subtypes<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_subtypes<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RelationType<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_subtypes(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_subtypes_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_subtypes_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, Vec<RelationType<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_subtypes_transitive(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_annotations<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<RelationTypeAnnotation>>, ConceptReadError> {
         type_manager.get_relation_type_annotations(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_annotation<Snapshot: WritableSnapshot>(
+    pub fn set_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: RelationTypeAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
@@ -202,10 +198,10 @@ impl<'a> RelationType<'a> {
         Ok(())
     }
 
-    fn delete_annotation<Snapshot: WritableSnapshot>(
+    fn delete_annotation(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         annotation: RelationTypeAnnotation,
     ) {
         match annotation {
@@ -215,10 +211,10 @@ impl<'a> RelationType<'a> {
         }
     }
 
-    pub fn create_relates<Snapshot: WritableSnapshot>(
+    pub fn create_relates(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         name: &str,
         ordering: Ordering,
     ) -> Result<RoleType<'static>, ConceptWriteError> {
@@ -226,18 +222,18 @@ impl<'a> RelationType<'a> {
         type_manager.create_role_type(snapshot, &label, self.clone().into_owned(), false, ordering)
     }
 
-    pub fn get_relates<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relates<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Relates<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_relates(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_relates_role<Snapshot: ReadableSnapshot>(
+    pub fn get_relates_role(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         name: &str,
     ) -> Result<Option<Relates<'static>>, ConceptReadError> {
         let label = Label::build_scoped(name, self.get_label(snapshot, type_manager)?.name().as_str());
@@ -246,27 +242,27 @@ impl<'a> RelationType<'a> {
             .map(|role_type| Relates::new(self.clone().into_owned(), role_type)))
     }
 
-    pub fn get_relates_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relates_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Relates<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_relates_transitive(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_relates_role_transitive<'b, Snapshot: ReadableSnapshot>(
+    pub fn get_relates_role_transitive<'b>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'b>,
     ) -> Result<Option<Relates<'static>>, ConceptReadError> {
         Ok(self.get_relates_transitive(snapshot, type_manager)?.get(&role_type).cloned())
     }
 
-    fn has_relates_role<Snapshot: ReadableSnapshot>(
+    fn has_relates_role(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         name: &str,
     ) -> Result<bool, ConceptReadError> {
         Ok(self.get_relates_role(snapshot, type_manager, name)?.is_some())
@@ -278,10 +274,10 @@ impl<'a> RelationType<'a> {
 }
 
 impl<'a> OwnerAPI<'a> for RelationType<'a> {
-    fn set_owns<Snapshot: WritableSnapshot>(
+    fn set_owns(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<Owns<'static>, ConceptWriteError> {
@@ -289,10 +285,10 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         Ok(Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type))
     }
 
-    fn delete_owns<Snapshot: WritableSnapshot>(
+    fn delete_owns(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: error if not owned?
@@ -300,76 +296,76 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         Ok(())
     }
 
-    fn get_owns<'m, Snapshot: ReadableSnapshot>(
+    fn get_owns<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_owns(snapshot, self.clone().into_owned())
     }
 
-    fn get_owns_attribute<Snapshot: ReadableSnapshot>(
+    fn get_owns_attribute(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<Owns<'static>>, ConceptReadError> {
         let expected_owns = Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type);
         Ok(self.get_owns(snapshot, type_manager)?.contains(&expected_owns).then_some(expected_owns))
     }
 
-    fn get_owns_transitive<'m, Snapshot: ReadableSnapshot>(
+    fn get_owns_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_owns_transitive(snapshot, self.clone().into_owned())
     }
 }
 
 impl<'a> PlayerAPI<'a> for RelationType<'a> {
-    fn set_plays<Snapshot: WritableSnapshot>(
+    fn set_plays(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
         // TODO: decide behaviour (ok or error) if already playing
         type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())
     }
 
-    fn delete_plays<Snapshot: WritableSnapshot>(
+    fn delete_plays(
         &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: error if not playing?
         type_manager.delete_plays(snapshot, self.clone().into_owned(), role_type)
     }
 
-    fn get_plays<'m, Snapshot: ReadableSnapshot>(
+    fn get_plays<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_plays(snapshot, self.clone().into_owned())
     }
 
-    fn get_plays_role<Snapshot: ReadableSnapshot>(
+    fn get_plays_role(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &TypeManager,
         role_type: RoleType<'static>,
     ) -> Result<Option<Plays<'static>>, ConceptReadError> {
         let expected_plays = Plays::new(ObjectType::Relation(self.clone().into_owned()), role_type);
         Ok(self.get_plays(snapshot, type_manager)?.contains(&expected_plays).then_some(expected_plays))
     }
 
-    fn get_plays_transitive<'m, Snapshot: ReadableSnapshot>(
+    fn get_plays_transitive<'m>(
         &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        type_manager: &'m TypeManager,
     ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_plays_transitive(snapshot, self.clone().into_owned())
     }

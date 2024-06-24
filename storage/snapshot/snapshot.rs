@@ -10,7 +10,6 @@ use bytes::{byte_array::ByteArray, byte_reference::ByteReference, Bytes};
 use lending_iterator::LendingIterator;
 use resource::constants::snapshot::{BUFFER_KEY_INLINE, BUFFER_VALUE_INLINE};
 
-use super::{buffer::OperationsBuffer, iterator::SnapshotRangeIterator};
 use crate::{
     durability_client::DurabilityClient,
     isolation_manager::{CommitRecord, CommitType},
@@ -18,7 +17,12 @@ use crate::{
     key_range::KeyRange,
     key_value::{StorageKey, StorageKeyArray, StorageKeyReference},
     sequence_number::SequenceNumber,
-    snapshot::{buffer::BufferRangeIterator, lock::LockType, write::Write},
+    snapshot::{
+        buffer::{BufferRangeIterator, OperationsBuffer},
+        iterator::SnapshotRangeIterator,
+        lock::LockType,
+        write::Write,
+    },
     MVCCStorage, StorageCommitError,
 };
 
@@ -48,9 +52,9 @@ pub trait ReadableSnapshot {
     ) -> bool;
 
     // --- we are slightly breaking the abstraction and Rust model by mimicking polymorphism for the following methods ---
-    fn get_buffered_write_mapped<T>(&self, key: StorageKeyReference<'_>, mapper: impl FnMut(&Write) -> T) -> Option<T>;
+    fn get_buffered_write(&self, key: StorageKeyReference<'_>) -> Option<&Write>;
 
-    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<{ BUFFER_KEY_INLINE }>, Write)> + '_;
+    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<BUFFER_KEY_INLINE>, Write)> + '_;
 
     fn iterate_buffered_writes_range<'this, const PS: usize>(
         &'this self,
@@ -174,7 +178,7 @@ pub trait CommittableSnapshot<D>: WritableSnapshot
 where
     D: DurabilityClient,
 {
-    fn commit(self) -> Result<(), SnapshotError>;
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError>;
 
     fn into_commit_record(self) -> CommitRecord;
 }
@@ -222,17 +226,17 @@ impl<D> ReadableSnapshot for ReadSnapshot<D> {
         !buffered_only && self.storage.iterate_range(range, self.open_sequence_number).next().is_some()
     }
 
-    fn get_buffered_write_mapped<T>(&self, key: StorageKeyReference<'_>, mapper: impl FnMut(&Write) -> T) -> Option<T> {
+    fn get_buffered_write(&self, _: StorageKeyReference<'_>) -> Option<&Write> {
         None
     }
 
-    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<{ BUFFER_KEY_INLINE }>, Write)> + '_ {
+    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<BUFFER_KEY_INLINE>, Write)> + '_ {
         empty()
     }
 
     fn iterate_buffered_writes_range<'this, const PS: usize>(
         &'this self,
-        range: KeyRange<StorageKey<'this, PS>>,
+        _: KeyRange<StorageKey<'this, PS>>,
     ) -> BufferRangeIterator {
         BufferRangeIterator::empty()
     }
@@ -307,11 +311,11 @@ impl<D> ReadableSnapshot for WriteSnapshot<D> {
         buffered || (!buffered_only && self.storage.iterate_range(range, self.open_sequence_number).next().is_some())
     }
 
-    fn get_buffered_write_mapped<T>(&self, key: StorageKeyReference<'_>, mapper: impl FnMut(&Write) -> T) -> Option<T> {
-        self.operations().writes_in(key.keyspace_id()).get_write_mapped(key.byte_ref(), mapper)
+    fn get_buffered_write(&self, key: StorageKeyReference<'_>) -> Option<&Write> {
+        self.operations().writes_in(key.keyspace_id()).get_write(key.byte_ref())
     }
 
-    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<{ BUFFER_KEY_INLINE }>, Write)> + '_ {
+    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<BUFFER_KEY_INLINE>, Write)> + '_ {
         self.operations().iterate_writes()
     }
 
@@ -345,11 +349,14 @@ impl<D> WritableSnapshot for WriteSnapshot<D> {
 }
 
 impl<D: DurabilityClient> CommittableSnapshot<D> for WriteSnapshot<D> {
-    fn commit(self) -> Result<(), SnapshotError> {
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError> {
         if self.operations.is_writes_empty() && self.operations.locks_empty() {
-            Ok(())
+            Ok(None)
         } else {
-            self.storage.clone().snapshot_commit(self).map_err(|error| SnapshotError::Commit { source: error })
+            match self.storage.clone().snapshot_commit(self) {
+                Ok(sequence_number) => Ok(Some(sequence_number)),
+                Err(error) => Err(SnapshotError::Commit { source: error }),
+            }
         }
     }
 
@@ -427,11 +434,11 @@ impl<D> ReadableSnapshot for SchemaSnapshot<D> {
         buffered || (!buffered_only && self.storage.iterate_range(range, self.open_sequence_number).next().is_some())
     }
 
-    fn get_buffered_write_mapped<T>(&self, key: StorageKeyReference<'_>, mapper: impl FnMut(&Write) -> T) -> Option<T> {
-        self.operations().writes_in(key.keyspace_id()).get_write_mapped(key.byte_ref(), mapper)
+    fn get_buffered_write(&self, key: StorageKeyReference<'_>) -> Option<&Write> {
+        self.operations().writes_in(key.keyspace_id()).get_write(key.byte_ref())
     }
 
-    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<{ BUFFER_KEY_INLINE }>, Write)> + '_ {
+    fn iterate_buffered_writes(&self) -> impl Iterator<Item = (StorageKeyArray<BUFFER_KEY_INLINE>, Write)> + '_ {
         self.operations().iterate_writes()
     }
 
@@ -466,11 +473,14 @@ impl<D> WritableSnapshot for SchemaSnapshot<D> {
 
 impl<D: DurabilityClient> CommittableSnapshot<D> for SchemaSnapshot<D> {
     // TODO: extract these two methods into separate trait
-    fn commit(self) -> Result<(), SnapshotError> {
-        if self.operations.is_writes_empty() {
-            Ok(())
+    fn commit(self) -> Result<Option<SequenceNumber>, SnapshotError> {
+        if self.operations.is_writes_empty() && self.operations.locks_empty() {
+            Ok(None)
         } else {
-            self.storage.clone().snapshot_commit(self).map_err(|error| SnapshotError::Commit { source: error })
+            match self.storage.clone().snapshot_commit(self) {
+                Ok(sequence_number) => Ok(Some(sequence_number)),
+                Err(error) => Err(SnapshotError::Commit { source: error }),
+            }
         }
     }
 

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 use bytes::{byte_reference::ByteReference, Bytes};
 use resource::constants::{encoding::StructFieldIDUInt, snapshot::BUFFER_VALUE_INLINE};
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::EncodingError, graph::definition::DefinitionValueEncoding, layout::prefix::Prefix,
-    value::value_type::ValueType, AsBytes,
+    value::value_type::ValueType,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -44,16 +44,21 @@ impl StructDefinition {
     ) -> Result<(), EncodingError> {
         if self.fields.len() > StructFieldIDUInt::MAX as usize {
             Err(EncodingError::StructAlreadyHasMaximumNumberOfFields { struct_name: self.name.clone() })
-        } else if self.field_names.contains_key(&field_name) {
-            Err(EncodingError::StructDuplicateFieldDefinition { struct_name: self.name.clone(), field_name })
         } else {
-            let index = (0..self.fields.len() as StructFieldIDUInt)
-                .into_iter()
-                .find(|idx| !self.fields.contains_key(idx))
-                .unwrap_or(self.fields.len() as StructFieldIDUInt);
-            self.fields.insert(index, StructDefinitionField { index, optional, value_type });
-            self.field_names.insert(field_name, index);
-            Ok(())
+            match self.field_names.entry(field_name) {
+                Entry::Vacant(entry) => {
+                    let index = (0..self.fields.len() as StructFieldIDUInt)
+                        .find(|idx| !self.fields.contains_key(idx))
+                        .unwrap_or(self.fields.len() as StructFieldIDUInt);
+                    self.fields.insert(index, StructDefinitionField { index, optional, value_type });
+                    entry.insert(index);
+                    Ok(())
+                }
+                Entry::Occupied(entry) => Err(EncodingError::StructDuplicateFieldDefinition {
+                    struct_name: self.name.clone(),
+                    field_name: entry.key().clone(),
+                }),
+            }
         }
     }
 

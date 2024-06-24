@@ -14,7 +14,6 @@ use encoding::{
             PropertyAnnotationKey, PropertyAnnotationUnique,
         },
     },
-    AsBytes,
 };
 use resource::constants::snapshot::BUFFER_VALUE_INLINE;
 use serde::{Deserialize, Serialize};

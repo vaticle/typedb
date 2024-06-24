@@ -247,6 +247,7 @@ pub(crate) enum ValueType {
     Long,
     Double,
     Decimal,
+    Date,
     DateTime,
     DateTimeTZ,
     Duration,
@@ -260,6 +261,7 @@ impl ValueType {
             ValueType::Long => TypeDBValueType::Long,
             ValueType::Double => TypeDBValueType::Double,
             ValueType::Decimal => TypeDBValueType::Decimal,
+            ValueType::Date => TypeDBValueType::Date,
             ValueType::DateTime => TypeDBValueType::DateTime,
             ValueType::DateTimeTZ => TypeDBValueType::DateTimeTZ,
             ValueType::Duration => TypeDBValueType::Duration,
@@ -276,6 +278,7 @@ impl FromStr for ValueType {
             "long" => Self::Long,
             "double" => Self::Double,
             "decimal" => Self::Decimal,
+            "date" => Self::Date,
             "datetime" => Self::DateTime,
             "datetimetz" => Self::DateTimeTZ,
             "duration" => Self::Duration,
@@ -298,6 +301,7 @@ impl Value {
             TypeDBValueType::Long => TypeDBValue::Long(self.raw_value.parse().unwrap()),
             TypeDBValueType::Double => TypeDBValue::Double(self.raw_value.parse().unwrap()),
             TypeDBValueType::Decimal => todo!(),
+            TypeDBValueType::Date => todo!(),
             TypeDBValueType::DateTime => {
                 TypeDBValue::DateTime(NaiveDateTime::parse_from_str(&self.raw_value, "%Y-%m-%d %H:%M:%S").unwrap())
             }

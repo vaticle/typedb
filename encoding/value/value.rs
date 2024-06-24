@@ -6,9 +6,10 @@
 
 use std::borrow::Cow;
 
-use chrono::{DateTime, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use chrono_tz::Tz;
 
+use super::date_bytes::DateBytes;
 use crate::value::{
     boolean_bytes::BooleanBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes,
     decimal_bytes::DecimalBytes, decimal_value::Decimal, double_bytes::DoubleBytes, duration_bytes::DurationBytes,
@@ -22,6 +23,7 @@ pub enum Value<'a> {
     Long(i64),
     Double(f64),
     Decimal(Decimal),
+    Date(NaiveDate),
     DateTime(NaiveDateTime),
     DateTimeTZ(DateTime<Tz>),
     Duration(Duration),
@@ -36,6 +38,7 @@ impl<'a> Value<'a> {
             Value::Long(long) => Value::Long(long),
             Value::Double(double) => Value::Double(double),
             Value::Decimal(decimal) => Value::Decimal(decimal),
+            Value::Date(date) => Value::Date(date),
             Value::DateTime(date_time) => Value::DateTime(date_time),
             Value::DateTimeTZ(date_time_tz) => Value::DateTimeTZ(date_time_tz),
             Value::Duration(duration) => Value::Duration(duration),
@@ -92,6 +95,7 @@ impl<'a> Value<'a> {
             Self::Long(long) => Value::Long(long),
             Self::Double(double) => Value::Double(double),
             Self::Decimal(decimal) => Value::Decimal(decimal),
+            Self::Date(date) => Value::Date(date),
             Self::DateTime(date_time) => Value::DateTime(date_time),
             Self::DateTimeTZ(date_time_tz) => Value::DateTimeTZ(date_time_tz),
             Self::Duration(duration) => Value::Duration(duration),
@@ -108,6 +112,7 @@ impl<'a> ValueEncodable for Value<'a> {
             Value::Long(_) => ValueType::Long,
             Value::Double(_) => ValueType::Double,
             Value::Decimal(_) => ValueType::Decimal,
+            Value::Date(_) => ValueType::Date,
             Value::DateTime(_) => ValueType::DateTime,
             Value::DateTimeTZ(_) => ValueType::DateTimeTZ,
             Value::Duration(_) => ValueType::Duration,
@@ -141,6 +146,13 @@ impl<'a> ValueEncodable for Value<'a> {
         match self {
             Self::Decimal(decimal) => DecimalBytes::build(*decimal),
             _ => panic!("Cannot encode non-decimal as DecimalBytes"),
+        }
+    }
+
+    fn encode_date(&self) -> DateBytes {
+        match self {
+            Self::Date(date) => DateBytes::build(*date),
+            _ => panic!("Cannot encode non-date as DateBytes"),
         }
     }
 

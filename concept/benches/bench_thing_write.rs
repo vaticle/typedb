@@ -121,12 +121,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
         let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
         let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-        TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-            storage.clone(),
-            definition_key_generator.clone(),
-            type_vertex_generator.clone(),
-        )
-        .unwrap();
+        TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+            .unwrap();
         create_schema(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone());
         let schema_cache = Arc::new(TypeCache::new(storage.clone(), storage.read_watermark()).unwrap());
         b.iter(|| {

@@ -18,10 +18,7 @@ use serde::{
 use storage::key_value::StorageKey;
 
 use crate::{
-    layout::{
-        infix::Infix,
-        prefix::{Prefix, PrefixID},
-    },
+    layout::prefix::{Prefix, PrefixID},
     AsBytes, EncodingKeyspace, Keyable, Prefixed,
 };
 
@@ -96,7 +93,7 @@ impl<'a> Display for DefinitionKey<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // we'll just arbitrarily write it out as an u64 in Big Endian
         debug_assert!(self.bytes.length() < (u64::BITS / 8) as usize);
-        let mut bytes = [0 as u8; (u64::BITS / 8) as usize];
+        let mut bytes = [0u8; (u64::BITS / 8) as usize];
         bytes[0..self.bytes.length()].copy_from_slice(self.bytes.bytes());
         let as_u64 = u64::from_be_bytes(bytes);
         write!(f, "{}", as_u64)

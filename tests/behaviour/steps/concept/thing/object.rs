@@ -6,13 +6,9 @@
 
 use concept::{
     error::ConceptWriteError,
-    thing::{
-        object::{Object, ObjectAPI},
-        ThingAPI,
-    },
-    type_::{object_type::ObjectType, OwnerAPI, TypeAPI},
+    thing::{object::Object, ThingAPI},
+    type_::{object_type::ObjectType, TypeAPI},
 };
-use itertools::Itertools;
 use lending_iterator::LendingIterator;
 use macro_rules_attribute::apply;
 

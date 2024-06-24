@@ -6,7 +6,7 @@
 
 #![deny(unused_must_use)]
 
-use std::{borrow::Borrow, collections::HashMap, rc::Rc, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, sync::Arc};
 
 use concept::type_::{
     annotation::AnnotationAbstract,
@@ -41,7 +41,24 @@ This test is used to help develop the API of Types.
 We don't aim for complete coverage of all APIs, and will rely on the BDD scenarios for coverage.
  */
 
-fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
+fn type_manager_no_cache(storage: Arc<MVCCStorage<WALClient>>) -> Arc<TypeManager> {
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), None))
+}
+
+fn type_manager_at_snapshot(
+    storage: Arc<MVCCStorage<WALClient>>,
+    snapshot: &impl ReadableSnapshot,
+) -> Arc<TypeManager> {
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    let cache = Arc::new(TypeCache::new(storage.clone(), snapshot.open_sequence_number()).unwrap());
+    Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), Some(cache)))
+}
+
+#[test]
+fn entity_usage() {
     init_logging();
     let storage_path = create_tmp_dir();
     let wal = WAL::create(&storage_path).unwrap();
@@ -51,37 +68,13 @@ fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
 
     let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-        storage.clone(),
-        definition_key_generator.clone(),
-        type_vertex_generator.clone(),
-    )
-    .unwrap();
-    storage
-}
-
-fn type_manager<Snapshot: ReadableSnapshot>(
-    storage: Arc<MVCCStorage<WALClient>>,
-    cache_at_snapshot: Option<&Snapshot>,
-) -> Arc<TypeManager<Snapshot>> {
-    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    let cache = cache_at_snapshot
-        .map(|snapshot| Arc::new(TypeCache::new(storage.clone(), snapshot.open_sequence_number()).unwrap()));
-    let type_manager =
-        Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), cache));
-
-    type_manager
-}
-
-#[test]
-fn entity_usage() {
-    let storage = setup_storage();
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let mut snapshot: WriteSnapshot<_> = storage.clone().open_snapshot_write();
     {
         // Without cache, uncommitted
-        let type_manager = type_manager(storage.clone(), None);
+        let type_manager = type_manager_no_cache(storage.clone());
 
         let root_entity = type_manager.get_entity_type(&snapshot, &Kind::Entity.root_label()).unwrap().unwrap();
         assert_eq!(*root_entity.get_label(&snapshot, &type_manager).unwrap(), Kind::Entity.root_label());
@@ -166,7 +159,7 @@ fn entity_usage() {
         // With cache, committed
         let snapshot: ReadSnapshot<_> = storage.clone().open_snapshot_read();
         let type_cache = Arc::new(TypeCache::new(storage.clone(), snapshot.open_sequence_number()).unwrap());
-        let type_manager = type_manager(storage.clone(), Some(&snapshot));
+        let type_manager = type_manager_at_snapshot(storage.clone(), &snapshot);
 
         let root_entity = type_manager.get_entity_type(&snapshot, &Kind::Entity.root_label()).unwrap().unwrap();
         assert_eq!(*root_entity.get_label(&snapshot, &type_manager).unwrap(), Kind::Entity.root_label());
@@ -237,7 +230,17 @@ fn entity_usage() {
 
 #[test]
 fn role_usage() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let friendship_label = Label::build("friendship");
     let friend_name = "friend";
@@ -246,7 +249,7 @@ fn role_usage() {
     let mut snapshot: WriteSnapshot<_> = storage.clone().open_snapshot_write();
     {
         // Without cache, uncommitted
-        let type_manager = type_manager(storage.clone(), None);
+        let type_manager = type_manager_no_cache(storage.clone());
         let root_relation = type_manager.get_relation_type(&snapshot, &Kind::Relation.root_label()).unwrap().unwrap();
         assert_eq!(*root_relation.get_label(&snapshot, &type_manager).unwrap(), Kind::Relation.root_label());
         assert!(root_relation.is_root(&snapshot, &type_manager).unwrap());
@@ -290,7 +293,7 @@ fn role_usage() {
         // With cache, committed
         let snapshot: ReadSnapshot<_> = storage.clone().open_snapshot_read();
         let type_cache = Arc::new(TypeCache::new(storage.clone(), snapshot.open_sequence_number()).unwrap());
-        let type_manager = type_manager(storage.clone(), Some(&snapshot));
+        let type_manager = type_manager_at_snapshot(storage.clone(), &snapshot);
 
         // --- friendship sub relation, relates friend ---
         let friendship_type = type_manager.get_relation_type(&snapshot, &friendship_label).unwrap().unwrap();
@@ -313,11 +316,21 @@ fn role_usage() {
 
 #[test]
 fn test_struct_definition() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     // Without cache, uncommitted
     let mut snapshot = storage.clone().open_snapshot_write();
-    let type_manager = type_manager(storage.clone(), None);
+    let type_manager = type_manager_no_cache(storage.clone());
 
     let nested_struct_name = "nested_struct".to_owned();
     let nested_struct_fields =
@@ -354,7 +367,7 @@ fn test_struct_definition() {
     // Persisted, without cache
     {
         let snapshot = storage.clone().open_snapshot_read();
-        let type_manager = crate::type_manager(storage.clone(), None);
+        let type_manager = type_manager_no_cache(storage.clone());
 
         assert_eq!(0, nested_struct_key.definition_id().as_uint());
         // Read back:
@@ -377,7 +390,7 @@ fn test_struct_definition() {
     {
         let snapshot = storage.clone().open_snapshot_read();
         let type_cache = Arc::new(TypeCache::new(storage.clone(), snapshot.open_sequence_number()).unwrap());
-        let type_manager = crate::type_manager(storage.clone(), Some(&snapshot));
+        let type_manager = type_manager_at_snapshot(storage.clone(), &snapshot);
 
         assert_eq!(0, nested_struct_key.definition_id().as_uint());
         // Read back:
@@ -408,9 +421,9 @@ fn remap_struct_fields(struct_definition: &StructDefinition) -> HashMap<String, 
         .collect()
 }
 
-fn define_struct<Snapshot: WritableSnapshot>(
-    snapshot: &mut Snapshot,
-    type_manager: &TypeManager<Snapshot>,
+fn define_struct(
+    snapshot: &mut impl WritableSnapshot,
+    type_manager: &TypeManager,
     name: String,
     definitions: HashMap<String, (ValueType, bool)>,
 ) -> DefinitionKey<'static> {
@@ -423,8 +436,18 @@ fn define_struct<Snapshot: WritableSnapshot>(
 
 #[test]
 fn test_struct_definition_updates() {
-    let storage = setup_storage();
-    let type_manager = type_manager(storage.clone(), None);
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+    let type_manager = type_manager_no_cache(storage.clone());
 
     // types to add
     let f_long = ("f_long".to_owned(), (ValueType::Long, false));

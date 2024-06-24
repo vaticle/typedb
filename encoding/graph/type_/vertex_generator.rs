@@ -4,10 +4,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::sync::atomic::{AtomicU16, Ordering::Relaxed};
-
-use bytes::Bytes;
-use lending_iterator::LendingIterator;
 use storage::snapshot::WritableSnapshot;
 
 use crate::{

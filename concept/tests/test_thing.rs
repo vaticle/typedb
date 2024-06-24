@@ -48,28 +48,7 @@ use storage::{
 };
 use test_utils::{create_tmp_dir, init_logging};
 
-fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
-    init_logging();
-    let storage_path = create_tmp_dir();
-    let wal = WAL::create(&storage_path).unwrap();
-    let storage = Arc::new(
-        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
-    );
-
-    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-    TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-        storage.clone(),
-        definition_key_generator.clone(),
-        type_vertex_generator.clone(),
-    )
-    .unwrap();
-    storage
-}
-
-fn managers<Snapshot: ReadableSnapshot>(
-    storage: Arc<MVCCStorage<WALClient>>,
-) -> (Arc<TypeManager<Snapshot>>, ThingManager<Snapshot>) {
+fn managers(storage: Arc<MVCCStorage<WALClient>>) -> (Arc<TypeManager>, ThingManager) {
     let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
     let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
     let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
@@ -82,7 +61,16 @@ fn managers<Snapshot: ReadableSnapshot>(
 
 #[test]
 fn thing_create_iterate() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let mut snapshot: WriteSnapshot<WALClient> = storage.clone().open_snapshot_write();
     {
@@ -111,7 +99,16 @@ fn thing_create_iterate() {
 
 #[test]
 fn attribute_create() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let age_label = Label::build("age");
     let name_label = Label::build("name");
@@ -162,7 +159,16 @@ fn attribute_create() {
 
 #[test]
 fn has() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let age_label = Label::build("age");
     let name_label = Label::build("name");
@@ -222,7 +228,16 @@ fn has() {
 
 #[test]
 fn attribute_cleanup_on_concurrent_detach() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let age_label = Label::build("age");
     let name_label = Label::build("name");
@@ -363,7 +378,17 @@ fn attribute_cleanup_on_concurrent_detach() {
 
 #[test]
 fn role_player_distinct() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let employment_label = Label::build("employment");
     let employee_role = "employee";
@@ -467,7 +492,17 @@ fn role_player_distinct() {
 
 #[test]
 fn role_player_duplicates() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
 
     let list_label = Label::build("list");
     let entry_role_label = "entry";
@@ -633,7 +668,18 @@ fn role_player_duplicates() {
 
 #[test]
 fn attribute_string_write_read() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+
     let (type_manager, thing_manager) = managers(storage.clone());
     let attr_label = Label::build("test_string_attr");
     let short_string = "short".to_owned();
@@ -690,7 +736,18 @@ fn attribute_string_write_read() {
 
 #[test]
 fn attribute_struct_write_read() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+
     let (type_manager, thing_manager) = managers(storage.clone());
 
     let attr_label = Label::build("struct_test_attr");
@@ -758,7 +815,18 @@ fn attribute_struct_write_read() {
 
 #[test]
 fn read_attribute_struct_by_field() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+
     let (type_manager, thing_manager) = managers(storage.clone());
 
     let attr_label = Label::build("index_test_attr");
@@ -832,7 +900,18 @@ fn read_attribute_struct_by_field() {
 
 #[test]
 fn attribute_struct_errors() {
-    let storage = setup_storage();
+    init_logging();
+    let storage_path = create_tmp_dir();
+    let wal = WAL::create(&storage_path).unwrap();
+    let storage = Arc::new(
+        MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal)).unwrap(),
+    );
+
+    let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
+    let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
+    TypeManager::initialise_types(storage.clone(), definition_key_generator.clone(), type_vertex_generator.clone())
+        .unwrap();
+
     let (type_manager, thing_manager) = managers(storage.clone());
 
     let (struct_key, nested_struct_key) = {
@@ -896,9 +975,9 @@ fn attribute_struct_errors() {
     }
 }
 
-pub fn define_struct<Snapshot: WritableSnapshot>(
-    snapshot: &mut Snapshot,
-    type_manager: &TypeManager<Snapshot>,
+pub fn define_struct(
+    snapshot: &mut impl WritableSnapshot,
+    type_manager: &TypeManager,
     name: String,
     definitions: HashMap<String, (ValueType, bool)>,
 ) -> DefinitionKey<'static> {

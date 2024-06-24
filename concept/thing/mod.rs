@@ -7,7 +7,7 @@
 use bytes::{byte_array::ByteArray, Bytes};
 use encoding::{
     graph::thing::{vertex_attribute::AttributeID, vertex_object::ObjectVertex},
-    value::value_type::{ValueType, ValueTypeCategory},
+    value::value_type::ValueTypeCategory,
     AsBytes,
 };
 use resource::constants::snapshot::BUFFER_VALUE_INLINE;
@@ -27,25 +27,21 @@ pub mod statistics;
 pub mod thing_manager;
 
 pub trait ThingAPI<'a> {
-    fn set_modified<Snapshot: WritableSnapshot>(&self, snapshot: &mut Snapshot, thing_manager: &ThingManager<Snapshot>);
+    fn set_modified(&self, snapshot: &mut impl WritableSnapshot, thing_manager: &ThingManager);
 
     // TODO: implementers could cache the status in a OnceCell if we do many operations on the same Thing at once
-    fn get_status<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> ConceptStatus;
+    fn get_status(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> ConceptStatus;
 
-    fn errors<Snapshot: WritableSnapshot>(
+    fn errors(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError>;
 
-    fn delete<Snapshot: WritableSnapshot>(
+    fn delete(
         self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<(), ConceptWriteError>;
 }
 

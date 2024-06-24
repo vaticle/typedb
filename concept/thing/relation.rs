@@ -39,7 +39,7 @@ use crate::{
         annotation::AnnotationDistinct,
         relation_type::RelationType,
         role_type::{RoleType, RoleTypeAnnotation},
-        ObjectTypeAPI, Ordering, TypeAPI,
+        ObjectTypeAPI, Ordering,
     },
     ByteReference, ConceptAPI, ConceptStatus,
 };
@@ -72,13 +72,13 @@ impl<'a> Relation<'a> {
     }
 
     // pub fn delete_has_single(
-    //     &self, thing_manager: &ThingManager<Snapshot>, attribute: Attribute<'_>,
+    //     &self, thing_manager: &ThingManager, attribute: Attribute<'_>,
     // ) -> Result<(), ConceptWriteError> {
     //     self.delete_has_many(thing_manager, attribute, 1)
     // }
     //
     // pub fn delete_has_many(
-    //     &self, thing_manager: &ThingManager<Snapshot>, attribute: Attribute<'_>, count: u64,
+    //     &self, thing_manager: &ThingManager, attribute: Attribute<'_>, count: u64,
     // ) -> Result<(), ConceptWriteError> {
     //     let owns = self.type_().get_owns_attribute(
     //         thing_manager.type_manager(),
@@ -101,27 +101,23 @@ impl<'a> Relation<'a> {
     //     Ok(())
     // }
 
-    pub fn get_relations<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relations<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> RelationRoleIterator {
         thing_manager.get_relations_roles(snapshot, self.as_reference())
     }
 
-    pub fn get_indexed_players<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_indexed_players<'m>(
         &self,
-        snapshot: &'m Snapshot,
-        thing_manager: &'m ThingManager<Snapshot>,
+        snapshot: &'m impl ReadableSnapshot,
+        thing_manager: &'m ThingManager,
     ) -> IndexedPlayersIterator {
         thing_manager.get_indexed_players(snapshot, Object::Relation(self.as_reference()))
     }
 
-    pub fn has_players<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> bool {
+    pub fn has_players(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> bool {
         match self.get_status(snapshot, thing_manager) {
             ConceptStatus::Inserted => thing_manager.has_role_players(snapshot, self.as_reference(), true),
             ConceptStatus::Persisted => thing_manager.has_role_players(snapshot, self.as_reference(), false),
@@ -130,27 +126,27 @@ impl<'a> Relation<'a> {
         }
     }
 
-    pub fn get_players<Snapshot: ReadableSnapshot>(
+    pub fn get_players(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
     ) -> impl for<'x> LendingIterator<Item<'x> = Result<(RolePlayer<'x>, u64), ConceptReadError>> {
         thing_manager.get_role_players(snapshot, self.as_reference())
     }
 
-    pub fn get_players_ordered<Snapshot: ReadableSnapshot>(
+    pub fn get_players_ordered(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
     ) -> Result<Vec<Object<'_>>, ConceptReadError> {
         thing_manager.get_role_players_ordered(snapshot, self.as_reference(), role_type)
     }
 
-    pub fn get_players_role_type<Snapshot: ReadableSnapshot>(
+    pub fn get_players_role_type(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
     ) -> impl for<'x> LendingIterator<Item<'x> = Result<Object<'x>, ConceptReadError>> {
         self.get_players(snapshot, thing_manager).filter_map::<Result<Object<'_>, _>, _>(move |res| match res {
@@ -159,10 +155,10 @@ impl<'a> Relation<'a> {
         })
     }
 
-    fn get_player_counts<Snapshot: ReadableSnapshot>(
+    fn get_player_counts(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl ReadableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<HashMap<RoleType<'static>, u64>, ConceptReadError> {
         let mut map = HashMap::new();
         let mut rp_iter = self.get_players(snapshot, thing_manager);
@@ -181,10 +177,10 @@ impl<'a> Relation<'a> {
     ///
     /// TODO: to optimise the common case of creating a full relation, we could introduce a RelationBuilder, which can accumulate role players,
     ///   Then write all players + indexes in one go
-    pub fn add_player<Snapshot: WritableSnapshot>(
+    pub fn add_player(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
@@ -210,10 +206,10 @@ impl<'a> Relation<'a> {
         }
     }
 
-    pub fn set_players_ordered<Snapshot: WritableSnapshot>(
+    pub fn set_players_ordered(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
         new_players: Vec<Object<'_>>,
     ) -> Result<(), ConceptWriteError> {
@@ -272,20 +268,20 @@ impl<'a> Relation<'a> {
         Ok(())
     }
 
-    pub fn remove_player_single<Snapshot: WritableSnapshot>(
+    pub fn remove_player_single(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
         player: Object<'_>,
     ) -> Result<(), ConceptWriteError> {
         self.remove_player_many(snapshot, thing_manager, role_type, player, 1)
     }
 
-    pub fn remove_player_many<Snapshot: WritableSnapshot>(
+    pub fn remove_player_many(
         &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
         role_type: RoleType<'static>,
         player: Object<'_>,
         delete_count: u64,
@@ -314,28 +310,20 @@ impl<'a> Relation<'a> {
 impl<'a> ConceptAPI<'a> for Relation<'a> {}
 
 impl<'a> ThingAPI<'a> for Relation<'a> {
-    fn set_modified<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) {
+    fn set_modified(&self, snapshot: &mut impl WritableSnapshot, thing_manager: &ThingManager) {
         if matches!(self.get_status(snapshot, thing_manager), ConceptStatus::Persisted) {
             thing_manager.lock_existing(snapshot, self.as_reference());
         }
     }
 
-    fn get_status<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
-    ) -> ConceptStatus {
+    fn get_status(&self, snapshot: &impl ReadableSnapshot, thing_manager: &ThingManager) -> ConceptStatus {
         thing_manager.get_status(snapshot, self.vertex().as_storage_key())
     }
 
-    fn errors<Snapshot: WritableSnapshot>(
+    fn errors(
         &self,
-        snapshot: &Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<Vec<ConceptWriteError>, ConceptReadError> {
         let mut errors = Vec::new();
 
@@ -359,10 +347,10 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
         Ok(errors)
     }
 
-    fn delete<Snapshot: WritableSnapshot>(
+    fn delete(
         self,
-        snapshot: &mut Snapshot,
-        thing_manager: &ThingManager<Snapshot>,
+        snapshot: &mut impl WritableSnapshot,
+        thing_manager: &ThingManager,
     ) -> Result<(), ConceptWriteError> {
         for attr in self
             .get_has_unordered(snapshot, thing_manager)

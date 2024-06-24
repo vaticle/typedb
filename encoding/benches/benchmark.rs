@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use durability::{wal::WAL, DurabilityService};
+use durability::wal::WAL;
 use encoding::{
     graph::{
         thing::{vertex_generator::ThingVertexGenerator, vertex_object::ObjectVertex},

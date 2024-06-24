@@ -6,8 +6,9 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    error::Error,
+    fmt,
     ops::Bound,
-    sync::atomic::Ordering,
 };
 
 use bytes::Bytes;
@@ -18,17 +19,18 @@ use encoding::graph::{
         vertex_attribute::AttributeVertex,
         vertex_object::ObjectVertex,
     },
-    type_::vertex::{PrefixedTypeVertexEncoding, TypeID, TypeIDUInt, TypeVertexEncoding},
+    type_::vertex::{PrefixedTypeVertexEncoding, TypeID, TypeIDUInt},
     Typed,
 };
-use resource::constants::snapshot::BUFFER_KEY_INLINE;
 use serde::{Deserialize, Serialize};
 use storage::{
-    durability_client::{DurabilityRecord, UnsequencedDurabilityRecord},
+    durability_client::{DurabilityClient, DurabilityClientError, DurabilityRecord, UnsequencedDurabilityRecord},
+    isolation_manager::CommitType,
     iterator::MVCCReadError,
-    key_value::{StorageKeyArray, StorageKeyReference},
+    key_value::StorageKeyReference,
+    recovery::commit_replay::{load_commit_data_from, CommitRecoveryError, RecoveryCommitStatus},
     sequence_number::SequenceNumber,
-    snapshot::{write::Write, ReadableSnapshot},
+    snapshot::{buffer::OperationsBuffer, write::Write},
     MVCCStorage,
 };
 
@@ -40,14 +42,15 @@ use crate::{
     },
 };
 
-type StatisticsVersion = u64;
+type StatisticsEncodingVersion = u64;
 
 /// Thing statistics, reflecting a snapshot of statistics accurate as of a particular sequence number
 /// When types are undefined, we retain the last count of the instances of the type
 /// Invariant: all undefined types are
 #[derive(Debug, Clone)]
 pub struct Statistics {
-    statistics_version: StatisticsVersion,
+    #[allow(unused)]
+    encoding_version: StatisticsEncodingVersion,
     pub sequence_number: SequenceNumber,
 
     pub total_thing_count: u64,
@@ -73,12 +76,12 @@ pub struct Statistics {
 }
 
 impl Statistics {
-    const STATISTICS_VERSION: StatisticsVersion = 0;
+    const ENCODING_VERSION: StatisticsEncodingVersion = 0;
 
     pub fn new(sequence_number: SequenceNumber) -> Self {
         Statistics {
-            statistics_version: Self::STATISTICS_VERSION,
-            sequence_number: sequence_number,
+            encoding_version: Self::ENCODING_VERSION,
+            sequence_number,
             total_thing_count: 0,
             total_entity_count: 0,
             total_relation_count: 0,
@@ -97,37 +100,87 @@ impl Statistics {
         }
     }
 
-    pub fn update_writes<D, Snapshot: ReadableSnapshot>(
-        &mut self,
-        commits: &BTreeMap<SequenceNumber, Snapshot>,
-        storage: &MVCCStorage<D>,
-    ) -> Result<(), MVCCReadError> {
-        if commits.is_empty() {
+    pub fn may_synchronise(&mut self, storage: &MVCCStorage<impl DurabilityClient>) -> Result<(), StatisticsError> {
+        use StatisticsError::{DataRead, ReloadCommitData};
+
+        let storage_watermark = storage.read_watermark();
+        debug_assert!(self.sequence_number <= storage_watermark);
+        if self.sequence_number == storage_watermark {
             return Ok(());
         }
-        for (sequence_number, snapshot) in commits.iter() {
-            self.update_write(*sequence_number, snapshot, commits, storage)?
+
+        let mut data_commits = BTreeMap::new();
+        for (seq, status) in load_commit_data_from(self.sequence_number.next(), storage.durability())
+            .map_err(|err| ReloadCommitData { source: err })?
+            .into_iter()
+        {
+            if let RecoveryCommitStatus::Validated(record) = status {
+                match record.commit_type() {
+                    CommitType::Data => {
+                        let writes = CommittedWrites {
+                            open_sequence_number: record.open_sequence_number(),
+                            operations: record.into_operations(),
+                        };
+                        data_commits.insert(seq, writes);
+                    }
+                    CommitType::Schema => {
+                        self.update_writes(&data_commits, storage).map_err(|err| DataRead { source: err })?;
+                        self.durably_write(storage)?;
+
+                        data_commits.clear();
+
+                        let writes = CommittedWrites {
+                            open_sequence_number: record.open_sequence_number(),
+                            operations: record.into_operations(),
+                        };
+                        let mut commits = BTreeMap::new();
+                        commits.insert(seq, writes);
+                        self.update_writes(&commits, storage).map_err(|err| DataRead { source: err })?;
+                    }
+                }
+            } else {
+                unreachable!("Only open validated records as snapshots.")
+            }
         }
-        let last_sequence_number = *commits.last_key_value().unwrap().0;
-        self.sequence_number = last_sequence_number;
+
+        self.update_writes(&data_commits, storage).map_err(|err| DataRead { source: err })?;
         Ok(())
     }
 
-    fn update_write<D, Snapshot: ReadableSnapshot>(
+    pub fn durably_write(&mut self, storage: &MVCCStorage<impl DurabilityClient>) -> Result<(), StatisticsError> {
+        use StatisticsError::DurablyWrite;
+        storage.durability().unsequenced_write(self).map_err(|err| DurablyWrite { source: err })?;
+        Ok(())
+    }
+
+    fn update_writes<D>(
         &mut self,
-        snapshot_commit_sequence_number: SequenceNumber,
-        snapshot: &impl ReadableSnapshot,
-        commits: &BTreeMap<SequenceNumber, Snapshot>,
+        commits: &BTreeMap<SequenceNumber, CommittedWrites>,
         storage: &MVCCStorage<D>,
     ) -> Result<(), MVCCReadError> {
-        let record_open_sequence_number = snapshot.open_sequence_number();
-        for (key, write) in snapshot.iterate_buffered_writes() {
+        for (sequence_number, writes) in commits {
+            self.update_write(*sequence_number, writes, commits, storage)?
+        }
+        if let Some((&last_sequence_number, _)) = commits.last_key_value() {
+            self.sequence_number = last_sequence_number;
+        }
+        Ok(())
+    }
+
+    fn update_write<D>(
+        &mut self,
+        commit_sequence_number: SequenceNumber,
+        writes: &CommittedWrites,
+        commits: &BTreeMap<SequenceNumber, CommittedWrites>,
+        storage: &MVCCStorage<D>,
+    ) -> Result<(), MVCCReadError> {
+        for (key, write) in writes.operations.iterate_writes() {
             let key_reference = StorageKeyReference::from(&key);
-            let delta = Self::write_to_delta(
-                &key,
+            let delta = write_to_delta(
+                key_reference,
                 &write,
-                record_open_sequence_number,
-                snapshot_commit_sequence_number,
+                writes.open_sequence_number,
+                commit_sequence_number,
                 commits,
                 storage,
             )?;
@@ -147,9 +200,9 @@ impl Statistics {
                 let edge = ThingEdgeRolePlayer::new(Bytes::Reference(key_reference.byte_ref()));
                 let role_type = RoleType::build_from_type_id(edge.role_id());
                 self.update_role_player(
-                    Object::new(edge.from()).type_(),
+                    Object::new(edge.to()).type_(),
                     role_type,
-                    Relation::new(edge.to()).type_(),
+                    Relation::new(edge.from()).type_(),
                     delta,
                 )
             } else if ThingEdgeRelationIndex::is_index(key_reference) {
@@ -174,22 +227,22 @@ impl Statistics {
                 if matches!(write, Write::Delete) {
                     self.attribute_counts.remove(&type_);
                     self.attribute_owner_counts.remove(&type_);
-                    self.has_attribute_counts.iter_mut().for_each(|(_, map)| {
-                        let _ = map.remove(&type_);
-                    });
+                    for map in self.has_attribute_counts.values_mut() {
+                        map.remove(&type_);
+                    }
                     self.has_attribute_counts.retain(|_, map| !map.is_empty());
                 }
             } else if RoleType::is_decodable_from_key(key_reference) {
                 let type_ = RoleType::read_from(Bytes::Reference(key_reference.byte_ref()).into_owned());
                 if matches!(write, Write::Delete) {
                     self.role_counts.remove(&type_);
-                    self.role_player_counts.iter_mut().for_each(|(_, map)| {
-                        let _ = map.remove(&type_);
-                    });
+                    for map in self.role_player_counts.values_mut() {
+                        map.remove(&type_);
+                    }
                     self.role_player_counts.retain(|_, map| !map.is_empty());
-                    self.relation_role_counts.iter_mut().for_each(|(_, map)| {
-                        let _ = map.remove(&type_);
-                    });
+                    for map in self.relation_role_counts.values_mut() {
+                        map.remove(&type_);
+                    }
                     self.relation_role_counts.retain(|_, map| !map.is_empty());
                 }
             }
@@ -199,114 +252,48 @@ impl Statistics {
 
     fn clear_object_type(&mut self, object_type: ObjectType<'static>) {
         self.has_attribute_counts.remove(&object_type);
-        self.attribute_owner_counts.iter_mut().for_each(|(_, map)| {
-            let _ = map.remove(&object_type);
-        });
+        for map in self.attribute_owner_counts.values_mut() {
+            map.remove(&object_type);
+        }
         self.attribute_owner_counts.retain(|_, map| !map.is_empty());
 
         self.role_player_counts.remove(&object_type);
 
         self.player_index_counts.remove(&object_type);
-        self.player_index_counts.iter_mut().for_each(|(_, map)| {
-            let _ = map.remove(&object_type);
-        });
+        for map in self.player_index_counts.values_mut() {
+            map.remove(&object_type);
+        }
         self.player_index_counts.retain(|_, map| !map.is_empty());
     }
 
-    fn write_to_delta<D, Snapshot: ReadableSnapshot>(
-        write_key: &StorageKeyArray<{ BUFFER_KEY_INLINE }>,
-        write: &Write,
-        write_open_sequence_number: SequenceNumber,
-        write_commit_sequence_number: SequenceNumber,
-        commits: &BTreeMap<SequenceNumber, Snapshot>,
-        storage: &MVCCStorage<D>,
-    ) -> Result<i64, MVCCReadError> {
-        match write {
-            Write::Insert { .. } => Ok(1),
-            Write::Put { reinsert, .. } => {
-                // PUT operation which we may have a concurrent commit and may or may not be inserted in the end
-                // The easiest way to check whether it was ultimately committed or not is to open the storage at
-                // CommitSequenceNumber - 1, and check if it exists. If it exists, we don't count. If it does, we do.
-                // However, this induces a read for every PUT, even though 99% of time there is no concurrent put.
-
-                // So, we only read from storage, if :
-                // 1. we can't tell from the current set of commits whether a predecessor could have written the same key (open < commits start)
-                // 2. any commit in the set of commits modifies the same key at all
-
-                let check_storage = write_open_sequence_number < *commits.first_key_value().unwrap().0
-                    || (commits
-                        .range::<SequenceNumber, _>((
-                            Bound::Excluded(write_open_sequence_number),
-                            Bound::Excluded(write_commit_sequence_number),
-                        ))
-                        .any(|(seq, snapshot)| {
-                            snapshot
-                                .get_buffered_write_mapped(StorageKeyReference::from(write_key), |v| true)
-                                .unwrap_or(false)
-                        }));
-
-                if check_storage {
-                    if storage
-                        .get_mapped(
-                            StorageKeyReference::from(write_key),
-                            write_commit_sequence_number.previous(),
-                            |_| true,
-                        )?
-                        .unwrap_or(false)
-                    {
-                        // exists in storage before PUT is committed
-                        return Ok(0);
-                    } else {
-                        // does not exist in storage before PUT is committed
-                        return Ok(1);
-                    }
-                } else {
-                    // no concurrent commit could have occurred - fall back to the reinsert flag
-                    if reinsert.load(Ordering::Relaxed) {
-                        return Ok(1);
-                    } else {
-                        return Ok(0);
-                    }
-                }
-            }
-            Write::Delete => Ok(-1),
-        }
-    }
-
     fn update_entities(&mut self, entity_type: EntityType<'static>, delta: i64) {
-        self.entity_counts.entry(entity_type).or_insert(0).checked_add_signed(delta).unwrap();
-        self.total_entity_count.checked_add_signed(delta).unwrap();
-        self.total_thing_count.checked_add_signed(delta).unwrap();
+        let count = self.entity_counts.entry(entity_type).or_default();
+        *count = count.checked_add_signed(delta).unwrap();
+        self.total_entity_count = self.total_entity_count.checked_add_signed(delta).unwrap();
+        self.total_thing_count = self.total_thing_count.checked_add_signed(delta).unwrap();
     }
 
     fn update_relations(&mut self, relation_type: RelationType<'static>, delta: i64) {
-        self.relation_counts.entry(relation_type).or_insert(0).checked_add_signed(delta).unwrap();
-        self.total_relation_count.checked_add_signed(delta).unwrap();
-        self.total_thing_count.checked_add_signed(delta).unwrap();
+        let count = self.relation_counts.entry(relation_type).or_default();
+        *count = count.checked_add_signed(delta).unwrap();
+        self.total_relation_count = self.total_relation_count.checked_add_signed(delta).unwrap();
+        self.total_thing_count = self.total_thing_count.checked_add_signed(delta).unwrap();
     }
 
     fn update_attributes(&mut self, attribute_type: AttributeType<'static>, delta: i64) {
-        self.attribute_counts.entry(attribute_type).or_insert(0).checked_add_signed(delta).unwrap();
-        self.total_attribute_count.checked_add_signed(delta).unwrap();
-        self.total_thing_count.checked_add_signed(delta).unwrap();
+        let count = self.attribute_counts.entry(attribute_type).or_default();
+        *count = count.checked_add_signed(delta).unwrap();
+        self.total_attribute_count = self.total_attribute_count.checked_add_signed(delta).unwrap();
+        self.total_thing_count = self.total_thing_count.checked_add_signed(delta).unwrap();
     }
 
     fn update_has(&mut self, owner_type: ObjectType<'static>, attribute_type: AttributeType<'static>, delta: i64) {
-        self.has_attribute_counts
-            .entry(owner_type.clone())
-            .or_insert_with(|| HashMap::new())
-            .entry(attribute_type.clone())
-            .or_insert(0)
-            .checked_add_signed(delta)
-            .unwrap();
-        self.attribute_owner_counts
-            .entry(attribute_type)
-            .or_insert_with(|| HashMap::new())
-            .entry(owner_type)
-            .or_insert(0)
-            .checked_add_signed(delta)
-            .unwrap();
-        self.total_has_count.checked_add_signed(delta).unwrap();
+        let attribute_count =
+            self.has_attribute_counts.entry(owner_type.clone()).or_default().entry(attribute_type.clone()).or_default();
+        *attribute_count = attribute_count.checked_add_signed(delta).unwrap();
+        let owner_count = self.attribute_owner_counts.entry(attribute_type).or_default().entry(owner_type).or_default();
+        *owner_count = owner_count.checked_add_signed(delta).unwrap();
+        self.total_has_count = self.total_has_count.checked_add_signed(delta).unwrap();
     }
 
     fn update_role_player(
@@ -316,22 +303,15 @@ impl Statistics {
         relation_type: RelationType<'static>,
         delta: i64,
     ) {
-        self.role_counts.entry(role_type.clone()).or_insert(0).checked_add_signed(delta).unwrap();
-        self.total_role_count.checked_add_signed(delta).unwrap();
-        self.role_player_counts
-            .entry(player_type)
-            .or_insert_with(|| HashMap::new())
-            .entry(role_type.clone())
-            .or_insert(0)
-            .checked_add_signed(delta)
-            .unwrap();
-        self.relation_role_counts
-            .entry(relation_type)
-            .or_insert_with(|| HashMap::new())
-            .entry(role_type)
-            .or_insert(0)
-            .checked_add_signed(delta)
-            .unwrap();
+        let role_count = self.role_counts.entry(role_type.clone()).or_default();
+        *role_count = role_count.checked_add_signed(delta).unwrap();
+        self.total_role_count = self.total_role_count.checked_add_signed(delta).unwrap();
+        let role_player_count =
+            self.role_player_counts.entry(player_type).or_default().entry(role_type.clone()).or_default();
+        *role_player_count = role_player_count.checked_add_signed(delta).unwrap();
+        let relation_role_count =
+            self.relation_role_counts.entry(relation_type).or_default().entry(role_type).or_default();
+        *relation_role_count = relation_role_count.checked_add_signed(delta).unwrap();
     }
 
     fn update_indexed_player(
@@ -340,21 +320,104 @@ impl Statistics {
         player_2_type: ObjectType<'static>,
         delta: i64,
     ) {
-        self.player_index_counts
+        let player_1_to_2_index_count = self
+            .player_index_counts
             .entry(player_1_type.clone())
-            .or_insert_with(|| HashMap::new())
+            .or_default()
             .entry(player_2_type.clone())
-            .or_insert(0)
-            .checked_add_signed(delta)
-            .unwrap();
+            .or_default();
+        *player_1_to_2_index_count = player_1_to_2_index_count.checked_add_signed(delta).unwrap();
         if player_1_type != player_2_type {
-            self.player_index_counts
-                .entry(player_2_type)
-                .or_insert_with(|| HashMap::new())
-                .entry(player_1_type)
-                .or_insert(0)
-                .checked_add_signed(delta)
-                .unwrap();
+            let player_2_to_1_index_count =
+                self.player_index_counts.entry(player_2_type).or_default().entry(player_1_type).or_default();
+            *player_2_to_1_index_count = player_2_to_1_index_count.checked_add_signed(delta).unwrap();
+        }
+    }
+}
+
+fn write_to_delta<D>(
+    write_key: StorageKeyReference<'_>,
+    write: &Write,
+    open_sequence_number: SequenceNumber,
+    commit_sequence_number: SequenceNumber,
+    commits: &BTreeMap<SequenceNumber, CommittedWrites>,
+    storage: &MVCCStorage<D>,
+) -> Result<i64, MVCCReadError> {
+    let concurrent_commit_range = (Bound::Excluded(open_sequence_number), Bound::Excluded(commit_sequence_number));
+    match write {
+        Write::Insert { .. } => Ok(1),
+        Write::Delete => {
+            if commits.range(concurrent_commit_range).any(|(_, writes)| {
+                matches!(
+                    writes.operations.writes_in(write_key.keyspace_id()).get_write(write_key.byte_ref()),
+                    Some(Write::Delete)
+                )
+            }) {
+                Ok(0)
+            } else {
+                Ok(-1)
+            }
+        }
+        &Write::Put { known_to_exist, .. } => {
+            // PUT operation which we may have a concurrent commit and may or may not be inserted in the end
+            // The easiest way to check whether it was ultimately committed or not is to open the storage at
+            // CommitSequenceNumber - 1, and check if it exists. If it exists, we don't count. If it does, we do.
+            // However, this induces a read for every PUT, even though 99% of time there is no concurrent put.
+
+            // So, we only read from storage, if :
+            // 1. we can't tell from the current set of commits whether a predecessor could
+            //    have written the same key (open < commits start)
+            // 2. any commit in the set of commits modifies the same key at all
+
+            let check_storage = open_sequence_number < *commits.first_key_value().unwrap().0
+                || (commits.range(concurrent_commit_range).any(|(_, writes)| {
+                    writes.operations.writes_in(write_key.keyspace_id()).get_write(write_key.byte_ref()).is_some()
+                }));
+
+            if check_storage {
+                if storage.get::<0>(write_key, commit_sequence_number.previous())?.is_some() {
+                    // exists in storage before PUT is committed
+                    Ok(0)
+                } else {
+                    // does not exist in storage before PUT is committed
+                    Ok(1)
+                }
+            } else {
+                // no concurrent commit could have occurred - fall back to the flag
+                if known_to_exist {
+                    Ok(0)
+                } else {
+                    Ok(1)
+                }
+            }
+        }
+    }
+}
+
+struct CommittedWrites {
+    open_sequence_number: SequenceNumber,
+    operations: OperationsBuffer,
+}
+
+#[derive(Debug)]
+pub enum StatisticsError {
+    DurablyWrite { source: DurabilityClientError },
+    ReloadCommitData { source: CommitRecoveryError },
+    DataRead { source: MVCCReadError },
+}
+
+impl fmt::Display for StatisticsError {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for StatisticsError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::DurablyWrite { source } => Some(source),
+            Self::ReloadCommitData { source } => Some(source),
+            Self::DataRead { source } => Some(source),
         }
     }
 }
@@ -369,11 +432,11 @@ enum SerialisableType {
 
 impl SerialisableType {
     pub(crate) fn id(&self) -> TypeIDUInt {
-        match self {
-            SerialisableType::Entity(id) => *id,
-            SerialisableType::Relation(id) => *id,
-            SerialisableType::Attribute(id) => *id,
-            SerialisableType::Role(id) => *id,
+        match *self {
+            SerialisableType::Entity(id) => id,
+            SerialisableType::Relation(id) => id,
+            SerialisableType::Attribute(id) => id,
+            SerialisableType::Role(id) => id,
         }
     }
 
@@ -742,7 +805,7 @@ mod serialise {
                         .map(|(type_1, map)| (type_1.into_object_type(), into_object_map(map)))
                         .collect();
                     Ok(Statistics {
-                        statistics_version: statistics_version,
+                        encoding_version: statistics_version,
                         sequence_number: open_sequence_number,
                         total_thing_count,
                         total_entity_count,
@@ -926,7 +989,7 @@ mod serialise {
                     }
 
                     Ok(Statistics {
-                        statistics_version: statistics_version
+                        encoding_version: statistics_version
                             .ok_or_else(|| de::Error::missing_field(Field::StatisticsVersion.name()))?,
                         sequence_number: open_sequence_number
                             .ok_or_else(|| de::Error::missing_field(Field::OpenSequenceNumber.name()))?,
