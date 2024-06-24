@@ -8,7 +8,7 @@ use std::{error::Error, fmt, str::Utf8Error};
 
 use storage::snapshot::iterator::SnapshotIteratorError;
 
-use crate::{graph::definition::definition_key::DefinitionKey, layout::prefix::Prefix, value::value_type::ValueType};
+use crate::{layout::prefix::Prefix, value::value_type::ValueType};
 
 #[derive(Debug, Clone)]
 pub enum EncodingError {

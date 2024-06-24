@@ -18,7 +18,8 @@ use storage::{
 };
 
 use super::vertex_attribute::{
-    BooleanAttributeID, DateAttributeID, DateTimeAttributeID, DateTimeTZAttributeID, DecimalAttributeID, DoubleAttributeID, DurationAttributeID, StructAttributeID
+    BooleanAttributeID, DateAttributeID, DateTimeAttributeID, DateTimeTZAttributeID, DecimalAttributeID,
+    DoubleAttributeID, DurationAttributeID, StructAttributeID,
 };
 use crate::{
     error::EncodingError,
@@ -32,7 +33,10 @@ use crate::{
     },
     layout::prefix::Prefix,
     value::{
-        boolean_bytes::BooleanBytes, date_bytes::DateBytes, date_time_bytes::DateTimeBytes, date_time_tz_bytes::DateTimeTZBytes, decimal_bytes::DecimalBytes, double_bytes::DoubleBytes, duration_bytes::DurationBytes, long_bytes::LongBytes, string_bytes::StringBytes, struct_bytes::StructBytes, value_type::ValueTypeCategory
+        boolean_bytes::BooleanBytes, date_bytes::DateBytes, date_time_bytes::DateTimeBytes,
+        date_time_tz_bytes::DateTimeTZBytes, decimal_bytes::DecimalBytes, double_bytes::DoubleBytes,
+        duration_bytes::DurationBytes, long_bytes::LongBytes, string_bytes::StringBytes, struct_bytes::StructBytes,
+        value_type::ValueTypeCategory,
     },
     AsBytes, Keyable, Prefixed,
 };

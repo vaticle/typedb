@@ -43,9 +43,9 @@ impl<'a, const INLINE_LENGTH: usize> StructBytes<'a, INLINE_LENGTH> {
         StructBytes { bytes: value }
     }
 
-    pub fn build(struct_value: &Cow<StructValue<'a>>) -> StructBytes<'static, INLINE_LENGTH> {
+    pub fn build(struct_value: &StructValue<'a>) -> StructBytes<'static, INLINE_LENGTH> {
         let mut buf: Vec<u8> = Vec::new();
-        encode_struct_into(struct_value.borrow(), &mut buf).unwrap();
+        encode_struct_into(struct_value, &mut buf).unwrap();
         StructBytes::new(Bytes::Array(ByteArray::boxed(buf.into_boxed_slice())))
     }
 
@@ -184,7 +184,7 @@ fn read_vle_increment_offset(offset: &mut usize, buf: &[u8]) -> Result<usize, En
         Ok(u8::from_be_bytes(read_bytes_increment_offset::<1>(offset, buf)?) as usize)
     } else {
         let mut len = u32::from_be_bytes(read_bytes_increment_offset::<4>(offset, buf)?);
-        len = len & (!StructBytes::<0>::VLE_U32_LEN_MASK);
+        len &= !StructBytes::<0>::VLE_U32_LEN_MASK;
         Ok(len as usize)
     }
 }
@@ -216,6 +216,7 @@ fn read_bytes_increment_offset<const N_BYTES: usize>(
     }
 }
 
+#[cfg(test)]
 pub mod test {
     use std::{borrow::Cow, collections::HashMap};
 

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{io::Read, ops::Range, sync::Arc};
+use std::sync::Arc;
 
 use bytes::{byte_array::ByteArray, Bytes};
 use lending_iterator::LendingIterator;

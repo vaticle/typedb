@@ -9,8 +9,7 @@ use std::{fmt, ops::Range};
 use bytes::{byte_array::ByteArray, byte_reference::ByteReference, Bytes};
 use resource::constants::snapshot::BUFFER_VALUE_INLINE;
 use serde::{
-    de,
-    de::{Error, Unexpected, Visitor},
+    de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
