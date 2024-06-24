@@ -85,7 +85,7 @@ impl<'a> Plays<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             // TODO: Add check that we unset annotation with same arguments??
-            PlaysAnnotation::Cardinality(_) => type_manager.delete_edge_annotation_cardinality(snapshot, self.clone())?,
+            PlaysAnnotation::Cardinality(_) => type_manager.unset_edge_annotation_cardinality(snapshot, self.clone())?,
         }
         Ok(()) // TODO
     }

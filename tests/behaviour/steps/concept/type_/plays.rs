@@ -76,8 +76,8 @@ pub async fn get_plays_contain(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get plays explicit {contains_or_doesnt}:")]
-pub async fn get_plays_explicit_contain(
+#[step(expr = "{root_label}\\({type_label}\\) get declared plays {contains_or_doesnt}:")]
+pub async fn get_declared_plays_contain(
     context: &mut Context,
     step: &Step,
     root_label: RootLabel,
@@ -100,7 +100,7 @@ pub async fn get_plays_explicit_contain(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get plays {is_empty_or_not}:")]
+#[step(expr = "{root_label}\\({type_label}\\) get plays {is_empty_or_not}")]
 pub async fn get_plays_is_empty(
     context: &mut Context,
     step: &Step,

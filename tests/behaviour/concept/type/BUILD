@@ -6,7 +6,7 @@ load("@vaticle_dependencies//tool/checkstyle:rules.bzl", "checkstyle_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
 
 rust_test(
-    name = "attributetype",
+    name = "test_attributetype",
     srcs = ["attribute_type.rs"],
     deps = [
         "//tests/behaviour/steps:steps",
@@ -16,7 +16,7 @@ rust_test(
 )
 
 rust_test(
-    name = "entitytype",
+    name = "test_entitytype",
     srcs = ["entity_type.rs"],
     deps = [
         "//tests/behaviour/steps:steps",
@@ -26,7 +26,7 @@ rust_test(
 )
 
 rust_test(
-    name = "relationtype",
+    name = "test_relationtype",
     srcs = ["relation_type.rs"],
     deps = [
         "//tests/behaviour/steps:steps",
@@ -36,7 +36,7 @@ rust_test(
 )
 
 rust_test(
-    name = "plays",
+    name = "test_plays",
     srcs = ["plays.rs"],
     deps = [
         "//tests/behaviour/steps:steps",
@@ -46,7 +46,7 @@ rust_test(
 )
 
 rust_test(
-    name = "owns",
+    name = "test_owns",
     srcs = ["owns.rs"],
     deps = [
         "//tests/behaviour/steps:steps",

@@ -25,7 +25,7 @@ use crate::{
         thing_manager::ThingManager,
     },
     type_::{
-        annotation::{Annotation, AnnotationAbstract, AnnotationCategory},
+        annotation::{Annotation, AnnotationAbstract, AnnotationCategory, AnnotationCardinality},
         attribute_type::AttributeType,
         entity_type::EntityType,
         object_type::ObjectType,
@@ -195,7 +195,7 @@ impl OperationTimeValidation {
     ) -> Result<(), SchemaValidationError> {
         match &value_type {
             Some(_) => Ok(()),
-            None => Err(SchemaValidationError::AbsentValueType)
+            None => Err(SchemaValidationError::AbsentValueType) // TODO: Put label here!!
         }
     }
 
@@ -293,6 +293,22 @@ impl OperationTimeValidation {
             (false, true) => Err(SchemaValidationError::NonAbstractCannotOwnAbstract(
                 get_label!(snapshot, owner), get_label!(snapshot, attribute))
             ),
+        }
+    }
+
+    pub(crate) fn validate_cardinality_arguments(
+        cardinality: AnnotationCardinality,
+    ) -> Result<(), SchemaValidationError> {
+        let is_valid = match cardinality.end() {
+            Some(end) if cardinality.start() > end => false,
+            Some(end) if cardinality.start() == end && end == 0 => false,
+            _ => true,
+        };
+
+        if is_valid {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::InvalidCardinalityArguments(cardinality.start(), cardinality.end()))
         }
     }
 
