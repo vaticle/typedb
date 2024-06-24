@@ -302,7 +302,6 @@ impl<ID: IrID> Display for Type<ID> {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Isa<ID: IrID> {
     thing: ID,
     type_: ID,
@@ -577,15 +576,5 @@ impl<ID: IrID> Into<Constraint<ID>> for Comparison<ID> {
 impl<ID: IrID> Display for Comparison<ID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use crate::pattern::constraint::Type;
-    use answer::variable::Variable;
-
-    pub(crate) fn tests__new_type(var: Variable, type_: String) -> Type<Variable> {
-        Type::new(var, type_)
     }
 }

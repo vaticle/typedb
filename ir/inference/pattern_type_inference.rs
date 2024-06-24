@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use answer::variable::Variable;
 use crate::{
     inference::type_inference::VertexConstraints,
-    pattern::{constraint::Type},
 };
+use crate::inference::type_inference::TypeAnnotation;
 
 // TODO: Resolve questions in the comment below & delete
 /*
@@ -23,9 +23,9 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeInferenceGraph {
-    vertices: VertexConstraints,
-    edges: Vec<TypeInferenceEdge>,
-    nested_graphs: Vec<NestedTypeInferenceGraph>,
+    pub(crate) vertices: VertexConstraints,
+    pub(crate) edges: Vec<TypeInferenceEdge>,
+    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraph>,
 }
 
 impl TypeInferenceGraph {
@@ -59,20 +59,20 @@ impl TypeInferenceGraph {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TypeInferenceEdge {
+pub(crate) struct TypeInferenceEdge {
     left: Variable,
     right: Variable,
-    left_to_right: BTreeMap<Type, BTreeSet<Type>>,
-    right_to_left: BTreeMap<Type, BTreeSet<Type>>,
+    left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+    right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
 }
 
 impl TypeInferenceEdge {
     // Construction
-    fn new(
+    pub(crate) fn new(
         left: Variable,
         right: Variable,
-        initial_left_to_right: BTreeMap<Type, BTreeSet<Type>>,
-        initial_right_to_left: BTreeMap<Type, BTreeSet<Type>>,
+        initial_left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+        initial_right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
     ) -> TypeInferenceEdge {
         // The final left_to_right & right_to_left sets must be consistent with each other. i.e.
         //      left_to_right.keys() == union(right_to_left.values()) AND
@@ -88,18 +88,18 @@ impl TypeInferenceEdge {
     }
 
     fn intersect_first_keys_with_union_of_second_values(
-        keys_from: &BTreeMap<Type, BTreeSet<Type>>,
-        values_from: &BTreeMap<Type, BTreeSet<Type>>,
-    ) -> BTreeSet<Type> {
-        let mut types: BTreeSet<Type> = values_from.iter().flat_map(|(_, v)| v.clone().into_iter()).collect();
+        keys_from: &BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+        values_from: &BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+    ) -> BTreeSet<TypeAnnotation> {
+        let mut types: BTreeSet<TypeAnnotation> = values_from.iter().flat_map(|(_, v)| v.clone().into_iter()).collect();
         types.retain(|v| keys_from.contains_key(&v));
         types
     }
 
     fn prune_keys_not_in_first_and_values_not_in_second(
-        prune_from: &mut BTreeMap<Type, BTreeSet<Type>>,
-        allowed_keys: &BTreeSet<Type>,
-        allowed_values: &BTreeSet<Type>,
+        prune_from: &mut BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+        allowed_keys: &BTreeSet<TypeAnnotation>,
+        allowed_values: &BTreeSet<TypeAnnotation>,
     ) {
         prune_from.retain(|type_, _| allowed_keys.contains(type_));
         for (_, v) in prune_from {
@@ -108,7 +108,7 @@ impl TypeInferenceEdge {
     }
 
     // Updates
-    fn remove_type(&mut self, from_variable: Variable, type_: Type) {
+    fn remove_type(&mut self, from_variable: Variable, type_: TypeAnnotation) {
         let TypeInferenceEdge { left, right, left_to_right, right_to_left } = self;
         if &from_variable == left {
             Self::remove_type_from(&type_, left_to_right, right_to_left);
@@ -123,9 +123,9 @@ impl TypeInferenceEdge {
     }
 
     fn remove_type_from(
-        type_: &Type,
-        remove_key: &mut BTreeMap<Type, BTreeSet<Type>>,
-        remove_values: &mut BTreeMap<Type, BTreeSet<Type>>,
+        type_: &TypeAnnotation,
+        remove_key: &mut BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+        remove_values: &mut BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
     ) {
         for other_type in remove_key.get(&type_).unwrap() {
             let remaining_size = Self::remove_from_value_set(remove_values, other_type, type_);
@@ -137,9 +137,9 @@ impl TypeInferenceEdge {
     }
 
     fn remove_from_value_set(
-        remove_from_values_of: &mut BTreeMap<Type, BTreeSet<Type>>,
-        for_key: &Type,
-        value: &Type,
+        remove_from_values_of: &mut BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+        for_key: &TypeAnnotation,
+        value: &TypeAnnotation,
     ) -> usize {
         let value_set_to_remove_from = remove_from_values_of.get_mut(&for_key).unwrap();
         value_set_to_remove_from.remove(&value);
@@ -167,7 +167,7 @@ impl TypeInferenceEdge {
     fn prune_self_from_vertices(&mut self, vertices: &VertexConstraints) {
         {
             let left_vertices = vertices.get(&self.left).unwrap();
-            let prune_left: Vec<Type> = self
+            let prune_left: Vec<TypeAnnotation> = self
                 .left_to_right
                 .iter()
                 .filter_map(|(k, _)| if left_vertices.contains(k) { None } else { Some(k.clone()) })
@@ -176,7 +176,7 @@ impl TypeInferenceEdge {
         };
         {
             let right_vertices = vertices.get(&self.right).unwrap();
-            let prune_right: Vec<Type> = self
+            let prune_right: Vec<TypeAnnotation> = self
                 .right_to_left
                 .iter()
                 .filter_map(|(k, _)| if right_vertices.contains(k) { None } else { Some(k.clone()) })
@@ -187,7 +187,7 @@ impl TypeInferenceEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct NestedTypeInferenceGraph {
+pub(crate) struct NestedTypeInferenceGraph {
     nested_graph_disjunction: Vec<TypeInferenceGraph>,
 }
 
@@ -225,11 +225,15 @@ impl NestedTypeInferenceGraph {
 #[cfg(test)]
 pub mod tests {
     use std::collections::{BTreeMap, BTreeSet};
+
     use answer::variable::Variable;
+    use encoding::graph::type_::Kind;
+
     use crate::{
         inference::pattern_type_inference::{NestedTypeInferenceGraph, TypeInferenceEdge, TypeInferenceGraph},
-        pattern::{constraint::tests::tests__new_type},
     };
+    use crate::inference::type_inference::tests::tests__new_type;
+    use crate::inference::type_inference::TypeAnnotation;
 
     #[test]
     fn basic_binary_edges() {
@@ -240,13 +244,13 @@ pub mod tests {
         let var_animal = Variable::new(0);
         let var_name = Variable::new(1);
 
-        let type_animal = tests__new_type(var_animal, "animal".to_owned());
-        let type_cat = tests__new_type(var_animal, "cat".to_owned());
-        let type_dog = tests__new_type(var_animal, "dog".to_owned());
+        let type_animal = tests__new_type(Kind::Entity, 0);
+        let type_cat = tests__new_type(Kind::Entity, 1);
+        let type_dog = tests__new_type(Kind::Entity, 2);
 
-        let type_name = tests__new_type(var_name, "name".to_owned());
-        let type_catname = tests__new_type(var_name, "cat-name".to_owned());
-        let type_dogname = tests__new_type(var_name, "dog-name".to_owned());
+        let type_name = tests__new_type(Kind::Attribute, 80);
+        let type_catname = tests__new_type(Kind::Attribute, 81);
+        let type_dogname = tests__new_type(Kind::Attribute, 82);
 
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
         let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
@@ -390,13 +394,13 @@ pub mod tests {
         let var_animal = Variable::new(0);
         let var_name = Variable::new(1);
 
-        let type_animal = tests__new_type(var_animal, "animal".to_owned());
-        let type_cat = tests__new_type(var_animal, "cat".to_owned());
-        let type_dog = tests__new_type(var_animal, "dog".to_owned());
+        let type_animal = tests__new_type(Kind::Entity, 0);
+        let type_cat = tests__new_type(Kind::Entity, 1);
+        let type_dog = tests__new_type(Kind::Entity, 2);
 
-        let type_name = tests__new_type(var_name, "name".to_owned());
-        let type_catname = tests__new_type(var_name, "cat-name".to_owned());
-        let type_dogname = tests__new_type(var_name, "dog-name".to_owned());
+        let type_name = tests__new_type(Kind::Attribute, 80);
+        let type_catname = tests__new_type(Kind::Attribute, 81);
+        let type_dogname = tests__new_type(Kind::Attribute, 82);
 
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
         let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);

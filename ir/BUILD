@@ -19,9 +19,11 @@ rust_library(
     deps = [
         "//answer",
         "//concept",
+        "//durability",
         "//encoding",
-#        "//storage",
-#        "//concept",
+        "//storage",
+
+        "//util/test:test_utils",
 
         "@crates//:itertools"
     ],
