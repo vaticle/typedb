@@ -17,6 +17,7 @@ use crate::{
     },
     program::{program::Program, FunctionalBlock},
 };
+use crate::inference::pattern_type_inference::{TypeInferenceGraph};
 
 /*
 Design:

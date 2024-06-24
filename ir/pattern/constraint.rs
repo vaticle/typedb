@@ -13,6 +13,7 @@ use std::{
 
 use answer::variable::Variable;
 use itertools::Itertools;
+use encoding::value::label::Label;
 
 use crate::{
     pattern::{

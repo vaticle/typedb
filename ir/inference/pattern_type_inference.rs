@@ -4,11 +4,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use answer::variable::Variable;
 use crate::{
     inference::type_inference::VertexConstraints,
-    pattern::{constraint::Type, variable::Variable},
+    pattern::{constraint::Type},
 };
 
 // TODO: Resolve questions in the comment below & delete
@@ -21,7 +22,7 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
 */
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TypeInferenceGraph {
+pub(crate) struct TypeInferenceGraph {
     vertices: VertexConstraints,
     edges: Vec<TypeInferenceEdge>,
     nested_graphs: Vec<NestedTypeInferenceGraph>,
@@ -186,7 +187,7 @@ impl TypeInferenceEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NestedTypeInferenceGraph {
+struct NestedTypeInferenceGraph {
     nested_graph_disjunction: Vec<TypeInferenceGraph>,
 }
 
@@ -224,10 +225,10 @@ impl NestedTypeInferenceGraph {
 #[cfg(test)]
 pub mod tests {
     use std::collections::{BTreeMap, BTreeSet};
-
+    use answer::variable::Variable;
     use crate::{
         inference::pattern_type_inference::{NestedTypeInferenceGraph, TypeInferenceEdge, TypeInferenceGraph},
-        pattern::{constraint::tests::tests__new_type, variable::Variable},
+        pattern::{constraint::tests::tests__new_type},
     };
 
     #[test]

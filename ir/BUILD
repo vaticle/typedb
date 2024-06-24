@@ -20,6 +20,9 @@ rust_library(
         "//answer",
         "//concept",
         "//encoding",
+#        "//storage",
+#        "//concept",
+
         "@crates//:itertools"
     ],
 )
