@@ -416,7 +416,7 @@ fn define_struct<Snapshot: WritableSnapshot>(
 ) -> DefinitionKey<'static> {
     let struct_key = type_manager.create_struct(snapshot, name).unwrap();
     for (name, (value_type, optional)) in definitions {
-        type_manager.add_struct_field(snapshot, struct_key.clone(), name, value_type, optional).unwrap();
+        type_manager.create_struct_field(snapshot, struct_key.clone(), name, value_type, optional).unwrap();
     }
     struct_key
 }
@@ -437,7 +437,7 @@ fn test_struct_definition_updates() {
         let struct_key = type_manager.create_struct(&mut snapshot, struct_name.clone()).unwrap();
 
         let (field, (value_type, is_optional)) = f_long.clone();
-        type_manager.add_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
+        type_manager.create_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
         assert_eq!(
             HashMap::from([f_long.clone()]),
             remap_struct_fields(&type_manager.get_struct_definition(&snapshot, struct_key.clone()).unwrap())
@@ -450,7 +450,7 @@ fn test_struct_definition_updates() {
     {
         let mut snapshot = storage.clone().open_snapshot_write();
         let (field, (value_type, is_optional)) = f_string.clone();
-        type_manager.add_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
+        type_manager.create_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
         assert_eq!(
             HashMap::from([f_long.clone(), f_string.clone()]),
             remap_struct_fields(&type_manager.get_struct_definition(&snapshot, struct_key.clone()).unwrap())

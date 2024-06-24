@@ -765,7 +765,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(definition_key)
     }
 
-    pub fn add_struct_field(
+    pub fn create_struct_field(
         &self,
         snapshot: &mut Snapshot,
         definition_key: DefinitionKey<'static>,
@@ -794,6 +794,19 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
             .map_err(|source| ConceptWriteError::ConceptRead { source })?;
         struct_definition.delete_field(field_name).map_err(|source| ConceptWriteError::Encoding { source })?;
         TypeWriter::storage_put_struct(snapshot, definition_key.clone(), struct_definition);
+        Ok(())
+    }
+
+    pub fn delete_struct(
+        &self,
+        snapshot: &mut Snapshot,
+        definition_key: &DefinitionKey<'static>,
+    ) -> Result<(), ConceptWriteError> {
+        // TODO: Check inside attributes and structs!
+        // OperationTimeValidation::validate_not_used(snapshot, entity_type.clone().into_owned())
+        //     .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        TypeWriter::storage_delete_struct(snapshot, definition_key);
         Ok(())
     }
 

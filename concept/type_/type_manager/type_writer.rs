@@ -50,6 +50,20 @@ impl<Snapshot: WritableSnapshot> TypeWriter<Snapshot> {
         );
     }
 
+    pub(crate) fn storage_delete_struct(
+        snapshot: &mut Snapshot,
+        definition_key: &DefinitionKey<'static>,
+    ) {
+        let existing_struct = TypeReader::get_struct_definition(snapshot, definition_key.clone());
+        if let Ok(struct_definition) = existing_struct {
+            let index_key = NameToStructDefinitionIndex::build::<BUFFER_KEY_INLINE>(StringBytes::build_ref(
+                struct_definition.name.as_str(),
+            ));
+            snapshot.delete(definition_key.clone().into_storage_key().into_owned_array());
+            snapshot.delete(index_key.into_storage_key().into_owned_array());
+        }
+    }
+
     // Basic vertex type operations
     pub(crate) fn storage_put_label<T: KindAPI<'static>>(snapshot: &mut Snapshot, type_: T, label: &Label<'_>) {
         debug_assert!(TypeReader::get_label(snapshot, type_.clone()).unwrap().is_none());

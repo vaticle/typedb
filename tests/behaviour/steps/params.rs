@@ -106,6 +106,11 @@ impl ExistsOrDoesnt {
             (Self::DoesNotExist, Some(value)) => panic!("{message} exists: {value:?}"),
         }
     }
+
+    pub fn check_result<T: fmt::Debug, E>(&self, scrutinee: &Result<T, E>, message: &str) {
+        let option = match scrutinee { Ok(result) => Some(result), Err(_) => None };
+        self.check(&option, message)
+    }
 }
 
 impl FromStr for ExistsOrDoesnt {
@@ -529,6 +534,33 @@ impl FromStr for Ordering {
             "unordered" => Self::Unordered,
             "ordered" => Self::Ordered,
             _ => panic!("Unrecognised ordering"),
+        })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "optional", regex = "(|\\?)")]
+pub(crate) enum Optional {
+    False,
+    True,
+}
+
+impl Optional {
+    pub fn into_typedb(&self) -> bool {
+        match &self {
+            Optional::False => false,
+            Optional::True => true,
+        }
+    }
+}
+
+impl FromStr for Optional {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "?" => Self::True,
+            "" => Self::False,
+            invalid => return Err(format!("Invalid `Optional`: {invalid}")),
         })
     }
 }
