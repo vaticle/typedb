@@ -48,6 +48,7 @@ use crate::{
         EdgeOverride, InterfaceImplementation, KindAPI, Ordering, TypeAPI,
     },
 };
+use crate::type_::type_manager::validation::annotation_compatibility::is_annotation_inherited;
 
 pub struct TypeReader {}
 
@@ -393,12 +394,25 @@ impl TypeReader {
             .map_err(|err| ConceptReadError::SnapshotIterate { source: err.clone() })
     }
 
-    // TODO: Implement!!!! Now it is a copy of _declared
     pub(crate) fn get_type_annotations<T: KindAPI<'static>>(
         snapshot: &impl ReadableSnapshot,
         type_: T,
     ) -> Result<HashSet<T::AnnotationType>, ConceptReadError> {
-        Self::get_type_annotations_declared(snapshot, type_)
+        // let mut effective_annotations: HashMap<T::AnnotationType, T> = HashMap::new();
+        let mut annotations: HashSet<T::AnnotationType> = HashSet::new();
+        let mut type_opt = Some(type_);
+        while let Some(next_type) = type_opt {
+            let declared_annotations = Self::get_type_annotations_declared(snapshot, next_type.clone())?;
+            for annotation in declared_annotations {
+                // TODO: Rename???? What to check???
+                if is_annotation_inherited::<T>(&annotation, &annotations) {
+                    // annotations.insert(annotation, next_type.clone());
+                    annotations.insert(annotation);
+                }
+            }
+            type_opt = Self::get_supertype(snapshot, next_type.clone())?;
+        }
+        Ok(annotations)
     }
 
     // TODO: this is currently breaking our architectural pattern that none of the Manager methods should operate graphs
@@ -450,18 +464,18 @@ impl TypeReader {
     where
         EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static>,
     {
-        let mut effective_annotations: HashMap<Annotation, EDGE> = HashMap::new();
+        let mut annotations: HashMap<Annotation, EDGE> = HashMap::new();
         let mut edge_opt = Some(edge);
         while let Some(edge) = edge_opt {
             let declared_edge_annotations = Self::get_type_edge_annotations_declared(snapshot, edge.clone())?;
             for annotation in declared_edge_annotations {
-                if is_edge_annotation_inherited(&annotation, &effective_annotations) {
-                    effective_annotations.insert(annotation, edge.clone());
+                if is_edge_annotation_inherited(&annotation, &annotations) {
+                    annotations.insert(annotation, edge.clone());
                 }
             }
             edge_opt = Self::get_implementation_override(snapshot, edge.clone())?;
         }
-        Ok(effective_annotations)
+        Ok(annotations)
     }
 
     pub(crate) fn get_type_edge_ordering(
