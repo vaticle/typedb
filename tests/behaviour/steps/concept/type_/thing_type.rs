@@ -178,7 +178,7 @@ pub async fn type_unset_annotation(
 
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}")]
-pub async fn type_get_annotations_contain(
+pub async fn type_annotations_contain(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
@@ -197,8 +197,28 @@ pub async fn type_get_annotations_contain(
 }
 
 #[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get declared annotations {contains_or_doesnt}: {annotation}")]
+pub async fn type_declared_annotations_contain(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation: Annotation,
+) {
+    with_read_tx!(context, |tx| {
+        with_type!(tx, root_label, type_label, type_, {
+            let actual_contains = type_
+                .get_annotations_declared(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .contains(&annotation.into_typedb().into());
+            assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+        });
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get annotations {is_empty_or_not}")]
-pub async fn type_get_annotations_is_empty(
+pub async fn type_annotations_is_empty(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
@@ -208,6 +228,24 @@ pub async fn type_get_annotations_is_empty(
         with_type!(tx, root_label, type_label, type_, {
             let actual_is_empty = type_
                 .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap().is_empty();
+            is_empty_or_not.check(actual_is_empty);
+        });
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get declared annotations {is_empty_or_not}")]
+pub async fn type_declared_annotations_is_empty(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    is_empty_or_not: IsEmptyOrNot,
+) {
+    with_read_tx!(context, |tx| {
+        with_type!(tx, root_label, type_label, type_, {
+            let actual_is_empty = type_
+                .get_annotations_declared(&tx.snapshot, &tx.type_manager)
                 .unwrap().is_empty();
             is_empty_or_not.check(actual_is_empty);
         });
@@ -314,6 +352,7 @@ pub async fn get_supertypes_is_empty(context: &mut Context, root_label: RootLabe
     });
 }
 
+// TODO: transitive / non-transitive separate checks?
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get subtypes {contains_or_doesnt}:")]
 pub async fn get_subtypes_contain(
@@ -345,7 +384,7 @@ pub async fn get_subtypes_contain(
 pub async fn get_subtypes_is_empty(context: &mut Context, root_label: RootLabel, type_label: Label, step: &Step) {
     with_read_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
-            assert!(type_.get_subtypes(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
+            assert!(type_.get_subtypes_transitive(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
         });
     });
 }

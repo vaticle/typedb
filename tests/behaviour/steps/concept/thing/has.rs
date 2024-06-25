@@ -201,12 +201,12 @@ async fn object_get_has_with_annotations(
     let actuals = with_read_tx!(context, |tx| {
         let attribute_types = object
             .type_()
-            .get_owns(&tx.snapshot, &tx.type_manager)
+            .get_owns_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .into_iter()
             .filter(|owns| {
                 annotations.iter().all(|anno| {
-                    owns.get_effective_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(anno)
+                    owns.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(anno)
                 })
             })
             .map(|owns| owns.attribute())

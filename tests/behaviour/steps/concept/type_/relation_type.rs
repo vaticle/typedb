@@ -68,7 +68,7 @@ pub async fn relation_role_set_supertype(
     with_schema_tx!(context, |tx| {
         let relation_type = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let relates = relation_type
-            .get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
             .unwrap()
             .unwrap();
         let relation_supertype = relation_type.get_supertype(&tx.snapshot, &tx.type_manager).unwrap().unwrap();
@@ -93,9 +93,9 @@ pub async fn relation_roles_contain(
 ) {
     let expected_labels: Vec<String> = util::iter_table(step).map(|str| str.to_owned()).collect::<Vec<String>>();
     with_read_tx!(context, |tx| {
-        let type_ = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
-        let actual_labels = type_
-            .get_relates_transitive(&tx.snapshot, &tx.type_manager)
+        let relation_type = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        let actual_labels = relation_type
+            .get_relates(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|(_label, relates)| {
@@ -119,7 +119,7 @@ pub async fn relation_declared_roles_contain(
     with_read_tx!(context, |tx| {
         let type_ = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let actual_labels = type_
-            .get_relates(&tx.snapshot, &tx.type_manager)
+            .get_relates_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|relates| {
@@ -141,7 +141,7 @@ pub async fn relation_role_exists(
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let role_opt =
-            relation.get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str()).unwrap();
+            relation.get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str()).unwrap();
         exists.check(&role_opt, &format!("role {}:{}", type_label.into_typedb(), role_label.into_typedb()));
     });
 }
@@ -157,7 +157,7 @@ pub async fn relation_role_get_label(
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let role = relation
-            .get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
             .unwrap()
             .unwrap()
             .role();
@@ -179,7 +179,7 @@ pub async fn relation_role_get_name(
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let role = relation
-            .get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
             .unwrap()
             .unwrap()
             .role();
@@ -201,7 +201,7 @@ pub async fn relation_type_delete_role(
     with_schema_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         let role = relation
-            .get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name.as_str())
             .unwrap()
             .unwrap()
             .role();
@@ -264,6 +264,7 @@ pub async fn relation_role_supertypes_contain(
     });
 }
 
+// TODO: Make different transitive / non-transitive steps?
 #[apply(generic_step)]
 #[step(expr = r"relation\({type_label}\) get role\({type_label}\) get subtypes {contains_or_doesnt}:")]
 pub async fn relation_role_subtypes_contain(
@@ -481,7 +482,41 @@ pub async fn relation_role_annotations_contain(
                 actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
             },
             annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
-                actual_contains = relates.get_effective_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
+                actual_contains = relates.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
+            },
+            _ => {
+                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
+            }
+        }
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get declared annotations {contains_or_doesnt}: {annotation}")]
+pub async fn relation_role_declared_annotations_contain(
+    context: &mut Context,
+    relation_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation: Annotation,
+) {
+    with_read_tx!(context, |tx| {
+        let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
+        let relates = tx
+            .type_manager
+            .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
+            .unwrap()
+            .unwrap();
+
+        let parsed_annotation = annotation.into_typedb();
+        let actual_contains;
+        match parsed_annotation {
+            annotation::Annotation::Abstract(_) => {
+                actual_contains = relates.role().get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
+            },
+            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
+                actual_contains = relates.get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
             },
             _ => {
                 unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
@@ -507,9 +542,34 @@ pub async fn relation_role_annotations_is_empty(
             .unwrap()
             .unwrap();
         let relates_empty =
-            relates.get_effective_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
+            relates.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
         let role_empty =
             relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
+
+        let actual_is_empty = relates_empty && role_empty;
+        is_empty_or_not.check(actual_is_empty);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get declared annotations {is_empty_or_not}")]
+pub async fn relation_role_declared_annotations_is_empty(
+    context: &mut Context,
+    relation_label: Label,
+    role_label: Label,
+    is_empty_or_not: IsEmptyOrNot,
+) {
+    with_read_tx!(context, |tx| {
+        let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
+        let relates = tx
+            .type_manager
+            .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
+            .unwrap()
+            .unwrap();
+        let relates_empty =
+            relates.get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
+        let role_empty =
+            relates.role().get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
 
         let actual_is_empty = relates_empty && role_empty;
         is_empty_or_not.check(actual_is_empty);
@@ -571,12 +631,46 @@ pub async fn role_type_players_contain(
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
         let role = relation
-            .get_relates_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
             .unwrap()
             .unwrap()
             .role();
         let actual_labels = role
             .get_plays(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .iter()
+            .map(|(_, plays)| match plays.player() {
+                ObjectType::Entity(entity_type) => {
+                    entity_type.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name().as_str().to_owned()
+                }
+                ObjectType::Relation(relation_type) => {
+                    relation_type.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name().as_str().to_owned()
+                }
+            })
+            .collect::<Vec<String>>();
+        contains_or_doesnt.check(expected_labels.as_slice(), actual_labels.as_slice());
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get declared players {contains_or_doesnt}:")]
+pub async fn role_type_declared_players_contain(
+    context: &mut Context,
+    relation_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    step: &Step,
+) {
+    let expected_labels: Vec<String> = util::iter_table(step).map(|str| str.to_owned()).collect::<Vec<String>>();
+    with_read_tx!(context, |tx| {
+        let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
+        let role = relation
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
+            .unwrap()
+            .unwrap()
+            .role();
+        let actual_labels = role
+            .get_plays_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|plays| match plays.player() {

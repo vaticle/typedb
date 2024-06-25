@@ -133,7 +133,7 @@ fn entity_usage() {
             child_type.get_owns_attribute(&snapshot, &type_manager, age_type.clone().into_owned()).unwrap().unwrap();
         // TODO: test 'owns' structure directly
 
-        let all_owns = child_type.get_owns(&snapshot, &type_manager).unwrap();
+        let all_owns = child_type.get_owns_declared(&snapshot, &type_manager).unwrap();
         assert_eq!(all_owns.len(), 1);
         assert!(all_owns.contains(&owns));
         assert_eq!(child_type.get_owns_attribute(&snapshot, &type_manager, age_type.clone()).unwrap(), Some(owns));
@@ -207,7 +207,7 @@ fn entity_usage() {
         assert_eq!(supertypes.len(), 2);
 
         // --- child owns age ---
-        let all_owns = child_type.get_owns(&snapshot, &type_manager).unwrap();
+        let all_owns = child_type.get_owns_declared(&snapshot, &type_manager).unwrap();
         assert_eq!(all_owns.len(), 1);
         let expected_owns = Owns::new(ObjectType::Entity(child_type.clone()), age_type.clone());
         assert!(all_owns.contains(&expected_owns));
@@ -270,7 +270,7 @@ fn role_usage() {
         // --- friendship sub relation, relates friend ---
         let friendship_type = type_manager.create_relation_type(&mut snapshot, &friendship_label, false).unwrap();
         friendship_type.create_relates(&mut snapshot, &type_manager, friend_name, Ordering::Unordered).unwrap();
-        let relates = friendship_type.get_relates_role(&snapshot, &type_manager, friend_name).unwrap().unwrap();
+        let relates = friendship_type.get_relates_of_role(&snapshot, &type_manager, friend_name).unwrap().unwrap();
         let role_type =
             type_manager.resolve_relates(&snapshot, friendship_type.clone(), friend_name).unwrap().unwrap().role();
         debug_assert_eq!(relates.relation(), friendship_type.clone());
@@ -294,7 +294,7 @@ fn role_usage() {
 
         // --- friendship sub relation, relates friend ---
         let friendship_type = type_manager.get_relation_type(&snapshot, &friendship_label).unwrap().unwrap();
-        let relates = friendship_type.get_relates_role(&snapshot, &type_manager, friend_name).unwrap();
+        let relates = friendship_type.get_relates_of_role(&snapshot, &type_manager, friend_name).unwrap();
         debug_assert!(relates.is_some());
         let relates = relates.unwrap();
         let role_type =

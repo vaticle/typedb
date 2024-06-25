@@ -64,7 +64,7 @@ pub async fn get_plays_contain(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_labels = object_type
-            .get_plays_transitive(&tx.snapshot, &tx.type_manager)
+            .get_plays(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|(_role, plays)| {
@@ -88,7 +88,7 @@ pub async fn get_declared_plays_contain(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_labels = object_type
-            .get_plays(&tx.snapshot, &tx.type_manager)
+            .get_plays_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|plays| {
@@ -112,7 +112,7 @@ pub async fn get_plays_is_empty(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_is_empty = object_type
-            .get_plays_transitive(&tx.snapshot, &tx.type_manager)
+            .get_plays(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .is_empty();
         is_empty_or_not.check(actual_is_empty);
@@ -241,7 +241,7 @@ pub async fn get_plays_unset_annotation(
 #[step(
     expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}"
 )]
-pub async fn get_plays_get_annotations_contains(
+pub async fn get_plays_annotations_contains(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
@@ -254,7 +254,7 @@ pub async fn get_plays_get_annotations_contains(
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
         let actual_contains = plays
-            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .get_annotations(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .contains_key(&annotation.into_typedb().into());
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
@@ -262,8 +262,32 @@ pub async fn get_plays_get_annotations_contains(
 }
 
 #[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get declared annotations {contains_or_doesnt}: {annotation}"
+)]
+pub async fn get_plays_declared_annotations_contains(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation: Annotation,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let actual_contains = plays
+            .get_annotations_declared(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .contains(&annotation.into_typedb().into());
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get annotations {is_empty_or_not}")]
-pub async fn get_owns_get_annotations_is_empty(
+pub async fn get_owns_annotations_is_empty(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
@@ -275,7 +299,28 @@ pub async fn get_owns_get_annotations_is_empty(
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
         let actual_is_empty = plays
-            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .get_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .is_empty();
+        is_empty_or_not.check(actual_is_empty);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get declared annotations {is_empty_or_not}")]
+pub async fn get_owns_declared_annotations_is_empty(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    is_empty_or_not: IsEmptyOrNot,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let actual_is_empty = plays
+            .get_annotations_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .is_empty();
         is_empty_or_not.check(actual_is_empty);

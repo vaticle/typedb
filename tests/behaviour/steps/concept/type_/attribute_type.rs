@@ -78,7 +78,7 @@ pub async fn get_owners_contain(
             tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
-        attribute_type.get_owners_transitive(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(
+        attribute_type.get_owns(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(
             |(owner, _owns)| {
                 let owner_label = match owner {
                     ObjectType::Entity(owner) => {
@@ -109,7 +109,7 @@ pub async fn get_declaring_owners_contain(
             tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
-        attribute_type.get_owner_owns(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(|owns| {
+        attribute_type.get_owns_declared(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(|owns| {
             let owner_label = match owns.owner() {
                 ObjectType::Entity(owner) => {
                     owner.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name().as_str().to_owned()

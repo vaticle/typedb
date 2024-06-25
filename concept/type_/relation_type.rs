@@ -180,6 +180,14 @@ impl<'a> RelationType<'a> {
         type_manager.get_relation_type_subtypes_transitive(snapshot, self.clone().into_owned())
     }
 
+    pub fn get_annotations_declared<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashSet<RelationTypeAnnotation>>, ConceptReadError> {
+        type_manager.get_relation_type_annotations_declared(snapshot, self.clone().into_owned())
+    }
+
     pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
@@ -227,50 +235,33 @@ impl<'a> RelationType<'a> {
         type_manager.create_role_type(snapshot, &label, self.clone().into_owned(), false, ordering)
     }
 
-    pub fn get_relates<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relates_declared<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashSet<Relates<'static>>>, ConceptReadError> {
-        type_manager.get_relation_type_relates(snapshot, self.clone().into_owned())
+        type_manager.get_relation_type_relates_declared(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_relates_role<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-        name: &str,
-    ) -> Result<Option<Relates<'static>>, ConceptReadError> {
-        let label = Label::build_scoped(name, self.get_label(snapshot, type_manager)?.name().as_str());
-        Ok(type_manager
-            .get_role_type(snapshot, &label)?
-            .map(|role_type| Relates::new(self.clone().into_owned(), role_type)))
-    }
-
-    pub fn get_relates_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_relates<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Relates<'static>>>, ConceptReadError> {
-        type_manager.get_relation_type_relates_transitive(snapshot, self.clone().into_owned())
+        type_manager.get_relation_type_relates(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_relates_role_transitive<'b, Snapshot: ReadableSnapshot>(
+    // TODO: It looks like a hack to me right now..... Why don't we search it, but build a new one?
+    pub fn get_relates_of_role<Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        role_type: RoleType<'b>,
+        role_name: &str,
     ) -> Result<Option<Relates<'static>>, ConceptReadError> {
-        Ok(self.get_relates_transitive(snapshot, type_manager)?.get(&role_type).cloned())
-    }
-
-    fn has_relates_role<Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-        name: &str,
-    ) -> Result<bool, ConceptReadError> {
-        Ok(self.get_relates_role(snapshot, type_manager, name)?.is_some())
+        let role_label = Label::build_scoped(role_name, self.get_label(snapshot, type_manager)?.name().as_str());
+        Ok(type_manager
+            .get_role_type(snapshot, &role_label)?
+            .map(|role_type| Relates::new(self.clone().into_owned(), role_type)))
     }
 
     pub fn into_owned(self) -> RelationType<'static> {
@@ -301,11 +292,19 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         Ok(())
     }
 
-    fn get_owns<'m, Snapshot: ReadableSnapshot>(
+    fn get_owns_declared<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
+        type_manager.get_relation_type_owns_declared(snapshot, self.clone().into_owned())
+    }
+
+    fn get_owns<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_owns(snapshot, self.clone().into_owned())
     }
 
@@ -316,15 +315,7 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<Owns<'static>>, ConceptReadError> {
         let expected_owns = Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type);
-        Ok(self.get_owns(snapshot, type_manager)?.contains(&expected_owns).then_some(expected_owns))
-    }
-
-    fn get_owns_transitive<'m, Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
-        type_manager.get_relation_type_owns_transitive(snapshot, self.clone().into_owned())
+        Ok(self.get_owns_declared(snapshot, type_manager)?.contains(&expected_owns).then_some(expected_owns))
     }
 }
 
@@ -349,11 +340,19 @@ impl<'a> PlayerAPI<'a> for RelationType<'a> {
         type_manager.delete_plays(snapshot, self.clone().into_owned(), role_type)
     }
 
-    fn get_plays<'m, Snapshot: ReadableSnapshot>(
+    fn get_plays_declared<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
+        type_manager.get_relation_type_plays_declared(snapshot, self.clone().into_owned())
+    }
+
+    fn get_plays<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_plays(snapshot, self.clone().into_owned())
     }
 
@@ -364,15 +363,7 @@ impl<'a> PlayerAPI<'a> for RelationType<'a> {
         role_type: RoleType<'static>,
     ) -> Result<Option<Plays<'static>>, ConceptReadError> {
         let expected_plays = Plays::new(ObjectType::Relation(self.clone().into_owned()), role_type);
-        Ok(self.get_plays(snapshot, type_manager)?.contains(&expected_plays).then_some(expected_plays))
-    }
-
-    fn get_plays_transitive<'m, Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
-        type_manager.get_relation_type_plays_transitive(snapshot, self.clone().into_owned())
+        Ok(self.get_plays_declared(snapshot, type_manager)?.contains(&expected_plays).then_some(expected_plays))
     }
 }
 

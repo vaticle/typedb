@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use encoding::{graph::type_::edge::TypeEdgeEncoding, layout::prefix::Prefix};
 use primitive::maybe_owns::MaybeOwns;
@@ -45,7 +45,7 @@ impl<'a> Owns<'a> {
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
-        let annotations = self.get_effective_annotations(snapshot, type_manager)?;
+        let annotations = self.get_annotations(snapshot, type_manager)?;
         Ok(annotations.contains_key(&OwnsAnnotation::Key(AnnotationKey)))
     }
 
@@ -54,7 +54,7 @@ impl<'a> Owns<'a> {
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
-        let annotations = self.get_effective_annotations(snapshot, type_manager)?;
+        let annotations = self.get_annotations(snapshot, type_manager)?;
         Ok(annotations.contains_key(&OwnsAnnotation::Unique(AnnotationUnique))
             || annotations.contains_key(&OwnsAnnotation::Key(AnnotationKey)))
     }
@@ -66,7 +66,7 @@ impl<'a> Owns<'a> {
     ) -> Result<bool, ConceptReadError> {
         match self.get_ordering(snapshot, type_manager)? {
             Ordering::Ordered => {
-                let annotations = self.get_effective_annotations(snapshot, type_manager)?;
+                let annotations = self.get_annotations(snapshot, type_manager)?;
                 Ok(annotations.contains_key(&OwnsAnnotation::Distinct(AnnotationDistinct)))
             },
             Ordering::Unordered => Ok(true)
@@ -78,7 +78,7 @@ impl<'a> Owns<'a> {
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<Option<AnnotationCardinality>, ConceptReadError> {
-        let annotations = self.get_effective_annotations(snapshot, type_manager)?;
+        let annotations = self.get_annotations(snapshot, type_manager)?;
         for annotation in annotations.keys() {
             match annotation {
                 OwnsAnnotation::Cardinality(cardinality) => return Ok(Some(*cardinality)),
@@ -108,12 +108,20 @@ impl<'a> Owns<'a> {
         type_manager.set_owns_overridden(snapshot, self.clone().into_owned(), overridden)
     }
 
-    pub fn get_effective_annotations<'this, Snapshot: ReadableSnapshot>(
+    pub fn get_annotations_declared<'this, Snapshot: ReadableSnapshot>(
+        &'this self,
+        snapshot: &Snapshot,
+        type_manager: &'this TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'this, HashSet<OwnsAnnotation>>, ConceptReadError> {
+        type_manager.get_owns_annotations_declared(snapshot, self.clone().into_owned())
+    }
+
+    pub fn get_annotations<'this, Snapshot: ReadableSnapshot>(
         &'this self,
         snapshot: &Snapshot,
         type_manager: &'this TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'this, HashMap<OwnsAnnotation, Owns<'static>>>, ConceptReadError> {
-        type_manager.get_owns_effective_annotations(snapshot, self.clone().into_owned())
+        type_manager.get_owns_annotations(snapshot, self.clone().into_owned())
     }
 
     pub fn set_annotation<Snapshot: WritableSnapshot>(

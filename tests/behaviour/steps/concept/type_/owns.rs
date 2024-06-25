@@ -146,7 +146,7 @@ pub async fn get_owns_unset_annotation(
 #[step(
     expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get annotations {contains_or_doesnt}: {annotation}"
 )]
-pub async fn get_owns_get_annotations_contains(
+pub async fn get_owns_annotations_contains(
     context: &mut Context,
     root_label: params::RootLabel,
     type_label: params::Label,
@@ -161,7 +161,7 @@ pub async fn get_owns_get_annotations_contains(
         let owns =
             object_type.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
         let actual_contains = owns
-            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .get_annotations(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .contains_key(&annotation.into_typedb().into());
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
@@ -169,8 +169,34 @@ pub async fn get_owns_get_annotations_contains(
 }
 
 #[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get declared annotations {contains_or_doesnt}: {annotation}"
+)]
+pub async fn get_owns_declared_annotations_contains(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    contains_or_doesnt: params::ContainsOrDoesnt,
+    annotation: params::Annotation,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns =
+            object_type.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        let actual_contains = owns
+            .get_annotations_declared(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .contains(&annotation.into_typedb().into());
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get annotations {is_empty_or_not}")]
-pub async fn get_owns_get_annotations_is_empty(
+pub async fn get_owns_annotations_is_empty(
     context: &mut Context,
     root_label: params::RootLabel,
     type_label: params::Label,
@@ -185,7 +211,31 @@ pub async fn get_owns_get_annotations_is_empty(
             object_type.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
 
         let actual_is_empty = owns
-            .get_effective_annotations(&tx.snapshot, &tx.type_manager)
+            .get_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .is_empty();
+        is_empty_or_not.check(actual_is_empty);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get declared annotations {is_empty_or_not}")]
+pub async fn get_owns_declared_annotations_is_empty(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    is_empty_or_not: params::IsEmptyOrNot,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns =
+            object_type.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+
+        let actual_is_empty = owns
+            .get_annotations_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .is_empty();
         is_empty_or_not.check(actual_is_empty);
@@ -205,7 +255,7 @@ pub async fn get_owns_contain(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_labels = object_type
-            .get_owns_transitive(&tx.snapshot, &tx.type_manager)
+            .get_owns(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|(_attribute, owns)| {
@@ -227,7 +277,7 @@ pub async fn get_owns_is_empty(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_is_empty = object_type
-            .get_owns_transitive(&tx.snapshot, &tx.type_manager)
+            .get_owns(&tx.snapshot, &tx.type_manager)
             .unwrap().is_empty();
         is_empty_or_not.check(actual_is_empty);
     });
@@ -246,7 +296,7 @@ pub async fn get_declared_owns_contain(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_labels = object_type
-            .get_owns(&tx.snapshot, &tx.type_manager)
+            .get_owns_declared(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .iter()
             .map(|owns| {

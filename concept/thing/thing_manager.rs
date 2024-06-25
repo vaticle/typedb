@@ -772,7 +772,7 @@ impl<'txn, Snapshot: WritableSnapshot> ThingManager<Snapshot> {
         {
             let owner = Object::new(ObjectVertex::new(Bytes::reference(key.bytes())));
             let owner_type = owner.type_();
-            for owns in &owner_type.get_owns(snapshot, self.type_manager())? {
+            for owns in &owner_type.get_owns_declared(snapshot, self.type_manager())? {
                 if owns.is_key(snapshot, &*self.type_manager)? {
                     self.validate_owner(owner.as_reference(), owns.attribute(), snapshot, errors)?;
                 }

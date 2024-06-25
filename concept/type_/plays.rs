@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use encoding::{graph::type_::edge::TypeEdgeEncoding, layout::prefix::Prefix};
 use primitive::maybe_owns::MaybeOwns;
 use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
@@ -55,12 +55,20 @@ impl<'a> Plays<'a> {
         type_manager.set_plays_overridden(snapshot, self.clone().into_owned(), overridden)
     }
 
-    pub fn get_effective_annotations<'this, Snapshot: ReadableSnapshot>(
+    pub fn get_annotations_declared<'this, Snapshot: ReadableSnapshot>(
+        &'this self,
+        snapshot: &Snapshot,
+        type_manager: &'this TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'this, HashSet<PlaysAnnotation>>, ConceptReadError> {
+        type_manager.get_plays_annotations_declared(snapshot, self.clone().into_owned())
+    }
+
+    pub fn get_annotations<'this, Snapshot: ReadableSnapshot>(
         &'this self,
         snapshot: &Snapshot,
         type_manager: &'this TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'this, HashMap<PlaysAnnotation, Plays<'static>>>, ConceptReadError> {
-        type_manager.get_plays_effective_annotations(snapshot, self.clone().into_owned())
+        type_manager.get_plays_annotations(snapshot, self.clone().into_owned())
     }
 
     pub fn set_annotation<Snapshot: WritableSnapshot>(

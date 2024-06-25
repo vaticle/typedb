@@ -198,7 +198,7 @@ impl<'a> Relation<'a> {
         }
 
         let relates = role_type.get_relates(snapshot, thing_manager.type_manager())?;
-        let relates_annotations = relates.get_effective_annotations(snapshot, thing_manager.type_manager()).unwrap();
+        let relates_annotations = relates.get_annotations(snapshot, thing_manager.type_manager()).unwrap();
         let distinct = relates_annotations.contains_key(&RelatesAnnotation::Distinct(AnnotationDistinct));
         if distinct {
             thing_manager.put_role_player_unordered(
@@ -293,7 +293,7 @@ impl<'a> Relation<'a> {
         delete_count: u64,
     ) -> Result<(), ConceptWriteError> {
         let relates = role_type.get_relates(snapshot, thing_manager.type_manager())?;
-        let relates_annotations = relates.get_effective_annotations(snapshot, thing_manager.type_manager()).unwrap();
+        let relates_annotations = relates.get_annotations(snapshot, thing_manager.type_manager()).unwrap();
         let distinct = relates_annotations.contains_key(&RelatesAnnotation::Distinct(AnnotationDistinct));
         if distinct {
             debug_assert_eq!(delete_count, 1);
@@ -344,7 +344,7 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
 
         // validate cardinality
         let type_ = self.type_();
-        let relation_relates = type_.get_relates(snapshot, thing_manager.type_manager())?;
+        let relation_relates = type_.get_relates_declared(snapshot, thing_manager.type_manager())?;
         let role_player_count = self.get_player_counts(snapshot, thing_manager)?;
         for relates in relation_relates.iter() {
             let cardinality = relates.get_cardinality(snapshot, thing_manager.type_manager())?;

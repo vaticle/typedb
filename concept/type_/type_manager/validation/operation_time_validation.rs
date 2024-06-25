@@ -105,7 +105,7 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: ObjectTypeAPI<'static>,
     {
-        TypeReader::get_implemented_interfaces(snapshot, type_)
+        TypeReader::get_implemented_interfaces_declared(snapshot, type_)
             .map_err(SchemaValidationError::ConceptRead)?
             .iter().map(Owns::attribute)
             .try_for_each(|attribute_type: AttributeType<'static>| {
@@ -164,7 +164,7 @@ impl OperationTimeValidation {
         relation_type: RelationType<'static>,
         label: &Label<'static>,
     ) -> Result<(), SchemaValidationError> {
-        let existing_relation_supertypes = TypeReader::get_supertypes_transitive(snapshot, relation_type.clone().into_owned())
+        let existing_relation_supertypes = TypeReader::get_supertypes(snapshot, relation_type.clone().into_owned())
             .map_err(SchemaValidationError::ConceptRead)?;
 
         Self::validate_role_name_uniqueness_non_transitive(snapshot, relation_type, label)?;
@@ -199,6 +199,8 @@ impl OperationTimeValidation {
             None => Err(SchemaValidationError::AbsentValueType) // TODO: Put label here!!
         }
     }
+
+    // TODO: Move to annotation_compatibility ?
 
     pub(crate) fn validate_annotation_regex_compatible_value_type(
         value_type: Option<ValueType>,
@@ -338,7 +340,7 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let has = TypeReader::get_type_annotations(snapshot, type_.clone())
+        let has = TypeReader::get_type_annotations_declared(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?
             .contains(&T::AnnotationType::from(annotation));
         Ok(has)
@@ -369,7 +371,7 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let has = TypeReader::get_type_annotations(snapshot, type_.clone())
+        let has = TypeReader::get_type_annotations_declared(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?
             .iter().map(|annotation| annotation.clone().into().category())
             .any(|annotation| annotation == annotation_category);
@@ -436,7 +438,7 @@ impl OperationTimeValidation {
             T: KindAPI<'static>,
             Snapshot: ReadableSnapshot,
     {
-        let existing_supertypes = TypeReader::get_supertypes_transitive(snapshot, supertype.clone())
+        let existing_supertypes = TypeReader::get_supertypes(snapshot, supertype.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
         if supertype == type_ || existing_supertypes.contains(&type_) {
             Err(SchemaValidationError::CyclicTypeHierarchy(
@@ -462,7 +464,7 @@ impl OperationTimeValidation {
             // TODO: Handle better. This could be misleading.
             return Err(SchemaValidationError::RootModification);
         }
-        let is_inherited = TypeReader::get_relates_transitive(snapshot, super_relation.unwrap())
+        let is_inherited = TypeReader::get_relates(snapshot, super_relation.unwrap())
             .map_err(SchemaValidationError::ConceptRead)?
             .contains_key(&role_type);
         if is_inherited {
@@ -487,7 +489,7 @@ impl OperationTimeValidation {
                 return Err(SchemaValidationError::RootModification);
             }
             let owns_transitive: HashMap<AttributeType<'static>, Owns<'static>> =
-                TypeReader::get_implemented_interfaces_transitive(snapshot, super_owner.unwrap())
+                TypeReader::get_implemented_interfaces(snapshot, super_owner.unwrap())
                     .map_err(SchemaValidationError::ConceptRead)?;
             let is_inherited = owns_transitive.contains_key(&attribute);
             if is_inherited {
@@ -508,7 +510,11 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let supertypes = TypeReader::get_supertypes_transitive(snapshot, type_.clone())
+        if type_ == overridden {
+            return Ok(());
+        }
+
+        let supertypes = TypeReader::get_supertypes(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
 
         if supertypes.contains(&overridden.clone()) {
@@ -536,7 +542,7 @@ impl OperationTimeValidation {
                 return Err(SchemaValidationError::RootModification);
             }
             let plays_transitive: HashMap<RoleType<'static>, Plays<'static>> =
-                TypeReader::get_implemented_interfaces_transitive(snapshot, super_player.unwrap())
+                TypeReader::get_implemented_interfaces(snapshot, super_player.unwrap())
                     .map_err(SchemaValidationError::ConceptRead)?;
             plays_transitive.contains_key(&role_type)
         });
@@ -556,7 +562,7 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
     {
         let plays = Plays::new(ObjectType::new(player.clone().into_vertex()), role_type.clone());
-        let is_declared = TypeReader::get_implemented_interfaces::<Plays<'static>>(snapshot, player.clone())
+        let is_declared = TypeReader::get_implemented_interfaces_declared::<Plays<'static>>(snapshot, player.clone())
             .map_err(SchemaValidationError::ConceptRead)?
             .contains(&plays);
         if is_declared {
