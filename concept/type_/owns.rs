@@ -123,7 +123,7 @@ impl<'a> Owns<'a> {
         annotation: OwnsAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
-            OwnsAnnotation::Distinct(_) => type_manager.set_edge_annotation_distinct(snapshot, self.clone())?,
+            OwnsAnnotation::Distinct(_) => type_manager.set_owns_annotation_distinct(snapshot, self.clone())?,
             OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone())?,
             OwnsAnnotation::Cardinality(cardinality) => {
                 type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)?

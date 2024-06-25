@@ -51,7 +51,7 @@ use crate::{
         object_type::ObjectType,
         owns::{Owns, OwnsAnnotation},
         plays::{Plays, PlaysAnnotation},
-        relates::Relates,
+        relates::{Relates, RelatesAnnotation},
         relation_type::{RelationType, RelationTypeAnnotation},
         role_type::{RoleType, RoleTypeAnnotation},
         type_manager::type_reader::TypeReader,
@@ -569,7 +569,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         let mut max_card = 0;
         let relates = relation_type.get_relates(snapshot, self)?;
         for relates in relates.iter() {
-            let card = relates.role().get_cardinality(snapshot, self)?;
+            let card = relates.get_cardinality(snapshot, self)?;
             match card.end() {
                 None => return Ok(false),
                 Some(end) => max_card += end,
@@ -719,6 +719,19 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         }
     }
 
+    pub(crate) fn get_role_type_relates(
+        &self,
+        snapshot: &Snapshot,
+        role_type: RoleType<'static>,
+    ) -> Result<MaybeOwns<'_, Relates<'static>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_role_type_relates(role_type)))
+        } else {
+            let relates = TypeReader::get_role_type_relates(snapshot, role_type.clone())?;
+            Ok(MaybeOwns::Owned(relates))
+        }
+    }
+
     pub(crate) const fn role_default_cardinality(&self, ordering: Ordering) -> AnnotationCardinality {
         // TODO: read from database properties the default role cardinality the db was created with
         match ordering {
@@ -739,6 +752,23 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
                 TypeReader::get_effective_type_edge_annotations(snapshot, plays)?
                     .into_iter()
                     .map(|(annotation, plays)| (PlaysAnnotation::from(annotation), plays))
+                    .collect();
+            Ok(MaybeOwns::Owned(annotations))
+        }
+    }
+
+    pub(crate) fn get_relates_effective_annotations<'this>(
+        &'this self,
+        snapshot: &Snapshot,
+        relates: Relates<'static>,
+    ) -> Result<MaybeOwns<'this, HashMap<RelatesAnnotation, Relates<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_relates_effective_annotations(relates)))
+        } else {
+            let annotations: HashMap<RelatesAnnotation, Relates<'static>> =
+                TypeReader::get_effective_type_edge_annotations(snapshot, relates)?
+                    .into_iter()
+                    .map(|(annotation, relates)| (RelatesAnnotation::from(annotation), relates))
                     .collect();
             Ok(MaybeOwns::Owned(annotations))
         }
@@ -1000,7 +1030,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         // OperationTimeValidation::validate_exact_type_no_instances_role(snapshot, role_type.clone().into_owned())
         //     .map_err(|source| ConceptWriteError::SchemaValidation {source})?;
 
-        let relates = TypeReader::get_relation(snapshot, role_type.clone().into_owned()).unwrap();
+        let relates = TypeReader::get_role_type_relates(snapshot, role_type.clone().into_owned()).unwrap();
         let relation = relates.relation();
         let role = relates.role();
         TypeWriter::storage_delete_relates(snapshot, relation.clone(), role.clone());
@@ -1041,7 +1071,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         debug_assert!(old_label.scope().is_some());
         let new_label = Label::build_scoped(name, old_label.scope().unwrap().as_str());
 
-        let relation_type = TypeReader::get_relation(snapshot, role_type.clone()).unwrap().relation();
+        let relation_type = TypeReader::get_role_type_relates(snapshot, role_type.clone()).unwrap().relation();
         OperationTimeValidation::validate_role_name_uniqueness(snapshot, relation_type, &new_label.clone().into_owned())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1318,22 +1348,6 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Self::unset_annotation_abstract(self, snapshot, type_)
     }
 
-    pub(crate) fn set_annotation_distinct(
-        &self, snapshot: &mut Snapshot, role_type: RoleType<'_>,
-    ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_type_ordering(snapshot, role_type.clone(), Ordering::Ordered)
-            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
-        // TODO: Validation for existing instances?
-        TypeWriter::storage_put_type_vertex_property::<AnnotationDistinct>(snapshot, role_type, None);
-        Ok(())
-    }
-
-    pub(crate) fn unset_annotation_distinct(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) -> Result<(), ConceptWriteError> {
-        // TODO: Validation for existing instances?
-        TypeWriter::storage_delete_type_vertex_property::<AnnotationDistinct>(snapshot, type_);
-        Ok(())
-    }
-
     pub(crate) fn set_annotation_independent(&self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>) -> Result<(), ConceptWriteError> {
         TypeWriter::storage_put_type_vertex_property::<AnnotationIndependent>(snapshot, type_, None);
         Ok(())
@@ -1344,26 +1358,6 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationIndependent>(snapshot, type_);
-        Ok(())
-    }
-
-    pub(crate) fn set_annotation_cardinality(
-        &self,
-        snapshot: &mut Snapshot,
-        type_: impl KindAPI<'static>,
-        annotation: AnnotationCardinality,
-    ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_cardinality_arguments(annotation)
-            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
-
-        TypeWriter::storage_insert_type_vertex_property::<AnnotationCardinality>(snapshot, type_, Some(annotation));
-        Ok(())
-    }
-
-    pub(crate) fn unset_annotation_cardinality(
-        &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
-    ) -> Result<(), ConceptWriteError> {
-        TypeWriter::storage_delete_type_vertex_property::<AnnotationCardinality>(snapshot, type_);
         Ok(())
     }
 
@@ -1392,10 +1386,20 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn set_edge_annotation_distinct<'b>(
+    pub(crate) fn set_owns_annotation_distinct<'b>(
         &self, snapshot: &mut Snapshot, edge: Owns<'_>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_type_edge_ordering(snapshot, edge.clone(), Ordering::Ordered)
+        OperationTimeValidation::validate_owns_ordering(snapshot, edge.clone(), Ordering::Ordered)
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        TypeWriter::storage_put_type_edge_property::<AnnotationDistinct>(snapshot, edge, None);
+        Ok(())
+    }
+
+    pub(crate) fn set_relates_annotation_distinct<'b>(
+        &self, snapshot: &mut Snapshot, edge: Relates<'_>
+    ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_relates_ordering(snapshot, edge.clone(), Ordering::Ordered)
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         TypeWriter::storage_put_type_edge_property::<AnnotationDistinct>(snapshot, edge, None);

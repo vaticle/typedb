@@ -32,6 +32,7 @@ use crate::{
         owns::Owns,
         plays::Plays,
         relation_type::RelationType,
+        relates::Relates,
         role_type::RoleType,
         type_manager::{type_reader::TypeReader, validation::SchemaValidationError},
         KindAPI, TypeAPI, ObjectTypeAPI,
@@ -388,11 +389,11 @@ impl OperationTimeValidation {
         if ordering == expected_ordering {
             Ok(())
         } else {
-            Err(SchemaValidationError::TypeOrderingIsIncompatible(ordering))
+            Err(SchemaValidationError::TypeOrderingIsIncompatible(expected_ordering, ordering))
         }
     }
 
-    pub(crate) fn validate_type_edge_ordering<Snapshot>(
+    pub(crate) fn validate_owns_ordering<Snapshot>(
         snapshot: &Snapshot,
         owns: Owns<'_>,
         expected_ordering: Ordering,
@@ -405,7 +406,24 @@ impl OperationTimeValidation {
         if ordering == expected_ordering {
             Ok(())
         } else {
-            Err(SchemaValidationError::TypeOrderingIsIncompatible(ordering))
+            Err(SchemaValidationError::TypeOrderingIsIncompatible(expected_ordering, ordering))
+        }
+    }
+
+    pub(crate) fn validate_relates_ordering<Snapshot>(
+        snapshot: &Snapshot,
+        relates: Relates<'_>,
+        expected_ordering: Ordering,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let ordering = TypeReader::get_type_ordering(snapshot, relates.role())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        if ordering == expected_ordering {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::TypeOrderingIsIncompatible(expected_ordering, ordering))
         }
     }
 
@@ -595,7 +613,7 @@ impl OperationTimeValidation {
         role_type: RoleType<'_>,
     ) -> Result<(), SchemaValidationError> {
         // TODO: See if we can use existing methods from the ThingManager
-        let relation_type = TypeReader::get_relation(snapshot, role_type.clone().into_owned())
+        let relation_type = TypeReader::get_role_type_relates(snapshot, role_type.clone().into_owned())
             .map_err(SchemaValidationError::ConceptRead)?
             .relation();
         let prefix =

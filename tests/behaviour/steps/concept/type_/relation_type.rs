@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use concept::type_::{object_type::ObjectType, TypeAPI, Ordering};
+use concept::type_::{object_type::ObjectType, TypeAPI, Ordering, annotation};
 use cucumber::gherkin::Step;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
@@ -400,13 +400,25 @@ pub async fn relation_role_set_annotation(
 ) {
     with_schema_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
-        let role = tx
+        let relates = tx
             .type_manager
             .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
             .unwrap()
-            .unwrap()
-            .role();
-        let res = role.set_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+            .unwrap();
+
+        let parsed_annotation = annotation.into_typedb();
+        let res;
+        match parsed_annotation {
+            annotation::Annotation::Abstract(_) => {
+                res = relates.role().set_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
+            },
+            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
+                res = relates.set_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
+            },
+            _ => {
+                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
+            }
+        }
         may_error.check(&res);
     });
 }
@@ -422,13 +434,25 @@ pub async fn relation_role_unset_annotation(
 ) {
     with_schema_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
-        let role = tx
+        let relates = tx
             .type_manager
             .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
             .unwrap()
-            .unwrap()
-            .role();
-        let res = role.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+            .unwrap();
+
+        let parsed_annotation = annotation.into_typedb();
+        let res;
+        match parsed_annotation {
+            annotation::Annotation::Abstract(_) => {
+                res = relates.role().unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
+            },
+            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
+                res = relates.unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
+            },
+            _ => {
+                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
+            }
+        }
         may_error.check(&res);
     });
 }
@@ -444,14 +468,25 @@ pub async fn relation_role_annotations_contain(
 ) {
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
-        let role = tx
+        let relates = tx
             .type_manager
             .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
             .unwrap()
-            .unwrap()
-            .role();
-        let actual_contains =
-            role.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains(&annotation.into_typedb().into());
+            .unwrap();
+
+        let parsed_annotation = annotation.into_typedb();
+        let actual_contains;
+        match parsed_annotation {
+            annotation::Annotation::Abstract(_) => {
+                actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
+            },
+            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
+                actual_contains = relates.get_effective_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
+            },
+            _ => {
+                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
+            }
+        }
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });
 }
@@ -466,14 +501,17 @@ pub async fn relation_role_annotations_is_empty(
 ) {
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
-        let role = tx
+        let relates = tx
             .type_manager
             .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
             .unwrap()
-            .unwrap()
-            .role();
+            .unwrap();
+        let relates_empty =
+            relates.get_effective_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
+        let role_empty =
+            relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
 
-        let actual_is_empty = role.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().is_empty();
+        let actual_is_empty = relates_empty && role_empty;
         is_empty_or_not.check(actual_is_empty);
     });
 }

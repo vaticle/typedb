@@ -11,7 +11,7 @@ use encoding::{
     graph::{
         type_::{
             edge::TypeEdge,
-            vertex::{PrefixedTypeVertexEncoding, TypeVertex, TypeVertexEncoding},
+            vertex::{PrefixedTypeVertexEncoding, TypeVertex},
         },
         Typed,
     },
@@ -27,7 +27,7 @@ use crate::type_::{
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
     plays::{Plays, PlaysAnnotation},
-    relates::Relates,
+    relates::{Relates, RelatesAnnotation},
     relation_type::RelationType,
     role_type::RoleType,
     type_manager::type_reader::TypeReader,
@@ -77,6 +77,11 @@ pub(crate) struct OwnsCache {
 pub(crate) struct PlaysCache {
     pub(super) overrides: Option<Plays<'static>>,
     pub(super) effective_annotations: HashMap<PlaysAnnotation, Plays<'static>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RelatesCache {
+    pub(super) effective_annotations: HashMap<RelatesAnnotation, Relates<'static>>,
 }
 
 #[derive(Debug)]
@@ -183,7 +188,7 @@ impl RoleTypeCache {
             let cache = RoleTypeCache {
                 common_type_cache: CommonTypeCache::create(snapshot, role.clone()),
                 ordering,
-                relates: TypeReader::get_relation(snapshot, role.clone()).unwrap(),
+                relates: TypeReader::get_role_type_relates(snapshot, role.clone()).unwrap(),
                 plays: TypeReader::get_implementations_for_interface::<Plays<'static>>(snapshot, role.clone()).unwrap(),
                 plays_transitive: TypeReader::get_implementations_for_interface_transitive::<Plays<'static>>(
                     snapshot,
@@ -246,6 +251,32 @@ impl PlaysCache {
                     .collect(),
             };
             map.insert(plays.clone(), cache);
+        }
+        map
+    }
+}
+
+impl RelatesCache {
+    pub(super) fn create(snapshot: &impl ReadableSnapshot) -> HashMap<Relates<'static>, RelatesCache> {
+        let mut map = HashMap::new();
+        let mut it = snapshot.iterate_range(KeyRange::new_within(
+            TypeEdge::build_prefix(Prefix::EdgePlays),
+            TypeEdge::FIXED_WIDTH_ENCODING,
+        ));
+
+        while let Some((key, _)) = it.next().transpose().unwrap() {
+            let edge = TypeEdge::new(Bytes::reference(key.bytes()));
+            let relation = RelationType::new(edge.from().into_owned());
+            let role = RoleType::new(edge.to().into_owned());
+            let relates = Relates::new(relation, role);
+            let cache = RelatesCache {
+                effective_annotations: TypeReader::get_effective_type_edge_annotations(snapshot, relates.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|(annotation, relates)| (RelatesAnnotation::from(annotation), relates))
+                    .collect(),
+            };
+            map.insert(relates.clone(), cache);
         }
         map
     }

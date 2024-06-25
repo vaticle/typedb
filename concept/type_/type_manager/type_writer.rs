@@ -236,7 +236,7 @@ impl<Snapshot: WritableSnapshot> TypeWriter<Snapshot> {
         P: TypeEdgePropertyEncoding<'a>,
     {
         let key = P::build_key(edge).into_storage_key();
-        if let (Some(property)) = property_opt {
+        if let Some(property) = property_opt {
             let value = property.to_value_bytes().unwrap();
             snapshot.put_val(key.into_owned_array(), value.into_array())
         } else {

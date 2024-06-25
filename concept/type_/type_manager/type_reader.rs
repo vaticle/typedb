@@ -314,7 +314,7 @@ impl TypeReader {
         Ok(transitive_relates)
     }
 
-    pub(crate) fn get_relation(
+    pub(crate) fn get_role_type_relates(
         snapshot: &impl ReadableSnapshot,
         role: RoleType<'static>,
     ) -> Result<Relates<'static>, ConceptReadError> {

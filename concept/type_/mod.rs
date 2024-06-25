@@ -42,7 +42,7 @@ pub mod entity_type;
 pub mod object_type;
 pub mod owns;
 mod plays;
-mod relates;
+pub mod relates;
 pub mod relation_type;
 pub mod role_type;
 pub mod sub;

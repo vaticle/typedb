@@ -38,7 +38,8 @@ use crate::{
     type_::{
         annotation::AnnotationDistinct,
         relation_type::RelationType,
-        role_type::{RoleType, RoleTypeAnnotation},
+        relates::RelatesAnnotation,
+        role_type::RoleType,
         ObjectTypeAPI, Ordering, TypeAPI,
     },
     ByteReference, ConceptAPI, ConceptStatus,
@@ -196,8 +197,9 @@ impl<'a> Relation<'a> {
             return Err(ConceptWriteError::AddPlayerOnDeleted { relation: self.clone().into_owned() });
         }
 
-        let role_annotations = role_type.get_annotations(snapshot, thing_manager.type_manager()).unwrap();
-        let distinct = role_annotations.contains(&RoleTypeAnnotation::Distinct(AnnotationDistinct));
+        let relates = role_type.get_relates(snapshot, thing_manager.type_manager())?;
+        let relates_annotations = relates.get_effective_annotations(snapshot, thing_manager.type_manager()).unwrap();
+        let distinct = relates_annotations.contains_key(&RelatesAnnotation::Distinct(AnnotationDistinct));
         if distinct {
             thing_manager.put_role_player_unordered(
                 snapshot,
@@ -290,8 +292,9 @@ impl<'a> Relation<'a> {
         player: Object<'_>,
         delete_count: u64,
     ) -> Result<(), ConceptWriteError> {
-        let role_annotations = role_type.get_annotations(snapshot, thing_manager.type_manager()).unwrap();
-        let distinct = role_annotations.contains(&RoleTypeAnnotation::Distinct(AnnotationDistinct));
+        let relates = role_type.get_relates(snapshot, thing_manager.type_manager())?;
+        let relates_annotations = relates.get_effective_annotations(snapshot, thing_manager.type_manager()).unwrap();
+        let distinct = relates_annotations.contains_key(&RelatesAnnotation::Distinct(AnnotationDistinct));
         if distinct {
             debug_assert_eq!(delete_count, 1);
             thing_manager.unset_role_player(snapshot, self.as_reference(), player.as_reference(), role_type.clone())
@@ -344,8 +347,8 @@ impl<'a> ThingAPI<'a> for Relation<'a> {
         let relation_relates = type_.get_relates(snapshot, thing_manager.type_manager())?;
         let role_player_count = self.get_player_counts(snapshot, thing_manager)?;
         for relates in relation_relates.iter() {
+            let cardinality = relates.get_cardinality(snapshot, thing_manager.type_manager())?;
             let role_type = relates.role();
-            let cardinality = role_type.get_cardinality(snapshot, thing_manager.type_manager())?;
             let player_count = role_player_count.get(&role_type).map_or(0, |c| *c);
             if !cardinality.is_valid(player_count) {
                 errors.push(ConceptWriteError::RelationRoleCardinality {

@@ -26,13 +26,13 @@ use crate::type_::{
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
     plays::{Plays, PlaysAnnotation},
-    relates::Relates,
+    relates::{Relates, RelatesAnnotation},
     relation_type::RelationType,
     role_type::RoleType,
     type_manager::type_cache::{
         kind_cache::{
             AttributeTypeCache, CommonTypeCache, EntityTypeCache, OwnerPlayerCache, OwnsCache, PlaysCache,
-            RelationTypeCache, RoleTypeCache,
+            RelationTypeCache, RoleTypeCache, RelatesCache
         },
         selection,
         selection::{CacheGetter, HasCommonTypeCache, HasOwnerPlayerCache},
@@ -53,6 +53,7 @@ pub struct TypeCache {
 
     owns: HashMap<Owns<'static>, OwnsCache>,
     plays: HashMap<Plays<'static>, PlaysCache>,
+    relates: HashMap<Relates<'static>, RelatesCache>,
 
     struct_definitions: Box<[Option<StructDefinitionCache>]>,
 
@@ -110,6 +111,7 @@ impl TypeCache {
             attribute_types: attribute_type_caches,
             owns: OwnsCache::create(&snapshot),
             plays: PlaysCache::create(&snapshot),
+            relates: RelatesCache::create(&snapshot),
             struct_definitions: struct_definition_caches,
 
             entity_types_index_label,
@@ -257,8 +259,19 @@ impl TypeCache {
         RoleType::get_cache(&self, role_type).ordering
     }
 
+    pub(crate) fn get_role_type_relates<'a>(&self, role_type: RoleType<'a>) -> &Relates<'static> {
+        &RoleType::get_cache(&self, role_type).relates
+    }
+
     pub(crate) fn get_relation_type_relates<'a>(&self, relation_type: RelationType<'a>) -> &HashSet<Relates<'static>> {
         &RelationType::get_cache(self, relation_type).relates_declared
+    }
+
+    pub(crate) fn get_relates_effective_annotations<'c>(
+        &'c self,
+        relates: Relates<'c>,
+    ) -> &'c HashMap<RelatesAnnotation, Relates<'static>> {
+        &self.relates.get(&relates).unwrap().effective_annotations
     }
 
     pub(crate) fn get_relation_type_relates_transitive<'a>(
