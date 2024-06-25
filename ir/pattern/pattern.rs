@@ -18,7 +18,7 @@ use crate::pattern::{
 pub(crate) struct Patterns {
     scope: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    patterns: Vec<Pattern>,
+    pub(crate) patterns: Vec<Pattern>,
 }
 
 impl Patterns {

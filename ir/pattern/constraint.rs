@@ -30,7 +30,8 @@ use crate::{
 pub struct Constraints {
     scope: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    constraints: Vec<Constraint<Variable>>,
+
+    pub(crate) constraints: Vec<Constraint>,
 
     // TODO: could also store indexes into the Constraints vec? Depends how expensive Constraints are and if we delete
     left_constrained_index: HashMap<Variable, Vec<Constraint<Variable>>>,
@@ -402,6 +403,7 @@ impl<ID: IrID> Display for RolePlayer<ID> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+
 pub struct Has<ID: IrID> {
     owner: ID,
     attribute: ID,
