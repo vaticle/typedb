@@ -26,7 +26,8 @@ pub async fn attribute_type_set_value_type(
     with_schema_tx!(context, |tx| {
         let attribute_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
-        attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, value_type.into_typedb()).unwrap();
+        let parsed_value_type = value_type.into_typedb(&tx.type_manager, &tx.snapshot);
+        attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, parsed_value_type).unwrap();
     });
 }
 
@@ -41,7 +42,7 @@ pub async fn attribute_type_get_value_type(
         let attribute_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         assert_eq!(
-            value_type.into_typedb(),
+            value_type.into_typedb(&tx.type_manager, &tx.snapshot),
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap()
         );
     });

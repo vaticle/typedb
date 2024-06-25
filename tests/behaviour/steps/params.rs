@@ -4,8 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{borrow::Cow, convert::Infallible, fmt, str::FromStr};
-use std::collections::HashSet;
+use std::{borrow::Cow, convert::Infallible, fmt, str::FromStr, sync::Arc};
 
 use chrono::NaiveDateTime;
 use concept::type_::{
@@ -79,6 +78,11 @@ macro_rules! check_boolean {
 }
 pub(crate) use check_boolean;
 use concept::type_::annotation::{AnnotationDistinct, AnnotationUnique};
+use concept::type_::type_manager::TypeManager;
+use database::transaction::TransactionRead;
+use encoding::graph::definition::definition_key::DefinitionKey;
+use storage::durability_client::WALClient;
+use storage::snapshot::{ReadableSnapshot, ReadSnapshot};
 
 impl FromStr for Boolean {
     type Err = String;
@@ -108,7 +112,10 @@ impl ExistsOrDoesnt {
     }
 
     pub fn check_result<T: fmt::Debug, E>(&self, scrutinee: &Result<T, E>, message: &str) {
-        let option = match scrutinee { Ok(result) => Some(result), Err(_) => None };
+        let option = match scrutinee {
+            Ok(result) => Some(result),
+            Err(_) => None
+        };
         self.check(&option, message)
     }
 }
@@ -279,7 +286,10 @@ impl FromStr for ObjectRootLabel {
 }
 
 #[derive(Debug, Parameter)]
-#[param(name = "value_type", regex = "(boolean|long|double|decimal|datetime(?:tz)?|duration|string)")]
+#[param(
+    name = "value_type",
+    regex = "(boolean|long|double|decimal|datetime(?:tz)?|duration|string|[A-Za-z0-9_:-]+)"
+)]
 pub(crate) enum ValueType {
     Boolean,
     Long,
@@ -289,10 +299,11 @@ pub(crate) enum ValueType {
     DateTimeTZ,
     Duration,
     String,
+    Struct(Label),
 }
 
 impl ValueType {
-    pub fn into_typedb(&self) -> TypeDBValueType {
+    pub fn into_typedb<Snapshot: ReadableSnapshot>(&self, type_manager: &Arc<TypeManager<Snapshot>>, snapshot: &Snapshot) -> TypeDBValueType {
         match self {
             ValueType::Boolean => TypeDBValueType::Boolean,
             ValueType::Long => TypeDBValueType::Long,
@@ -302,6 +313,11 @@ impl ValueType {
             ValueType::DateTimeTZ => TypeDBValueType::DateTimeTZ,
             ValueType::Duration => TypeDBValueType::Duration,
             ValueType::String => TypeDBValueType::String,
+            ValueType::Struct(label) => TypeDBValueType::Struct(
+                type_manager.get_struct_definition_key(
+                    &snapshot, label.into_typedb().scoped_name().as_str(),
+                ).unwrap().unwrap())
+            ,
         }
     }
 }
@@ -318,7 +334,7 @@ impl FromStr for ValueType {
             "datetimetz" => Self::DateTimeTZ,
             "duration" => Self::Duration,
             "string" => Self::String,
-            _ => panic!("Unrecognised value type"),
+            _ => Self::Struct(Label { label_string: s.to_string() }),
         })
     }
 }
@@ -384,7 +400,7 @@ impl FromStr for Annotation {
             "@cascade" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Cascade(AnnotationCascade),
             "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Replace(AnnotationReplace),
             subkey if subkey.starts_with("@subkey") => {
-                return Err("Not implemented!".to_owned())
+                return Err("Not implemented!".to_owned());
                 // assert!(
                 //     subkey.starts_with(r#"@subkey("#) && subkey.ends_with(r#")"#),
                 //     r#"Invalid @subkey format: {subkey:?}. Expected "@subkey(LABEL)""#
@@ -393,7 +409,7 @@ impl FromStr for Annotation {
                 // TypeDBAnnotation::Subkey(AnnotationSubkey::new(label.to_owned()))
             }
             values if values.starts_with("@values") => {
-                return Err("Not implemented!".to_owned())
+                return Err("Not implemented!".to_owned());
                 // assert!(
                 //     values.starts_with("@values(") && values.ends_with(')'),
                 //     r#"Invalid @values format: {values:?}. Expected "@values(val1, val2, ..., valN)""#
@@ -404,7 +420,7 @@ impl FromStr for Annotation {
                 // TypeDBAnnotation::Values(AnnotationValues::new(values))
             }
             range if range.starts_with("@range") => {
-                return Err("Not implemented!".to_owned())
+                return Err("Not implemented!".to_owned());
                 // assert!(
                 //     range.starts_with("@range(") && range.ends_with(')'),
                 //     r#"Invalid @range format: {range:?}. Expected "@range(min, max)""#
@@ -438,10 +454,10 @@ impl FromStr for Annotation {
                     min.parse().unwrap(),
                     max.map(|val| {
                         match val {
-                            "*" => {Ok(None)},
+                            "*" => { Ok(None) }
                             _ => val.parse().map(Some).map_err(|_| "Failed to parse max")
                         }
-                    }).unwrap().unwrap()
+                    }).unwrap().unwrap(),
                 ))
             }
             _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
@@ -477,7 +493,7 @@ impl FromStr for Annotations {
                 Some(anno.parse::<Annotation>().map(|anno| anno.typedb_annotation))
             }
         })
-        .try_collect()?;
+            .try_collect()?;
 
         Ok(Self { typedb_annotations })
     }

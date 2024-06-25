@@ -64,8 +64,13 @@ pub async fn struct_create_field_with_value_type(
         let definition_key = &tx.type_manager.get_struct_definition_key(
             &tx.snapshot, type_label.into_typedb().scoped_name().as_str()
         ).unwrap().unwrap();
+        let parsed_value_type = value_type.into_typedb(&tx.type_manager, &tx.snapshot);
         may_error.check(&tx.type_manager.create_struct_field(
-            &mut tx.snapshot, definition_key.clone(), field_label.into_typedb().scoped_name().as_str().to_owned(), value_type.into_typedb(), optional.into_typedb()
+            &mut tx.snapshot,
+            definition_key.clone(),
+            field_label.into_typedb().scoped_name().as_str().to_owned(),
+            parsed_value_type,
+            optional.into_typedb()
         ));
     });
 }
@@ -122,7 +127,7 @@ pub async fn struct_get_field_get_value_type(
                 field_label.into_typedb().scoped_name().as_str()
             ).unwrap()
         ).unwrap().value_type.clone();
-        assert_eq!(value_type.into_typedb(), actual_value_type);
+        assert_eq!(value_type.into_typedb(&tx.type_manager, &tx.snapshot), actual_value_type);
     });
 }
 

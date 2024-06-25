@@ -70,7 +70,7 @@ async fn attribute_has_value_type(context: &mut Context, var: params::Var, value
     with_read_tx!(context, |tx| {
         assert_eq!(
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap(),
-            value_type.into_typedb()
+            value_type.into_typedb(&tx.type_manager, &tx.snapshot)
         );
     });
 }
