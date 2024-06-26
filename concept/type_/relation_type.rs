@@ -207,7 +207,7 @@ impl<'a> RelationType<'a> {
                 type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             },
             RelationTypeAnnotation::Cascade(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
+                type_manager.set_annotation_cascade(snapshot, self.clone().into_owned())?
             },
         };
         Ok(())
@@ -224,7 +224,7 @@ impl<'a> RelationType<'a> {
                 type_manager.unset_owner_annotation_abstract(snapshot, self.clone().into_owned())?
             },
             RelationTypeAnnotation::Cascade(_) => {
-                type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())?
+                type_manager.unset_annotation_cascade(snapshot, self.clone().into_owned())?
             },
         }
         Ok(()) // TODO

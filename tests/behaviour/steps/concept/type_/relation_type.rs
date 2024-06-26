@@ -62,7 +62,7 @@ pub async fn relation_role_set_supertype(
     context: &mut Context,
     type_label: Label,
     role_label: Label,
-    overridden_label: Label,
+    supertype_label: Label,
     may_error: MayError,
 ) {
     with_schema_tx!(context, |tx| {
@@ -74,7 +74,7 @@ pub async fn relation_role_set_supertype(
         let relation_supertype = relation_type.get_supertype(&tx.snapshot, &tx.type_manager).unwrap().unwrap();
         let overridden_relates = tx
             .type_manager
-            .resolve_relates(&tx.snapshot, relation_supertype, overridden_label.into_typedb().name().as_str())
+            .resolve_relates(&tx.snapshot, relation_supertype, supertype_label.into_typedb().name().as_str())
             .unwrap()
             .unwrap();
         // TODO: Is it ok to just set supertype here?
@@ -483,7 +483,7 @@ pub async fn relation_role_annotations_contain(
         let parsed_annotation = annotation.into_typedb();
         let actual_contains;
         match parsed_annotation {
-            annotation::Annotation::Abstract(_) => {
+            annotation::Annotation::Abstract(_) | annotation::Annotation::Cascade(_) => {
                 actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
             },
             annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
@@ -517,7 +517,7 @@ pub async fn relation_role_declared_annotations_contain(
         let parsed_annotation = annotation.into_typedb();
         let actual_contains;
         match parsed_annotation {
-            annotation::Annotation::Abstract(_) => {
+            annotation::Annotation::Abstract(_) | annotation::Annotation::Cascade(_) => {
                 actual_contains = relates.role().get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
             },
             annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {

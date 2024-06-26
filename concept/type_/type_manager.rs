@@ -1458,15 +1458,20 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     }
 
     pub(crate) fn unset_annotation_abstract(
-        &self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>
+        &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+            snapshot, type_.clone(), AnnotationCategory::Abstract
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         // TODO: Validation
+
         TypeWriter::storage_delete_type_vertex_property::<AnnotationAbstract>(snapshot, type_);
         Ok(())
     }
 
     pub(crate) fn unset_owner_annotation_abstract(
-        &self, snapshot: &mut Snapshot, type_: impl ObjectTypeAPI<'static>
+        &self, snapshot: &mut Snapshot, type_: impl ObjectTypeAPI<'static> + KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_no_abstract_attribute_types_owned(snapshot, type_.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
@@ -1496,6 +1501,9 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_independent(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+            snapshot, type_.clone(), AnnotationCategory::Independent
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationIndependent>(snapshot, type_);
         Ok(())
@@ -1520,6 +1528,10 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_regex(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+            snapshot, type_.clone(), AnnotationCategory::Regex
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         // TODO debug assert that stored regex matches
         // TODO: Validation
         TypeWriter::storage_delete_type_vertex_property::<AnnotationRegex>(snapshot, type_);
@@ -1539,16 +1551,22 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn set_relates_annotation_distinct<'b>(
         &self, snapshot: &mut Snapshot, edge: Relates<'_>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_relates_ordering(snapshot, edge.clone(), Ordering::Ordered)
+        OperationTimeValidation::validate_relates_distinct_ordering(snapshot, edge.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         TypeWriter::storage_put_type_edge_property::<AnnotationDistinct>(snapshot, edge, None);
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_distinct<'b>(
-        &self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>
+    pub(crate) fn unset_edge_annotation_distinct<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+        &self,
+        snapshot: &mut Snapshot,
+        edge: T,
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+            snapshot, edge.clone(), AnnotationCategory::Distinct
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationDistinct>(snapshot, edge);
         Ok(())
@@ -1562,9 +1580,14 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_unique<'b>(
-        &self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>
+    pub(crate) fn unset_edge_annotation_unique<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+        &self,
+        snapshot: &mut Snapshot,
+        edge: T,
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+            snapshot, edge.clone(), AnnotationCategory::Unique
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationUnique>(snapshot, edge);
         Ok(())
@@ -1577,9 +1600,15 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_key<'b>(
-        &self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>,
+    pub(crate) fn unset_edge_annotation_key<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+        &self,
+        snapshot: &mut Snapshot,
+        edge: T,
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+            snapshot, edge.clone(), AnnotationCategory::Key
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         TypeWriter::storage_delete_type_edge_property::<AnnotationKey>(snapshot, edge);
         Ok(())
     }
@@ -1597,11 +1626,15 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_cardinality<'b>(
+    pub(crate) fn unset_edge_annotation_cardinality<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
         &self,
         snapshot: &mut Snapshot,
-        edge: impl TypeEdgeEncoding<'b>,
+        edge: T,
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+            snapshot, edge.clone(), AnnotationCategory::Cardinality
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         TypeWriter::storage_delete_type_edge_property::<AnnotationCardinality>(snapshot, edge);
         Ok(())
     }
@@ -1626,9 +1659,15 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_regex<'b>(
-        &self, snapshot: &mut Snapshot, edge: impl TypeEdgeEncoding<'b>
+    pub(crate) fn unset_edge_annotation_regex<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+        &self,
+        snapshot: &mut Snapshot,
+        edge: T,
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+            snapshot, edge.clone(), AnnotationCategory::Regex
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationRegex>(snapshot, edge);
         Ok(())
@@ -1642,8 +1681,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     }
 
     pub(crate) fn unset_annotation_cascade(
-        &self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>
+        &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
+        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+            snapshot, type_.clone(), AnnotationCategory::Cascade
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         TypeWriter::storage_delete_type_vertex_property::<AnnotationCascade>(snapshot, type_);
         Ok(())
     }

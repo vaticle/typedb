@@ -15,6 +15,7 @@ use encoding::{
     layout::prefix::Prefix,
     value::{label::Label, value_type::ValueType},
 };
+use encoding::graph::type_::edge::TypeEdgeEncoding;
 use lending_iterator::LendingIterator;
 use storage::{key_range::KeyRange, snapshot::ReadableSnapshot};
 
@@ -39,6 +40,7 @@ use crate::{
         Ordering,
     },
 };
+use crate::type_::InterfaceImplementation;
 
 macro_rules! object_type_match {
     ($obj_var:ident, $block:block) => {
@@ -432,20 +434,21 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_relates_ordering<Snapshot>(
+    // TODO: Modify it to validate Distinct is ordered with explicit error!
+    pub(crate) fn validate_relates_distinct_ordering<Snapshot>(
         snapshot: &Snapshot,
         relates: Relates<'_>,
-        expected_ordering: Ordering,
     ) -> Result<(), SchemaValidationError>
         where
             Snapshot: ReadableSnapshot,
     {
-        let ordering = TypeReader::get_type_ordering(snapshot, relates.role())
+        let role = relates.role();
+        let ordering = TypeReader::get_type_ordering(snapshot, role.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
-        if ordering == expected_ordering {
+        if ordering == Ordering::Ordered {
             Ok(())
         } else {
-            Err(SchemaValidationError::TypeOrderingIsIncompatible(expected_ordering, ordering))
+            Err(SchemaValidationError::InvalidOrderingForDistinctAnnotation(get_label!(snapshot, role)))
         }
     }
 
@@ -666,5 +669,52 @@ impl OperationTimeValidation {
         }
 
         Ok(())
+    }
+
+
+    pub(crate) fn validate_unsetted_annotation_is_declared<T, Snapshot>(
+        snapshot: &Snapshot,
+        type_: T,
+        annotation_category: AnnotationCategory
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let declared_annotations = TypeReader::get_type_annotations_declared(snapshot, type_)
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        let is_declared = declared_annotations.iter()
+            .map(|annotation| annotation.clone().into().category())
+            .any(|annotation| annotation == annotation_category);
+
+        if is_declared {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::CannotUnsetNotDeclaredAnnotation(annotation_category))
+        }
+    }
+
+    pub(crate) fn validate_unsetted_edge_annotation_is_declared<'b, T, Snapshot>(
+        snapshot: &Snapshot,
+        edge: T,
+        annotation_category: AnnotationCategory
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b>,
+    {
+        let declared_annotations = TypeReader::get_type_edge_annotations_declared(snapshot, edge)
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        let is_declared = declared_annotations.iter()
+            .map(|annotation| annotation.clone().category())
+            .any(|annotation| annotation == annotation_category);
+
+        if is_declared {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::CannotUnsetNotDeclaredAnnotation(annotation_category))
+        }
     }
 }
