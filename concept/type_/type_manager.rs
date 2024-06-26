@@ -1143,15 +1143,40 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     ) -> Result<(), ConceptWriteError> {
         debug_assert!(OperationTimeValidation::validate_type_exists(snapshot, type_.clone()).is_ok());
         match T::ROOT_KIND {
-            Kind::Entity | Kind::Attribute | Kind::Relation => {
+            Kind::Entity | Kind::Attribute => {
                 OperationTimeValidation::validate_label_uniqueness(snapshot, &label.clone().into_owned())
                     .map_err(|source| ConceptWriteError::SchemaValidation { source })
                     .unwrap(); // TODO: Propagate error instead
             }
-            _ => unreachable!("Use set_name instead")
+            Kind::Relation => unreachable!("Use set_relation_type_label instead"),
+            Kind::Role => unreachable!("Use set_name instead")
         }
+
         TypeWriter::storage_delete_label(snapshot, type_.clone());
         TypeWriter::storage_put_label(snapshot, type_, &label);
+        Ok(())
+    }
+
+    pub(crate) fn set_relation_type_label(
+        &self,
+        snapshot: &mut Snapshot,
+        type_: RelationType<'static>,
+        label: &Label<'_>,
+    ) -> Result<(), ConceptWriteError> {
+        debug_assert!(OperationTimeValidation::validate_type_exists(snapshot, type_.clone()).is_ok());
+
+        OperationTimeValidation::validate_label_uniqueness(snapshot, &label.clone().into_owned())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })
+            .unwrap(); // TODO: Propagate error instead
+
+        TypeWriter::storage_delete_label(snapshot, type_.clone());
+        TypeWriter::storage_put_label(snapshot, type_.clone(), &label);
+
+        let relates = self.get_relation_type_relates_declared(snapshot, type_)?;
+        for relate in &relates {
+            self.set_role_type_scope(snapshot, relate.role(), label.clone().name().as_str())?;
+        }
+
         Ok(())
     }
 
@@ -1170,6 +1195,23 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         let relation_type = TypeReader::get_role_type_relates(snapshot, role_type.clone()).unwrap().relation();
         OperationTimeValidation::validate_role_name_uniqueness(snapshot, relation_type, &new_label.clone().into_owned())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        TypeWriter::storage_delete_label(snapshot, role_type.clone());
+        TypeWriter::storage_put_label(snapshot, role_type, &new_label);
+        Ok(())
+    }
+
+    fn set_role_type_scope(
+        &self,
+        snapshot: &mut Snapshot,
+        role_type: RoleType<'static>,
+        scope: &str,
+    ) -> Result<(), ConceptWriteError> {
+        debug_assert!(OperationTimeValidation::validate_type_exists(snapshot, role_type.clone()).is_ok());
+
+        let old_label = TypeReader::get_label(snapshot, role_type.clone()).unwrap().unwrap();
+        debug_assert!(old_label.scope().is_some());
+        let new_label = Label::build_scoped(old_label.name().as_str(), scope);
 
         TypeWriter::storage_delete_label(snapshot, role_type.clone());
         TypeWriter::storage_put_label(snapshot, role_type, &new_label);

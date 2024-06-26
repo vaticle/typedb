@@ -135,7 +135,7 @@ impl<'a> RelationType<'a> {
         if self.is_root(snapshot, type_manager)? {
             Err(ConceptWriteError::RootModification)
         } else {
-            type_manager.set_label(snapshot, self.clone().into_owned(), label)
+            type_manager.set_relation_type_label(snapshot, self.clone().into_owned(), label)
         }
     }
 

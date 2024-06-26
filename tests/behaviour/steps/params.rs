@@ -10,7 +10,7 @@ use chrono::NaiveDateTime;
 use concept::type_::{
     annotation::{
         Annotation as TypeDBAnnotation, AnnotationAbstract, AnnotationCardinality, AnnotationIndependent,
-        AnnotationKey, AnnotationRegex,
+        AnnotationKey, AnnotationRegex, AnnotationCascade,
     },
     object_type::ObjectType,
 };
@@ -397,7 +397,7 @@ impl FromStr for Annotation {
             "@key" => TypeDBAnnotation::Key(AnnotationKey),
             "@unique" => TypeDBAnnotation::Unique(AnnotationUnique),
             "@distinct" => TypeDBAnnotation::Distinct(AnnotationDistinct),
-            "@cascade" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Cascade(AnnotationCascade),
+            "@cascade" => TypeDBAnnotation::Cascade(AnnotationCascade),
             "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Replace(AnnotationReplace),
             subkey if subkey.starts_with("@subkey") => {
                 return Err("Not implemented!".to_owned());
