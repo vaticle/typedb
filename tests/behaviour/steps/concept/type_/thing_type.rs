@@ -190,7 +190,7 @@ pub async fn type_annotations_contain(
             let actual_contains = type_
                 .get_annotations(&tx.snapshot, &tx.type_manager)
                 .unwrap()
-                .contains(&annotation.into_typedb().into());
+                .contains_key(&annotation.into_typedb().into());
             assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
         });
     });
@@ -228,7 +228,8 @@ pub async fn type_annotations_is_empty(
         with_type!(tx, root_label, type_label, type_, {
             let actual_is_empty = type_
                 .get_annotations(&tx.snapshot, &tx.type_manager)
-                .unwrap().is_empty();
+                .unwrap()
+                .is_empty();
             is_empty_or_not.check(actual_is_empty);
         });
     });

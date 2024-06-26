@@ -92,7 +92,7 @@ pub(crate) struct CommonTypeCache<T: KindAPI<'static>> {
     pub(super) label: Label<'static>,
     pub(super) is_root: bool,
     pub(super) annotations_declared: HashSet<T::AnnotationType>,
-    pub(super) annotations: HashSet<T::AnnotationType>,
+    pub(super) annotations: HashMap<T::AnnotationType, T>,
     // TODO: Should these all be sets instead of vec?
     pub(super) supertype: Option<T>, // TODO: use smallvec if we want to have some inline - benchmark.
     pub(super) supertypes: Vec<T>,   // TODO: use smallvec if we want to have some inline - benchmark.

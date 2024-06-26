@@ -479,7 +479,7 @@ pub async fn relation_role_annotations_contain(
         let actual_contains;
         match parsed_annotation {
             annotation::Annotation::Abstract(_) => {
-                actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
+                actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
             },
             annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
                 actual_contains = relates.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());

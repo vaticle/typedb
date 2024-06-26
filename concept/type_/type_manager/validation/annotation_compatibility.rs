@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::type_::{annotation::{Annotation, AnnotationCardinality, AnnotationKey}, KindAPI, type_manager::validation::SchemaValidationError};
+use crate::type_::annotation::{AnnotationAbstract, AnnotationCategory, AnnotationDistinct, AnnotationIndependent, AnnotationRegex, AnnotationUnique};
 
 pub(crate) fn are_annotations_compatible(
     subtype_annotation: Annotation,
@@ -40,37 +41,39 @@ fn validate_key_is_compatible_with(
     todo!()
 }
 
-pub(crate) fn is_annotation_inherited<T: KindAPI<'static>>(
-    supertype_annotation: &T::AnnotationType,
-    // effective_annotations: &HashMap<T::AnnotationType, T>,
-    effective_annotations: &HashSet<T::AnnotationType>,
-) -> bool {
-    // In most cases we just need to see if the build_up_annotations contains nothing that 'overrides' it
-    // match supertype_annotation {
-    // Annotation::Abstract(_) => false,
-    // Annotation::Distinct(_) => todo!(),
-    // Annotation::Independent(_) => todo!(),
-    // Annotation::Key(key) => todo!(),
-    // Annotation::Cardinality(cardinality) => todo!(),
-    // Annotation::Regex(_) => todo!(),
-    // Annotation::Unique(_) => todo!(),
-    // }
-    true
+fn contains_annotation_category<T, TAnnotation>(
+    annotations_container: &HashMap<TAnnotation, T>,
+    annotation_category: AnnotationCategory
+) -> bool
+    where
+        TAnnotation : Clone + Into<Annotation>,
+{
+    annotations_container.iter()
+        .map(|(annotation, _)| annotation.clone().into().category())
+        .any(|annotation| annotation == annotation_category)
 }
 
-pub(crate) fn is_edge_annotation_inherited<EDGE>(
-    supertype_annotation: &Annotation,
-    effective_annotations: &HashMap<Annotation, EDGE>,
-) -> bool {
-    // In most cases we just need to see if the build_up_annotations contains nothing that 'overrides' it
-    // match supertype_annotation {
-    // Annotation::Abstract(_) => false,
-    // Annotation::Distinct(_) => todo!(),
-    // Annotation::Independent(_) => todo!(),
-    // Annotation::Key(key) => todo!(),
-    // Annotation::Cardinality(cardinality) => todo!(),
-    // Annotation::Regex(_) => todo!(),
-    // Annotation::Unique(_) => todo!(),
-    // }
-    true
+pub(crate) fn is_annotation_inheritable<T, TAnnotation>(
+    supertype_annotation: &TAnnotation,
+    effective_annotations: &HashMap<TAnnotation, T>,
+) -> bool
+where
+    TAnnotation : Clone + Into<Annotation>,
+{
+    let supertype_annotation = supertype_annotation.clone().into();
+    match supertype_annotation { // TODO: Make sure that it is tested correctly for all types!
+        Annotation::Abstract(_) => false,
+        Annotation::Unique(_)
+        | Annotation::Cardinality(_) => {
+            if contains_annotation_category::<T, TAnnotation>(effective_annotations, AnnotationCategory::Key) {
+                false
+            } else {
+                !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
+            }
+        },
+        Annotation::Distinct(_)
+        | Annotation::Independent(_)
+        | Annotation::Key(_)
+        | Annotation::Regex(_) => !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
+    }
 }

@@ -44,11 +44,10 @@ use crate::{
         relation_type::RelationType,
         role_type::RoleType,
         sub::Sub,
-        type_manager::validation::annotation_compatibility::is_edge_annotation_inherited,
+        type_manager::validation::annotation_compatibility::is_annotation_inheritable,
         EdgeOverride, InterfaceImplementation, KindAPI, Ordering, TypeAPI,
     },
 };
-use crate::type_::type_manager::validation::annotation_compatibility::is_annotation_inherited;
 
 pub struct TypeReader {}
 
@@ -397,20 +396,19 @@ impl TypeReader {
     pub(crate) fn get_type_annotations<T: KindAPI<'static>>(
         snapshot: &impl ReadableSnapshot,
         type_: T,
-    ) -> Result<HashSet<T::AnnotationType>, ConceptReadError> {
-        // let mut effective_annotations: HashMap<T::AnnotationType, T> = HashMap::new();
-        let mut annotations: HashSet<T::AnnotationType> = HashSet::new();
+    ) -> Result<HashMap<T::AnnotationType, T>, ConceptReadError> {
+        let mut annotations: HashMap<T::AnnotationType, T> = HashMap::new();
         let mut type_opt = Some(type_);
-        while let Some(next_type) = type_opt {
-            let declared_annotations = Self::get_type_annotations_declared(snapshot, next_type.clone())?;
+        let mut declared = true;
+        while let Some(curr_type) = type_opt {
+            let declared_annotations = Self::get_type_annotations_declared(snapshot, curr_type.clone())?;
             for annotation in declared_annotations {
-                // TODO: Rename???? What to check???
-                if is_annotation_inherited::<T>(&annotation, &annotations) {
-                    // annotations.insert(annotation, next_type.clone());
-                    annotations.insert(annotation);
+                if declared || is_annotation_inheritable(&annotation, &annotations) {
+                    annotations.insert(annotation, curr_type.clone());
                 }
             }
-            type_opt = Self::get_supertype(snapshot, next_type.clone())?;
+            type_opt = Self::get_supertype(snapshot, curr_type.clone())?;
+            declared = false;
         }
         Ok(annotations)
     }
@@ -466,14 +464,16 @@ impl TypeReader {
     {
         let mut annotations: HashMap<Annotation, EDGE> = HashMap::new();
         let mut edge_opt = Some(edge);
+        let mut declared = true;
         while let Some(edge) = edge_opt {
             let declared_edge_annotations = Self::get_type_edge_annotations_declared(snapshot, edge.clone())?;
             for annotation in declared_edge_annotations {
-                if is_edge_annotation_inherited(&annotation, &annotations) {
+                if declared || is_annotation_inheritable(&annotation, &annotations) {
                     annotations.insert(annotation, edge.clone());
                 }
             }
             edge_opt = Self::get_implementation_override(snapshot, edge.clone())?;
+            declared = false;
         }
         Ok(annotations)
     }

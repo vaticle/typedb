@@ -85,7 +85,7 @@ impl<'a> TypeAPI<'a> for RelationType<'a> {
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
-        Ok(annotations.contains(&RelationTypeAnnotation::Abstract(AnnotationAbstract)))
+        Ok(annotations.contains_key(&RelationTypeAnnotation::Abstract(AnnotationAbstract)))
     }
 
     fn delete<Snapshot: WritableSnapshot>(
@@ -192,7 +192,7 @@ impl<'a> RelationType<'a> {
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashSet<RelationTypeAnnotation>>, ConceptReadError> {
+    ) -> Result<MaybeOwns<'m, HashMap<RelationTypeAnnotation, RelationType<'static>>>, ConceptReadError> {
         type_manager.get_relation_type_annotations(snapshot, self.clone().into_owned())
     }
 

@@ -269,7 +269,7 @@ macro_rules! get_type_annotations {
     }
 }
 
-macro_rules! get_type_annotations {
+macro_rules! get_type_annotations_declared {
     ($(
         fn $method_name:ident() -> $type_:ident = $reader_method:ident | $cache_method:ident | $annotation_type:ident;
     )*) => {
@@ -277,6 +277,25 @@ macro_rules! get_type_annotations {
             pub(crate) fn $method_name(
                 &self, snapshot: &Snapshot, type_: $type_<'static>
             ) -> Result<MaybeOwns<'_, HashSet<$annotation_type>>, ConceptReadError> {
+                 if let Some(cache) = &self.type_cache {
+                    Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
+                } else {
+                    let annotations = TypeReader::$reader_method(snapshot, type_)?;
+                    Ok(MaybeOwns::Owned(annotations))
+                }
+            }
+        )*
+    }
+}
+
+macro_rules! get_type_annotations {
+    ($(
+        fn $method_name:ident() -> $type_:ident = $reader_method:ident | $cache_method:ident | $annotation_type:ident;
+    )*) => {
+        $(
+            pub(crate) fn $method_name(
+                &self, snapshot: &Snapshot, type_: $type_<'static>
+            ) -> Result<MaybeOwns<'_, HashMap<$annotation_type, $type_<'static>>>, ConceptReadError> {
                  if let Some(cache) = &self.type_cache {
                     Ok(MaybeOwns::Borrowed(cache.$cache_method(type_)))
                 } else {
@@ -678,16 +697,18 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         }
     }
 
+    get_type_annotations_declared! {
+        fn get_entity_type_annotations_declared() -> EntityType = get_type_annotations_declared | get_annotations_declared | EntityTypeAnnotation;
+        fn get_relation_type_annotations_declared() -> RelationType = get_type_annotations_declared | get_annotations_declared | RelationTypeAnnotation;
+        fn get_role_type_annotations_declared() -> RoleType = get_type_annotations_declared | get_annotations_declared | RoleTypeAnnotation;
+        fn get_attribute_type_annotations_declared() -> AttributeType = get_type_annotations_declared | get_annotations_declared | AttributeTypeAnnotation;
+    }
+
     get_type_annotations! {
         fn get_entity_type_annotations() -> EntityType = get_type_annotations | get_annotations | EntityTypeAnnotation;
         fn get_relation_type_annotations() -> RelationType = get_type_annotations | get_annotations | RelationTypeAnnotation;
         fn get_role_type_annotations() -> RoleType = get_type_annotations | get_annotations | RoleTypeAnnotation;
         fn get_attribute_type_annotations() -> AttributeType = get_type_annotations | get_annotations | AttributeTypeAnnotation;
-
-        fn get_entity_type_annotations_declared() -> EntityType = get_type_annotations_declared | get_annotations_declared | EntityTypeAnnotation;
-        fn get_relation_type_annotations_declared() -> RelationType = get_type_annotations_declared | get_annotations_declared | RelationTypeAnnotation;
-        fn get_role_type_annotations_declared() -> RoleType = get_type_annotations_declared | get_annotations_declared | RoleTypeAnnotation;
-        fn get_attribute_type_annotations_declared() -> AttributeType = get_type_annotations_declared | get_annotations_declared | AttributeTypeAnnotation;
     }
 
     pub(crate) fn get_owns_overridden(
