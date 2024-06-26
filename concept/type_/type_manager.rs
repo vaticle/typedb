@@ -41,11 +41,10 @@ use type_cache::TypeCache;
 use type_writer::TypeWriter;
 use validation::{commit_time_validation::CommitTimeValidation, operation_time_validation::OperationTimeValidation};
 
-use super::annotation::{Annotation, AnnotationCategory, AnnotationDistinct, AnnotationIndependent, AnnotationKey, AnnotationRegex, AnnotationUnique};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
-        annotation::{AnnotationAbstract, AnnotationCardinality},
+        annotation::{AnnotationCategory, AnnotationDistinct, AnnotationIndependent, AnnotationKey, AnnotationRegex, AnnotationUnique, AnnotationAbstract, AnnotationCardinality, AnnotationCascade},
         attribute_type::{AttributeType, AttributeTypeAnnotation},
         entity_type::{EntityType, EntityTypeAnnotation},
         object_type::ObjectType,
@@ -1211,8 +1210,10 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
                 OperationTimeValidation::validate_type_exists(snapshot, supertype.clone()).is_ok()
         };
 
-        // TODO: Validation. This may have to split per type.
         OperationTimeValidation::validate_sub_does_not_create_cycle(snapshot, subtype.clone(), supertype.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        OperationTimeValidation::validate_type_supertype_abstractness(snapshot, subtype.clone(), supertype.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         TypeWriter::storage_delete_supertype(snapshot, subtype.clone());
@@ -1588,6 +1589,20 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation
         TypeWriter::storage_delete_type_edge_property::<AnnotationRegex>(snapshot, edge);
+        Ok(())
+    }
+
+    pub(crate) fn set_annotation_cascade(
+        &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
+    ) -> Result<(), ConceptWriteError> {
+        TypeWriter::storage_put_type_vertex_property::<AnnotationCascade>(snapshot, type_, None);
+        Ok(())
+    }
+
+    pub(crate) fn unset_annotation_cascade(
+        &self, snapshot: &mut Snapshot, type_: impl TypeAPI<'static>
+    ) -> Result<(), ConceptWriteError> {
+        TypeWriter::storage_delete_type_vertex_property::<AnnotationCascade>(snapshot, type_);
         Ok(())
     }
 }

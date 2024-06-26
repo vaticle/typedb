@@ -295,8 +295,13 @@ pub async fn relation_role_subtypes_contain(
 
 // TODO: is_empty_or_not
 #[apply(generic_step)]
-#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get subtypes is empty")]
-pub async fn relation_role_subtypes_is_empty(context: &mut Context, relation_label: Label, role_label: Label) {
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get subtypes {is_empty_or_not}")]
+pub async fn relation_role_subtypes_is_empty(
+    context: &mut Context,
+    relation_label: Label,
+    role_label: Label,
+    is_empty_or_not: IsEmptyOrNot
+) {
     with_read_tx!(context, |tx| {
         let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
         let role = tx
@@ -311,7 +316,7 @@ pub async fn relation_role_subtypes_is_empty(context: &mut Context, relation_lab
             .iter()
             .map(|subtype| subtype.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name().as_str().to_owned())
             .collect_vec();
-        assert!(subtype_labels.is_empty(), "{:?} is not empty", subtype_labels);
+        is_empty_or_not.check(subtype_labels.is_empty());
     });
 }
 

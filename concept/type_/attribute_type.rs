@@ -295,6 +295,7 @@ impl From<Annotation> for AttributeTypeAnnotation {
             Annotation::Unique(_) => unreachable!("Unique annotation not available for Attribute type."),
             Annotation::Key(_) => unreachable!("Key annotation not available for Attribute type."),
             Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Attribute type."),
+            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Attribute type."),
         }
     }
 }

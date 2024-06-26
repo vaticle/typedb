@@ -63,7 +63,7 @@ where
     let supertype_annotation = supertype_annotation.clone().into();
     match supertype_annotation { // TODO: Make sure that it is tested correctly for all types!
         Annotation::Abstract(_) => false,
-        Annotation::Unique(_)
+        | Annotation::Unique(_)
         | Annotation::Cardinality(_) => {
             if contains_annotation_category::<T, TAnnotation>(effective_annotations, AnnotationCategory::Key) {
                 false
@@ -71,9 +71,12 @@ where
                 !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
             }
         },
-        Annotation::Distinct(_)
+        | Annotation::Distinct(_)
         | Annotation::Independent(_)
         | Annotation::Key(_)
-        | Annotation::Regex(_) => !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
+        | Annotation::Regex(_)
+        | Annotation::Cascade(_) => {
+            !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
+        }
     }
 }

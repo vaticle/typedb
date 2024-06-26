@@ -160,6 +160,7 @@ impl From<Annotation> for PlaysAnnotation {
             Annotation::Unique(annotation) => unreachable!("Unique annotation not available for Plays."),
             Annotation::Key(annotation) => unreachable!("Key annotation not available for Plays."),
             Annotation::Regex(annotation) => unreachable!("Regex annotation not available for Plays."),
+            Annotation::Cascade(annotation) => unreachable!("Cascade annotation not available for Plays."),
         }
     }
 }
@@ -189,6 +190,7 @@ impl PartialEq<Annotation> for PlaysAnnotation {
             Annotation::Unique(_) => false,
             Annotation::Key(_) => false,
             Annotation::Regex(_) => false,
+            Annotation::Cascade(_) => false,
         }
     }
 }

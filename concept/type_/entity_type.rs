@@ -341,6 +341,7 @@ impl From<Annotation> for EntityTypeAnnotation {
             Annotation::Key(_) => unreachable!("Key annotation not available for Entity type."),
             Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Entity type."),
             Annotation::Regex(_) => unreachable!("Regex annotation not available for Entity type."),
+            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Entity type."),
         }
     }
 }

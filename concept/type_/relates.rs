@@ -164,6 +164,7 @@ impl From<Annotation> for RelatesAnnotation {
             Annotation::Unique(_) => unreachable!("Unique annotation not available for Relates."),
             Annotation::Key(_) => unreachable!("Key annotation not available for Relates."),
             Annotation::Regex(_) => unreachable!("Regex annotation not available for Relates."),
+            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Relates."),
         }
     }
 }

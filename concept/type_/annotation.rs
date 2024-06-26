@@ -11,7 +11,7 @@ use encoding::{
         Infix,
         Infix::{
             PropertyAnnotationAbstract, PropertyAnnotationDistinct, PropertyAnnotationIndependent,
-            PropertyAnnotationKey, PropertyAnnotationUnique,
+            PropertyAnnotationKey, PropertyAnnotationUnique, PropertyAnnotationCascade
         },
     },
     AsBytes,
@@ -28,10 +28,10 @@ pub enum Annotation {
     Key(AnnotationKey),
     Cardinality(AnnotationCardinality),
     Regex(AnnotationRegex),
+    Cascade(AnnotationCascade),
     // TODO: Subkey
     // TODO: Values
     // TODO: Range
-    // TODO: Cascade
     // TODO: Replace
 }
 
@@ -102,9 +102,13 @@ impl Annotation {
             Self::Key(_) => AnnotationCategory::Key,
             Self::Cardinality(_) => AnnotationCategory::Cardinality,
             Self::Regex(_) => AnnotationCategory::Regex,
+            Self::Cascade(_) => AnnotationCategory::Cascade,
         }
     }
 }
+
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct AnnotationCascade;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum AnnotationCategory {
@@ -115,10 +119,10 @@ pub enum AnnotationCategory {
     Key,
     Cardinality,
     Regex,
+    Cascade,
     // TODO: Subkey
     // TODO: Values
     // TODO: Range
-    // TODO: Cascade
     // TODO: Replace
 }
 
@@ -143,6 +147,19 @@ empty_type_vertex_property_encoding!(AnnotationAbstract, PropertyAnnotationAbstr
 empty_type_vertex_property_encoding!(AnnotationIndependent, PropertyAnnotationIndependent);
 empty_type_vertex_property_encoding!(AnnotationDistinct, PropertyAnnotationDistinct);
 
+impl<'a> TypeVertexPropertyEncoding<'a> for AnnotationCardinality {
+    const INFIX: Infix = Infix::PropertyAnnotationCardinality;
+    fn from_value_bytes<'b>(value: ByteReference<'b>) -> Self {
+        // TODO this .unwrap() should be handled as an error
+        // although it does indicate data corruption
+        bincode::deserialize(value.bytes()).unwrap()
+    }
+
+    fn to_value_bytes(self) -> Option<Bytes<'a, BUFFER_VALUE_INLINE>> {
+        Some(Bytes::copy(bincode::serialize(&self).unwrap().as_slice()))
+    }
+}
+
 impl<'a> TypeVertexPropertyEncoding<'a> for AnnotationRegex {
     const INFIX: Infix = Infix::PropertyAnnotationRegex;
 
@@ -157,18 +174,7 @@ impl<'a> TypeVertexPropertyEncoding<'a> for AnnotationRegex {
     }
 }
 
-impl<'a> TypeVertexPropertyEncoding<'a> for AnnotationCardinality {
-    const INFIX: Infix = Infix::PropertyAnnotationCardinality;
-    fn from_value_bytes<'b>(value: ByteReference<'b>) -> Self {
-        // TODO this .unwrap() should be handled as an error
-        // although it does indicate data corruption
-        bincode::deserialize(value.bytes()).unwrap()
-    }
-
-    fn to_value_bytes(self) -> Option<Bytes<'a, BUFFER_VALUE_INLINE>> {
-        Some(Bytes::copy(bincode::serialize(&self).unwrap().as_slice()))
-    }
-}
+empty_type_vertex_property_encoding!(AnnotationCascade, PropertyAnnotationCascade);
 
 macro_rules! empty_type_edge_property_encoder {
     ($property:ident, $infix:ident) => {

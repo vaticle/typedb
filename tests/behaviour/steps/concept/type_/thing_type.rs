@@ -342,13 +342,17 @@ pub async fn get_supertypes_contain(
     });
 }
 
-// TODO: is_empty_or_not
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get supertypes is empty")]
-pub async fn get_supertypes_is_empty(context: &mut Context, root_label: RootLabel, type_label: Label, step: &Step) {
+#[step(expr = "{root_label}\\({type_label}\\) get supertypes {is_empty_or_not}")]
+pub async fn get_supertypes_is_empty(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    is_empty_or_not: IsEmptyOrNot
+) {
     with_read_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
-            assert!(type_.get_supertypes(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
+            is_empty_or_not.check(type_.get_supertypes(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
         });
     });
 }
@@ -381,11 +385,16 @@ pub async fn get_subtypes_contain(
 
 // TODO: is_empty_or_not
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get subtypes is empty")]
-pub async fn get_subtypes_is_empty(context: &mut Context, root_label: RootLabel, type_label: Label, step: &Step) {
+#[step(expr = "{root_label}\\({type_label}\\) get subtypes {is_empty_or_not}")]
+pub async fn get_subtypes_is_empty(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    is_empty_or_not: IsEmptyOrNot
+) {
     with_read_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
-            assert!(type_.get_subtypes_transitive(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
+            is_empty_or_not.check(type_.get_subtypes_transitive(&tx.snapshot, &tx.type_manager).unwrap().is_empty());
         });
     });
 }

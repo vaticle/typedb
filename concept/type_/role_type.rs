@@ -300,6 +300,7 @@ impl From<Annotation> for RoleTypeAnnotation {
             Annotation::Unique(_) => unreachable!("Unique annotation not available for Role type."),
             Annotation::Key(_) => unreachable!("Key annotation not available for Role type."),
             Annotation::Regex(_) => unreachable!("Regex annotation not available for Role type."),
+            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Role type."),
         }
     }
 }

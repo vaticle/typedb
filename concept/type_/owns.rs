@@ -244,6 +244,7 @@ impl From<Annotation> for OwnsAnnotation {
 
             Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Owns."),
             Annotation::Independent(_) => unreachable!("Independent annotation not available for Owns."),
+            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Owns."),
         }
     }
 }
@@ -277,6 +278,7 @@ impl PartialEq<Annotation> for OwnsAnnotation {
             Annotation::Abstract(_) => false,
             Annotation::Independent(_) => false,
             Annotation::Regex(_) => false,
+            Annotation::Cascade(_) => false,
         }
     }
 }

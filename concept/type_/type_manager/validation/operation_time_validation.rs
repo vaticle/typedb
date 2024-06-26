@@ -378,6 +378,26 @@ impl OperationTimeValidation {
         Ok(has)
     }
 
+    pub(crate) fn validate_type_supertype_abstractness<T, Snapshot>(
+        snapshot: &Snapshot,
+        subtype: T,
+        supertype: T,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            T: KindAPI<'static>,
+    {
+        let subtype_abstract = Self::type_has_annotation_category(snapshot, subtype.clone(), AnnotationCategory::Abstract)?;
+        let supertype_abstract = Self::type_has_annotation_category(snapshot, supertype.clone(), AnnotationCategory::Abstract)?;
+
+        match (subtype_abstract, supertype_abstract) {
+            (false, false) | (false, true) | (true, true) => Ok(()),
+            (true, false) => Err(SchemaValidationError::NonAbstractSupertypeOfAbstractSubtype(
+                get_label!(snapshot, supertype), get_label!(snapshot, subtype)
+            ))
+        }
+    }
+
     pub(crate) fn validate_type_ordering<Snapshot>(
         snapshot: &Snapshot,
         role_type: RoleType<'_>,
