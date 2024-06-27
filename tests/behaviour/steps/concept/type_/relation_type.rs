@@ -4,14 +4,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use concept::type_::{object_type::ObjectType, TypeAPI, Ordering, annotation};
+use concept::type_::{
+    object_type::ObjectType, TypeAPI, Ordering, annotation,
+    relates::RelatesAnnotation,
+    role_type::RoleTypeAnnotation,
+};
+
 use cucumber::gherkin::Step;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
 
 use crate::{
     generic_step, params,
-    params::{IsEmptyOrNot, Label, RootLabel, MayError, ContainsOrDoesnt, ExistsOrDoesnt, Annotation},
+    params::{IsEmptyOrNot, Label, RootLabel, MayError, ContainsOrDoesnt, ExistsOrDoesnt, Annotation, AnnotationCategory},
     transaction_context::{with_read_tx, with_schema_tx},
     util, Context,
 };
@@ -430,12 +435,12 @@ pub async fn relation_role_set_annotation(
 }
 
 #[apply(generic_step)]
-#[step(expr = r"relation\({type_label}\) get role\({type_label}\) unset annotation: {annotation}{may_error}")]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) unset annotation: {annotation_category}{may_error}")]
 pub async fn relation_role_unset_annotation(
     context: &mut Context,
     relation_label: Label,
     role_label: Label,
-    annotation: Annotation,
+    annotation_category: AnnotationCategory,
     may_error: MayError,
 ) {
     with_schema_tx!(context, |tx| {
@@ -446,18 +451,14 @@ pub async fn relation_role_unset_annotation(
             .unwrap()
             .unwrap();
 
-        let parsed_annotation = annotation.into_typedb();
+        let parsed_annotation_category = annotation_category.into_typedb();
         let res;
-        match parsed_annotation {
-            annotation::Annotation::Abstract(_) => {
-                res = relates.role().unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
-            },
-            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
-                res = relates.unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation.into());
-            },
-            _ => {
-                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
-            }
+        if RoleTypeAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            res = relates.role().unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation_category);
+        } else if RelatesAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            res = relates.unset_annotation(&mut tx.snapshot, &tx.type_manager, parsed_annotation_category);
+        } else {
+            unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation_category);
         }
         may_error.check(&res);
     });
@@ -481,17 +482,60 @@ pub async fn relation_role_annotations_contain(
             .unwrap();
 
         let parsed_annotation = annotation.into_typedb();
+        let parsed_annotation_category = parsed_annotation.clone().category();
         let actual_contains;
-        match parsed_annotation {
-            annotation::Annotation::Abstract(_) | annotation::Annotation::Cascade(_) => {
-                actual_contains = relates.role().get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
-            },
-            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
-                actual_contains = relates.get_annotations(&tx.snapshot, &tx.type_manager).unwrap().contains_key(&parsed_annotation.into());
-            },
-            _ => {
-                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
-            }
+        if RoleTypeAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates.role()
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .contains_key(&parsed_annotation.into());
+        } else if RelatesAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .contains_key(&parsed_annotation.into());
+        } else {
+            unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation_category);
+        }
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+
+#[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) get annotation categories {contains_or_doesnt}: {annotation_category}")]
+pub async fn relation_role_annotation_categories_contain(
+    context: &mut Context,
+    relation_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation_category: AnnotationCategory,
+) {
+    with_read_tx!(context, |tx| {
+        let relation = tx.type_manager.get_relation_type(&tx.snapshot, &relation_label.into_typedb()).unwrap().unwrap();
+        let relates = tx
+            .type_manager
+            .resolve_relates(&tx.snapshot, relation, role_label.into_typedb().name().as_str())
+            .unwrap()
+            .unwrap();
+
+        let parsed_annotation_category = annotation_category.into_typedb();
+        let actual_contains;
+        if RoleTypeAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates
+                .role()
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .iter().map(|(annotation, _)| <RoleTypeAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+                .contains(&parsed_annotation_category);
+        } else if RelatesAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .iter().map(|(annotation, _)| <RelatesAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+                .contains(&parsed_annotation_category);
+        } else {
+            unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation_category);
         }
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });
@@ -515,17 +559,20 @@ pub async fn relation_role_declared_annotations_contain(
             .unwrap();
 
         let parsed_annotation = annotation.into_typedb();
+        let parsed_annotation_category = parsed_annotation.clone().category();
         let actual_contains;
-        match parsed_annotation {
-            annotation::Annotation::Abstract(_) | annotation::Annotation::Cascade(_) => {
-                actual_contains = relates.role().get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
-            },
-            annotation::Annotation::Distinct(_) | annotation::Annotation::Cardinality(_) => {
-                actual_contains = relates.get_annotations_declared(&tx.snapshot, &tx.type_manager).unwrap().contains(&parsed_annotation.into());
-            },
-            _ => {
-                unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation);
-            }
+        if RoleTypeAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates.role()
+                .get_annotations_declared(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .contains(&parsed_annotation.into());
+        } else if RelatesAnnotation::try_getting_default(parsed_annotation_category).is_ok() {
+            actual_contains = relates
+                .get_annotations_declared(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .contains(&parsed_annotation.into());
+        } else {
+            unimplemented!("Annotation {:?} is not supported by roles and relates", parsed_annotation_category);
         }
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });

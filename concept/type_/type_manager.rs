@@ -1145,8 +1145,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         match T::ROOT_KIND {
             Kind::Entity | Kind::Attribute => {
                 OperationTimeValidation::validate_label_uniqueness(snapshot, &label.clone().into_owned())
-                    .map_err(|source| ConceptWriteError::SchemaValidation { source })
-                    .unwrap(); // TODO: Propagate error instead
+                    .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
             }
             Kind::Relation => unreachable!("Use set_relation_type_label instead"),
             Kind::Role => unreachable!("Use set_name instead")
@@ -1241,6 +1240,27 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
 
         TypeWriter::storage_set_value_type(snapshot, attribute, value_type);
         Ok(())
+    }
+
+    pub(crate) fn unset_value_type(
+        &self,
+        snapshot: &mut Snapshot,
+        attribute: AttributeType<'static>,
+    ) -> Result<(), ConceptWriteError> {
+        let current_value_type = TypeReader::get_value_type(snapshot, attribute.clone())
+            .map_err(|source| ConceptWriteError::ConceptRead { source })?;
+
+        match current_value_type {
+            Some(existing_value_type) => {
+                // TODO: Re-enable when we get the thing_manager
+                // OperationTimeValidation::validate_exact_type_no_instances_attribute(snapshot, attribute.clone(), self)
+                //     .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
+
+                TypeWriter::storage_unset_value_type(snapshot, attribute);
+                Ok(())
+            },
+            None => Ok(())
+        }
     }
 
     fn set_supertype<K>(&self, snapshot: &mut Snapshot, subtype: K, supertype: K) -> Result<(), ConceptWriteError>
@@ -1460,7 +1480,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_abstract(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_annotation_is_not_inherited(
             snapshot, type_.clone(), AnnotationCategory::Abstract
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1501,7 +1521,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_independent(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_annotation_is_not_inherited(
             snapshot, type_.clone(), AnnotationCategory::Independent
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         // TODO: Validation
@@ -1528,7 +1548,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_regex(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_annotation_is_not_inherited(
             snapshot, type_.clone(), AnnotationCategory::Regex
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1558,12 +1578,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_distinct<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+    pub(crate) fn unset_edge_annotation_distinct<T: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone>(
         &self,
         snapshot: &mut Snapshot,
         edge: T,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_not_inherited(
             snapshot, edge.clone(), AnnotationCategory::Distinct
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1580,12 +1600,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_unique<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+    pub(crate) fn unset_edge_annotation_unique<T: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone>(
         &self,
         snapshot: &mut Snapshot,
         edge: T,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_not_inherited(
             snapshot, edge.clone(), AnnotationCategory::Unique
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         // TODO: Validation
@@ -1600,12 +1620,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_key<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+    pub(crate) fn unset_edge_annotation_key<T: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone>(
         &self,
         snapshot: &mut Snapshot,
         edge: T,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_not_inherited(
             snapshot, edge.clone(), AnnotationCategory::Key
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1626,12 +1646,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_cardinality<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+    pub(crate) fn unset_edge_annotation_cardinality<T: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone>(
         &self,
         snapshot: &mut Snapshot,
         edge: T,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_not_inherited(
             snapshot, edge.clone(), AnnotationCategory::Cardinality
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1659,12 +1679,12 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
-    pub(crate) fn unset_edge_annotation_regex<'b, T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b> + Clone>(
+    pub(crate) fn unset_edge_annotation_regex<T: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone>(
         &self,
         snapshot: &mut Snapshot,
         edge: T,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_edge_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_edge_annotation_is_not_inherited(
             snapshot, edge.clone(), AnnotationCategory::Regex
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1683,7 +1703,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     pub(crate) fn unset_annotation_cascade(
         &self, snapshot: &mut Snapshot, type_: impl KindAPI<'static>
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_unsetted_annotation_is_declared(
+        OperationTimeValidation::validate_unsetted_annotation_is_not_inherited(
             snapshot, type_.clone(), AnnotationCategory::Cascade
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 

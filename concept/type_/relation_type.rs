@@ -39,6 +39,12 @@ use crate::{
     },
     ConceptAPI,
 };
+use crate::type_::annotation::AnnotationCategory;
+use crate::type_::attribute_type::AttributeTypeAnnotation;
+use crate::type_::entity_type::EntityTypeAnnotation;
+use crate::type_::role_type::RoleTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RelationType<'a> {
@@ -217,9 +223,11 @@ impl<'a> RelationType<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: RelationTypeAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
+        let relation_type_annotation = RelationTypeAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match relation_type_annotation {
             RelationTypeAnnotation::Abstract(_) => {
                 type_manager.unset_owner_annotation_abstract(snapshot, self.clone().into_owned())?
             },
@@ -379,18 +387,34 @@ pub enum RelationTypeAnnotation {
     Cascade(AnnotationCascade),
 }
 
+impl RelationTypeAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<RelationTypeAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<RelationTypeAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<RelationTypeAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Abstract(annotation) => Ok(RelationTypeAnnotation::Abstract(annotation)),
+            Annotation::Cascade(annotation) => Ok(RelationTypeAnnotation::Cascade(annotation)),
+
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cardinality(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Regex(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for RelationTypeAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Abstract(annotation) => RelationTypeAnnotation::Abstract(annotation),
-            Annotation::Cascade(annotation) => RelationTypeAnnotation::Cascade(annotation),
-
-            Annotation::Distinct(_) => unreachable!("Distinct annotation not available for Relation type."),
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Relation type."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Relation type."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Relation type."),
-            Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Relation type."),
-            Annotation::Regex(_) => unreachable!("Regex annotation not available for Relation type."),
+        let into_annotation: Result<RelationTypeAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

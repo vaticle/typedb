@@ -32,6 +32,19 @@ pub async fn attribute_type_set_value_type(
 }
 
 #[apply(generic_step)]
+#[step(expr = "attribute\\({type_label}\\) unset value type")]
+pub async fn attribute_type_unset_value_type(
+    context: &mut Context,
+    type_label: params::Label,
+) {
+    with_schema_tx!(context, |tx| {
+        let attribute_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        attribute_type.unset_value_type(&mut tx.snapshot, &tx.type_manager).unwrap();
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "attribute\\({type_label}\\) get value type: {value_type}")]
 pub async fn attribute_type_get_value_type(
     context: &mut Context,

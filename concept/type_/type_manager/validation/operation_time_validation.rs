@@ -671,8 +671,7 @@ impl OperationTimeValidation {
         Ok(())
     }
 
-
-    pub(crate) fn validate_unsetted_annotation_is_declared<T, Snapshot>(
+    pub(crate) fn validate_unsetted_annotation_is_not_inherited<T, Snapshot>(
         snapshot: &Snapshot,
         type_: T,
         annotation_category: AnnotationCategory
@@ -681,40 +680,51 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
             T: KindAPI<'static>,
     {
-        let declared_annotations = TypeReader::get_type_annotations_declared(snapshot, type_)
+        let annotations = TypeReader::get_type_annotations(snapshot, type_.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
+        let found_annotation = annotations.iter()
+            .map(|(existing_annotation, source)| (existing_annotation.clone().into().category(), source))
+            .find(|(existing_category, source)| existing_category.clone() == annotation_category);
 
-        let is_declared = declared_annotations.iter()
-            .map(|annotation| annotation.clone().into().category())
-            .any(|annotation| annotation == annotation_category);
-
-        if is_declared {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::CannotUnsetNotDeclaredAnnotation(annotation_category))
+        match found_annotation {
+            Some((_, owner)) => {
+                if type_ == owner.clone() {
+                    Ok(())
+                } else {
+                    let owner = owner.clone();
+                    Err(SchemaValidationError::CannotUnsetInheritedAnnotation(
+                        annotation_category, get_label!(snapshot, owner)
+                    ))
+                }
+            },
+            None => Ok(())
         }
     }
 
-    pub(crate) fn validate_unsetted_edge_annotation_is_declared<'b, T, Snapshot>(
+    pub(crate) fn validate_unsetted_edge_annotation_is_not_inherited<EDGE, Snapshot>(
         snapshot: &Snapshot,
-        edge: T,
+        edge: EDGE,
         annotation_category: AnnotationCategory
     ) -> Result<(), SchemaValidationError>
         where
             Snapshot: ReadableSnapshot,
-            T: TypeEdgeEncoding<'b> + InterfaceImplementation<'b>,
+            EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone,
     {
-        let declared_annotations = TypeReader::get_type_edge_annotations_declared(snapshot, edge)
+        let annotations = TypeReader::get_type_edge_annotations(snapshot, edge.clone())
             .map_err(SchemaValidationError::ConceptRead)?;
+        let found_annotation = annotations.iter()
+            .map(|(existing_annotation, source)| (existing_annotation.clone().category(), source))
+            .find(|(existing_category, source)| existing_category.clone() == annotation_category);
 
-        let is_declared = declared_annotations.iter()
-            .map(|annotation| annotation.clone().category())
-            .any(|annotation| annotation == annotation_category);
-
-        if is_declared {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::CannotUnsetNotDeclaredAnnotation(annotation_category))
+        match found_annotation {
+            Some((_, owner)) => {
+                if edge == *owner {
+                    Ok(())
+                } else {
+                    Err(SchemaValidationError::CannotUnsetInheritedEdgeAnnotation(annotation_category))
+                }
+            },
+            None => Ok(())
         }
     }
 }

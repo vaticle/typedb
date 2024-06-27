@@ -5,14 +5,18 @@
  */
 
 use std::ascii::escape_default;
-use concept::type_::{object_type::ObjectType, PlayerAPI, TypeAPI};
+use concept::type_::{annotation, object_type::ObjectType, PlayerAPI, TypeAPI, relation_type::RelationTypeAnnotation, entity_type::EntityTypeAnnotation, attribute_type::AttributeTypeAnnotation};
 use cucumber::gherkin::Step;
 use encoding::graph::type_::Kind;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
 
-use crate::{generic_step, params::{Annotation, ContainsOrDoesnt, ExistsOrDoesnt, Label, MayError, RootLabel}, transaction_context::{with_read_tx, with_schema_tx, with_write_tx}, util, with_type, Context, params};
-use crate::params::IsEmptyOrNot;
+use crate::{
+    generic_step,
+    params::{Annotation, AnnotationCategory, ContainsOrDoesnt, ExistsOrDoesnt, Label, MayError, RootLabel, IsEmptyOrNot},
+    transaction_context::{with_read_tx, with_schema_tx, with_write_tx},
+    util, with_type, Context, params,
+};
 
 #[macro_export]
 macro_rules! with_type {
@@ -111,11 +115,16 @@ pub async fn type_exists(context: &mut Context, root_label: RootLabel, type_labe
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) set label: {type_label}")]
-pub async fn type_set_label(context: &mut Context, root_label: RootLabel, type_label: Label, to_label: Label) {
+#[step(expr = "{root_label}\\({type_label}\\) set label: {type_label}{may_error}")]
+pub async fn type_set_label(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    to_label: Label,
+    may_error: MayError) {
     with_schema_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
-            type_.set_label(&mut tx.snapshot, &tx.type_manager, &to_label.into_typedb()).unwrap()
+            may_error.check(&type_.set_label(&mut tx.snapshot, &tx.type_manager, &to_label.into_typedb()));
         });
     });
 }
@@ -160,17 +169,17 @@ pub async fn type_set_annotation(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) unset annotation: {annotation}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) unset annotation: {annotation_category}{may_error}")]
 pub async fn type_unset_annotation(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
-    annotation: Annotation,
+    annotation_category: AnnotationCategory,
     may_error: MayError,
 ) {
     with_write_tx!(context, |tx| {
         with_type!(tx, root_label, type_label, type_, {
-            let res = type_.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+            let res = type_.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation_category.into_typedb().into());
             may_error.check(&res);
         });
     });
@@ -193,6 +202,49 @@ pub async fn type_annotations_contain(
                 .contains_key(&annotation.into_typedb().into());
             assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
         });
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get annotation categories {contains_or_doesnt}: {annotation_category}")]
+pub async fn type_annotation_categories_contain(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation_category: AnnotationCategory,
+) {
+    with_read_tx!(context, |tx| {
+        match root_label.into_typedb() {
+            Kind::Attribute => {
+                let type_ = tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+                let actual_contains = type_
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .iter().map(|(annotation, _)| <AttributeTypeAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+                .contains(&annotation_category.into_typedb());
+                assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+            }
+            Kind::Entity => {
+                let type_ = tx.type_manager.get_entity_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+                let actual_contains = type_
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .iter().map(|(annotation, _)| <EntityTypeAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+                .contains(&annotation_category.into_typedb());
+                assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+            }
+            Kind::Relation => {
+                let type_ = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+                let actual_contains = type_
+                .get_annotations(&tx.snapshot, &tx.type_manager)
+                .unwrap()
+                .iter().map(|(annotation, _)| <RelationTypeAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+                .contains(&annotation_category.into_typedb());
+                assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+            }
+            Kind::Role => unreachable!(),
+        };
     });
 }
 

@@ -12,11 +12,14 @@ use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
-        annotation::{Annotation, AnnotationCardinality},
+        annotation::{Annotation, AnnotationCategory, AnnotationCardinality},
         object_type::ObjectType, role_type::RoleType, type_manager::TypeManager,
         InterfaceImplementation, TypeAPI,
     },
 };
+use crate::type_::role_type::RoleTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Plays<'a> {
@@ -89,11 +92,12 @@ impl<'a> Plays<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: PlaysAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
-            // TODO: Add check that we unset annotation with same arguments??
-            PlaysAnnotation::Cardinality(_) => type_manager.unset_edge_annotation_cardinality(snapshot, self.clone())?,
+        let plays_annotation = PlaysAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match plays_annotation {
+            PlaysAnnotation::Cardinality(_) => type_manager.unset_edge_annotation_cardinality(snapshot, self.clone().into_owned())?,
         }
         Ok(()) // TODO
     }
@@ -143,24 +147,39 @@ impl<'a> InterfaceImplementation<'a> for Plays<'a> {
     }
 }
 
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum PlaysAnnotation {
     Cardinality(AnnotationCardinality),
 }
 
+impl PlaysAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<PlaysAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<PlaysAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<PlaysAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Cardinality(annotation) => Ok(PlaysAnnotation::Cardinality(annotation)),
+
+            Annotation::Abstract(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Regex(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for PlaysAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Cardinality(annotation) => PlaysAnnotation::Cardinality(annotation),
-
-            Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Plays."),
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Plays."),
-            Annotation::Distinct(annotation) => unreachable!("Distinct annotation not available for Plays."),
-            Annotation::Unique(annotation) => unreachable!("Unique annotation not available for Plays."),
-            Annotation::Key(annotation) => unreachable!("Key annotation not available for Plays."),
-            Annotation::Regex(annotation) => unreachable!("Regex annotation not available for Plays."),
-            Annotation::Cascade(annotation) => unreachable!("Cascade annotation not available for Plays."),
+        let into_annotation: Result<PlaysAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

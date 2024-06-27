@@ -4,7 +4,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use concept::type_::{Ordering, OwnerAPI, PlayerAPI, TypeAPI};
+use concept::type_::{
+    Ordering, OwnerAPI, PlayerAPI, TypeAPI,
+    annotation,
+    plays::PlaysAnnotation,
+};
+
 use cucumber::gherkin::Step;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
@@ -12,10 +17,10 @@ use macro_rules_attribute::apply;
 use super::thing_type::get_as_object_type;
 use crate::{
     generic_step, params,
+    params::{Annotation, AnnotationCategory, ContainsOrDoesnt, IsEmptyOrNot, Label, MayError, RootLabel},
     transaction_context::{with_read_tx, with_schema_tx},
     util, Context,
 };
-use crate::params::{Annotation, ContainsOrDoesnt, IsEmptyOrNot, Label, MayError, RootLabel};
 
 #[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) set plays: {type_label}{may_error}")]
@@ -218,21 +223,21 @@ pub async fn get_plays_set_annotation(
 
 #[apply(generic_step)]
 #[step(
-    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) unset annotation: {annotation}{may_error}"
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) unset annotation: {annotation_category}{may_error}"
 )]
 pub async fn get_plays_unset_annotation(
     context: &mut Context,
     root_label: RootLabel,
     type_label: Label,
     role_label: Label,
-    annotation: Annotation,
+    annotation_category: AnnotationCategory,
     may_error: MayError,
 ) {
     let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_schema_tx!(context, |tx| {
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
-        let res = plays.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        let res = plays.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation_category.into_typedb());
         may_error.check(&res);
     });
 }
@@ -257,6 +262,32 @@ pub async fn get_plays_annotations_contains(
             .get_annotations(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .contains_key(&annotation.into_typedb().into());
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) get annotation categories {contains_or_doesnt}: {annotation_category}"
+)]
+pub async fn get_plays_annotation_categories_contains(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    contains_or_doesnt: ContainsOrDoesnt,
+    annotation_category: AnnotationCategory,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let actual_contains = plays
+            .get_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .iter().map(|(annotation, _)| <PlaysAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+            .contains(&annotation_category.into_typedb());
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });
 }

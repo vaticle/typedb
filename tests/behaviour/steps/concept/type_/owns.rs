@@ -4,10 +4,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use concept::type_::{Ordering, OwnerAPI, TypeAPI};
+use concept::type_::{annotation, Ordering, OwnerAPI, TypeAPI};
 use cucumber::gherkin::Step;
 use itertools::Itertools;
 use macro_rules_attribute::apply;
+use concept::type_::owns::OwnsAnnotation;
 
 use super::thing_type::get_as_object_type;
 use crate::{
@@ -123,13 +124,13 @@ pub async fn get_owns_set_annotation(
 }
 
 #[apply(generic_step)]
-#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) unset annotation: {annotation}{may_error}")]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) unset annotation: {annotation_category}{may_error}")]
 pub async fn get_owns_unset_annotation(
     context: &mut Context,
     root_label: params::RootLabel,
     type_label: params::Label,
     attr_type_label: params::Label,
-    annotation: params::Annotation,
+    annotation_category: params::AnnotationCategory,
     may_error: params::MayError,
 ) {
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
@@ -137,7 +138,7 @@ pub async fn get_owns_unset_annotation(
         let attr_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
         let owns = object_type.get_owns_attribute(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
-        let res = owns.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation.into_typedb().into());
+        let res = owns.unset_annotation(&mut tx.snapshot, &tx.type_manager, annotation_category.into_typedb());
         may_error.check(&res);
     });
 }
@@ -164,6 +165,34 @@ pub async fn get_owns_annotations_contains(
             .get_annotations(&tx.snapshot, &tx.type_manager)
             .unwrap()
             .contains_key(&annotation.into_typedb().into());
+        assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
+    });
+}
+
+
+#[apply(generic_step)]
+#[step(
+    expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get annotation categories {contains_or_doesnt}: {annotation_category}"
+)]
+pub async fn get_owns_annotations_categories_contains(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    contains_or_doesnt: params::ContainsOrDoesnt,
+    annotation_category: params::AnnotationCategory,
+) {
+    let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns =
+            object_type.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        let actual_contains = owns
+            .get_annotations(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .iter().map(|(annotation, _)| <OwnsAnnotation as Into<annotation::Annotation>>::into(annotation.clone()).category())
+            .contains(&annotation_category.into_typedb());
         assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
     });
 }

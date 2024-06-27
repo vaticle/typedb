@@ -47,7 +47,9 @@ pub enum SchemaValidationError {
     DeletingTypeWithSubtypes(Label<'static>),
     DeletingTypeWithInstances(Label<'static>),
     InvalidCardinalityArguments(u64, Option<u64>),
-    CannotUnsetNotDeclaredAnnotation(AnnotationCategory),
+    CannotUnsetInheritedAnnotation(AnnotationCategory, Label<'static>),
+    CannotUnsetInheritedEdgeAnnotation(AnnotationCategory),
+    UnsupportedAnnotationForType(AnnotationCategory), // TODO: Also works for owns, relates and plays, consider renaming... How to pass the type as well? Considering edges!
 }
 
 impl fmt::Display for SchemaValidationError {
@@ -83,7 +85,9 @@ impl Error for SchemaValidationError {
             Self::DeletingTypeWithSubtypes(_) => None,
             Self::DeletingTypeWithInstances(_) => None,
             Self::InvalidCardinalityArguments(_, _) => None,
-            Self::CannotUnsetNotDeclaredAnnotation(_) => None,
+            Self::CannotUnsetInheritedAnnotation(_, _) => None,
+            Self::CannotUnsetInheritedEdgeAnnotation(_) => None,
+            Self::UnsupportedAnnotationForType(_) => None,
         }
     }
 }

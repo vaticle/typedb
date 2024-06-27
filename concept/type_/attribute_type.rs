@@ -19,7 +19,7 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
 
-use super::annotation::AnnotationRegex;
+use super::annotation::{AnnotationCategory, AnnotationRegex};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
@@ -31,6 +31,10 @@ use crate::{
     },
     ConceptAPI,
 };
+use crate::type_::relation_type::RelationTypeAnnotation;
+use crate::type_::role_type::RoleTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct AttributeType<'a> {
@@ -126,6 +130,14 @@ impl<'a> AttributeType<'a> {
         value_type: ValueType,
     ) -> Result<(), ConceptWriteError> {
         type_manager.set_value_type(snapshot, self.clone().into_owned(), value_type)
+    }
+
+    pub fn unset_value_type<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.unset_value_type(snapshot, self.clone().into_owned())
     }
 
     pub fn set_label<Snapshot: WritableSnapshot>(
@@ -232,9 +244,11 @@ impl<'a> AttributeType<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: AttributeTypeAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
+        let relation_type_annotation = AttributeTypeAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match relation_type_annotation {
             AttributeTypeAnnotation::Abstract(_) => {
                 type_manager.unset_attribute_type_annotation_abstract(snapshot, self.clone().into_owned())?
             }
@@ -284,18 +298,34 @@ pub enum AttributeTypeAnnotation {
     Regex(AnnotationRegex),
 }
 
+impl AttributeTypeAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<AttributeTypeAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<AttributeTypeAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<AttributeTypeAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Abstract(annotation) => Ok(AttributeTypeAnnotation::Abstract(annotation)),
+            Annotation::Independent(annotation) => Ok(AttributeTypeAnnotation::Independent(annotation)),
+            Annotation::Regex(annotation) => Ok(AttributeTypeAnnotation::Regex(annotation)),
+
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cardinality(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for AttributeTypeAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Abstract(annotation) => AttributeTypeAnnotation::Abstract(annotation),
-            Annotation::Independent(annotation) => AttributeTypeAnnotation::Independent(annotation),
-            Annotation::Regex(annotation) => AttributeTypeAnnotation::Regex(annotation),
-
-            Annotation::Distinct(_) => unreachable!("Distinct annotation not available for Attribute type."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Attribute type."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Attribute type."),
-            Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Attribute type."),
-            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Attribute type."),
+        let into_annotation: Result<AttributeTypeAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

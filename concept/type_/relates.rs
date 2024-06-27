@@ -14,6 +14,11 @@ use crate::{
     annotation::{Annotation, AnnotationCardinality, AnnotationDistinct},
     type_manager::TypeManager},
 };
+use crate::type_::annotation::AnnotationCategory;
+use crate::type_::owns::OwnsAnnotation;
+use crate::type_::plays::PlaysAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Relates<'a> {
@@ -89,9 +94,11 @@ impl<'a> Relates<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: RelatesAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
+        let relates_annotation = RelatesAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match relates_annotation {
             RelatesAnnotation::Distinct(_) => {
                 type_manager.unset_edge_annotation_distinct(snapshot, self.clone().into_owned())?
             }
@@ -153,18 +160,34 @@ pub enum RelatesAnnotation {
     Cardinality(AnnotationCardinality),
 }
 
+impl RelatesAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<RelatesAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<RelatesAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<RelatesAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Distinct(annotation) => Ok(RelatesAnnotation::Distinct(annotation)),
+            Annotation::Cardinality(annotation) => Ok(RelatesAnnotation::Cardinality(annotation)),
+
+            Annotation::Abstract(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Regex(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for RelatesAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Distinct(annotation) => RelatesAnnotation::Distinct(annotation),
-            Annotation::Cardinality(annotation) => RelatesAnnotation::Cardinality(annotation),
-
-            Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Relates."),
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Relates."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Relates."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Relates."),
-            Annotation::Regex(_) => unreachable!("Regex annotation not available for Relates."),
-            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Relates."),
+        let into_annotation: Result<RelatesAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

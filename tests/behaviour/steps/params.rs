@@ -10,7 +10,7 @@ use chrono::NaiveDateTime;
 use concept::type_::{
     annotation::{
         Annotation as TypeDBAnnotation, AnnotationAbstract, AnnotationCardinality, AnnotationIndependent,
-        AnnotationKey, AnnotationRegex, AnnotationCascade,
+        AnnotationKey, AnnotationRegex, AnnotationCascade, AnnotationCategory as TypeDBAnnotationCategory
     },
     object_type::ObjectType,
 };
@@ -463,6 +463,41 @@ impl FromStr for Annotation {
             _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
         };
         Ok(Self { typedb_annotation })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "annotation_category", regex = r"@[a-z]+")]
+pub(crate) struct AnnotationCategory {
+    typedb_annotation_category: TypeDBAnnotationCategory,
+}
+
+impl AnnotationCategory {
+    pub fn into_typedb(self) -> TypeDBAnnotationCategory {
+        self.typedb_annotation_category
+    }
+}
+
+impl FromStr for AnnotationCategory {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // This will have to be smarter to parse annotations out.
+        let typedb_annotation_category = match s {
+            "@abstract" => TypeDBAnnotationCategory::Abstract,
+            "@independent" => TypeDBAnnotationCategory::Independent,
+            "@key" => TypeDBAnnotationCategory::Key,
+            "@unique" => TypeDBAnnotationCategory::Unique,
+            "@distinct" => TypeDBAnnotationCategory::Distinct,
+            "@cascade" => TypeDBAnnotationCategory::Cascade,
+            "@regex" => TypeDBAnnotationCategory::Regex,
+            "@card" => TypeDBAnnotationCategory::Cardinality,
+            "@subkey" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Subkey,
+            "@values" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Values,
+            "@range" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Range,
+            "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Replace,
+            _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
+        };
+        Ok(Self { typedb_annotation_category })
     }
 }
 

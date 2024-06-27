@@ -20,6 +20,10 @@ use crate::{
         InterfaceImplementation, Ordering, TypeAPI,
     },
 };
+use crate::type_::annotation::AnnotationCategory;
+use crate::type_::plays::PlaysAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Owns<'a> {
@@ -146,15 +150,16 @@ impl<'a> Owns<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: OwnsAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
-            // TODO: Add check that we unset annotation with same arguments??
-            OwnsAnnotation::Distinct(_) => type_manager.unset_edge_annotation_distinct(snapshot, self.clone())?,
-            OwnsAnnotation::Key(_) => type_manager.unset_edge_annotation_key(snapshot, self.clone())?,
-            OwnsAnnotation::Cardinality(_) => type_manager.unset_edge_annotation_cardinality(snapshot, self.clone())?,
-            OwnsAnnotation::Unique(_) => type_manager.unset_edge_annotation_unique(snapshot, self.clone())?,
-            OwnsAnnotation::Regex(_) => type_manager.unset_edge_annotation_regex(snapshot, self.clone())?,
+        let owns_annotation = OwnsAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match owns_annotation {
+            OwnsAnnotation::Distinct(_) => type_manager.unset_edge_annotation_distinct(snapshot, self.clone().into_owned())?,
+            OwnsAnnotation::Key(_) => type_manager.unset_edge_annotation_key(snapshot, self.clone().into_owned())?,
+            OwnsAnnotation::Cardinality(_) => type_manager.unset_edge_annotation_cardinality(snapshot, self.clone().into_owned())?,
+            OwnsAnnotation::Unique(_) => type_manager.unset_edge_annotation_unique(snapshot, self.clone().into_owned())?,
+            OwnsAnnotation::Regex(_) => type_manager.unset_edge_annotation_regex(snapshot, self.clone().into_owned())?,
         }
         Ok(()) // TODO
     }
@@ -233,18 +238,34 @@ pub enum OwnsAnnotation {
     Regex(AnnotationRegex),
 }
 
+impl OwnsAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<OwnsAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<OwnsAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<OwnsAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Distinct(annotation) => Ok(OwnsAnnotation::Distinct(annotation)),
+            Annotation::Unique(annotation) => Ok(OwnsAnnotation::Unique(annotation)),
+            Annotation::Key(annotation) => Ok(OwnsAnnotation::Key(annotation)),
+            Annotation::Cardinality(annotation) => Ok(OwnsAnnotation::Cardinality(annotation)),
+            Annotation::Regex(annotation) => Ok(OwnsAnnotation::Regex(annotation)),
+
+            Annotation::Abstract(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for OwnsAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Distinct(annotation) => OwnsAnnotation::Distinct(annotation),
-            Annotation::Unique(annotation) => OwnsAnnotation::Unique(annotation),
-            Annotation::Key(annotation) => OwnsAnnotation::Key(annotation),
-            Annotation::Cardinality(annotation) => OwnsAnnotation::Cardinality(annotation),
-            Annotation::Regex(annotation) => OwnsAnnotation::Regex(annotation),
-
-            Annotation::Abstract(_) => unreachable!("Abstract annotation not available for Owns."),
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Owns."),
-            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Owns."),
+        let into_annotation: Result<OwnsAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

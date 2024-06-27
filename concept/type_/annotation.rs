@@ -64,6 +64,10 @@ impl AnnotationCardinality {
         Self { start_inclusive, end_inclusive }
     }
 
+    pub const fn default() -> Self {
+        Self::new(0, Some(1))
+    }
+
     pub fn is_valid(&self, count: u64) -> bool {
         self.start_inclusive <= count && (self.end_inclusive.is_none() || count <= self.end_inclusive.unwrap())
     }
@@ -85,6 +89,10 @@ pub struct AnnotationRegex {
 impl AnnotationRegex {
     pub const fn new(regex: String) -> Self {
         Self { regex }
+    }
+
+    pub fn default() -> Self {
+        Self::new(".*".to_owned())
     }
 
     pub fn regex(&self) -> &str {
@@ -124,6 +132,21 @@ pub enum AnnotationCategory {
     // TODO: Values
     // TODO: Range
     // TODO: Replace
+}
+
+impl AnnotationCategory {
+    pub fn to_default_annotation(&self) -> Annotation { // TODO: fn const for regex default
+        match self {
+            AnnotationCategory::Abstract => Annotation::Abstract(AnnotationAbstract),
+            AnnotationCategory::Distinct => Annotation::Distinct(AnnotationDistinct),
+            AnnotationCategory::Independent => Annotation::Independent(AnnotationIndependent),
+            AnnotationCategory::Unique => Annotation::Unique(AnnotationUnique),
+            AnnotationCategory::Key => Annotation::Key(AnnotationKey),
+            AnnotationCategory::Cardinality => Annotation::Cardinality(AnnotationCardinality::default()),
+            AnnotationCategory::Regex => Annotation::Regex(AnnotationRegex::default()),
+            AnnotationCategory::Cascade => Annotation::Cascade(AnnotationCascade),
+        }
+    }
 }
 
 macro_rules! empty_type_vertex_property_encoding {

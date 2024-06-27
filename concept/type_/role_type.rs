@@ -38,6 +38,11 @@ use crate::{
     },
     ConceptAPI,
 };
+use crate::type_::annotation::AnnotationCategory;
+use crate::type_::attribute_type::AttributeTypeAnnotation;
+use crate::type_::relation_type::RelationTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RoleType<'a> {
@@ -237,9 +242,11 @@ impl<'a> RoleType<'a> {
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: RoleTypeAnnotation,
+        annotation_category: AnnotationCategory,
     ) -> Result<(), ConceptWriteError> {
-        match annotation {
+        let role_type_annotation = RoleTypeAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match role_type_annotation {
             RoleTypeAnnotation::Abstract(_) => {
                 type_manager.unset_annotation_abstract(snapshot, self.clone().into_owned())?
             }
@@ -289,18 +296,34 @@ pub enum RoleTypeAnnotation {
     Abstract(AnnotationAbstract),
 }
 
+impl RoleTypeAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<RoleTypeAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<RoleTypeAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<RoleTypeAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Abstract(annotation) => Ok(RoleTypeAnnotation::Abstract(annotation)),
+
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cardinality(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Regex(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for RoleTypeAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Abstract(annotation) => RoleTypeAnnotation::Abstract(annotation),
-
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Role type."),
-            Annotation::Distinct(_) => unreachable!("Distinct annotation not available for Role type."),
-            Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Role type."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Role type."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Role type."),
-            Annotation::Regex(_) => unreachable!("Regex annotation not available for Role type."),
-            Annotation::Cascade(_) => unreachable!("Cascade annotation not available for Role type."),
+        let into_annotation: Result<RoleTypeAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
         }
     }
 }

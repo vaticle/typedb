@@ -111,6 +111,13 @@ impl<Snapshot: WritableSnapshot> TypeWriter<Snapshot> {
         TypeWriter::storage_put_type_vertex_property(snapshot, attribute, Some(value_type));
     }
 
+    pub(crate) fn storage_unset_value_type(
+        snapshot: &mut Snapshot,
+        attribute: AttributeType<'static>,
+    ) {
+        TypeWriter::storage_delete_type_vertex_property::<ValueType>(snapshot, attribute);
+    }
+
     // Type edges
     pub(crate) fn storage_put_relates(
         snapshot: &mut Snapshot,
