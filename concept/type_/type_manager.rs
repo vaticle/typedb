@@ -1568,6 +1568,21 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         Ok(())
     }
 
+    pub(crate) fn set_relates_overridden(
+        &self,
+        snapshot: &mut Snapshot,
+        relates: Relates<'static>,
+        overridden: Relates<'static>,
+    ) -> Result<(), ConceptWriteError> {
+        // TODO: More validation - instances exist.
+        OperationTimeValidation::validate_relates_is_inherited(snapshot, relates.relation(), overridden.role())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        Self::set_supertype(self, snapshot, relates.role(), overridden.role())?;
+        TypeWriter::storage_set_type_edge_overridden(snapshot, relates.clone(), overridden.clone()); // .attribute().clone());
+        Ok(())
+    }
+
     pub(crate) fn set_relates_annotation_distinct<'b>(
         &self, snapshot: &mut Snapshot, edge: Relates<'_>
     ) -> Result<(), ConceptWriteError> {

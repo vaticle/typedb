@@ -14,7 +14,14 @@ use storage::snapshot::ReadableSnapshot;
 
 use crate::{
     error::ConceptReadError,
-    type_::{annotation::AnnotationCategory, attribute_type::AttributeType, object_type::ObjectType, role_type::RoleType, TypeAPI, Ordering},
+    type_::{
+        annotation::AnnotationCategory,
+        attribute_type::AttributeType,
+        object_type::ObjectType,
+        role_type::RoleType,
+        relation_type::RelationType,
+        TypeAPI, Ordering
+    },
 };
 
 pub mod annotation_compatibility;
@@ -28,8 +35,8 @@ pub enum SchemaValidationError {
     LabelUniqueness(Label<'static>),
     RoleNameUniqueness(Label<'static>),
     CyclicTypeHierarchy(Label<'static>, Label<'static>), // TODO: Add details of what caused it
-    RelatesNotInherited(RoleType<'static>),
-    OwnsNotInherited(AttributeType<'static>),
+    RelatesNotInherited(RelationType<'static>, RoleType<'static>),
+    OwnsNotInherited(ObjectType<'static>, AttributeType<'static>),
     PlaysNotInherited(ObjectType<'static>, RoleType<'static>),
     OverriddenTypeNotSupertype(Label<'static>, Label<'static>),
     PlaysNotDeclared(ObjectType<'static>, RoleType<'static>),
@@ -66,8 +73,8 @@ impl Error for SchemaValidationError {
             Self::RoleNameUniqueness(_) => None,
             Self::RootModification => None,
             Self::CyclicTypeHierarchy(_, _) => None,
-            Self::RelatesNotInherited(_) => None,
-            Self::OwnsNotInherited(_) => None,
+            Self::RelatesNotInherited(_, _) => None,
+            Self::OwnsNotInherited(_, _) => None,
             Self::PlaysNotInherited(_, _) => None,
             Self::OverriddenTypeNotSupertype(_, _) => None,
             Self::PlaysNotDeclared(_, _) => None,

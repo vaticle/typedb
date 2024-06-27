@@ -15,7 +15,7 @@ use crate::{
     type_manager::TypeManager},
 };
 use crate::type_::annotation::AnnotationCategory;
-use crate::type_::owns::OwnsAnnotation;
+use crate::type_::owns::{Owns, OwnsAnnotation};
 use crate::type_::plays::PlaysAnnotation;
 use crate::type_::type_manager::validation::SchemaValidationError;
 use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
@@ -37,6 +37,15 @@ impl<'a> Relates<'a> {
 
     pub fn role(&self) -> RoleType<'a> {
         self.role.clone()
+    }
+
+    pub fn set_override<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+        overridden: Relates<'static>,
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.set_relates_overridden(snapshot, self.clone().into_owned(), overridden)
     }
 
     pub fn get_cardinality<Snapshot: ReadableSnapshot>(

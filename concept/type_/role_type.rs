@@ -175,15 +175,6 @@ impl<'a> RoleType<'a> {
         type_manager.get_role_type_supertype(snapshot, self.clone().into_owned())
     }
 
-    pub fn set_supertype<Snapshot: WritableSnapshot>(
-        &self,
-        snapshot: &mut Snapshot,
-        type_manager: &TypeManager<Snapshot>,
-        supertype: RoleType<'static>,
-    ) -> Result<(), ConceptWriteError> {
-        type_manager.set_role_type_supertype(snapshot, self.clone().into_owned(), supertype)
-    }
-
     pub fn get_supertypes<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,

@@ -62,8 +62,8 @@ pub async fn relation_type_create_ordered_role(
 }
 
 #[apply(generic_step)]
-#[step(expr = r"relation\({type_label}\) get role\({type_label}\) set supertype: {type_label}{may_error}")]
-pub async fn relation_role_set_supertype(
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) set override: {type_label}{may_error}")]
+pub async fn relation_role_set_override(
     context: &mut Context,
     type_label: Label,
     role_label: Label,
@@ -82,8 +82,7 @@ pub async fn relation_role_set_supertype(
             .resolve_relates(&tx.snapshot, relation_supertype, supertype_label.into_typedb().name().as_str())
             .unwrap()
             .unwrap();
-        // TODO: Is it ok to just set supertype here?
-        let res = relates.role().set_supertype(&mut tx.snapshot, &tx.type_manager, overridden_relates.role());
+        let res = relates.set_override(&mut tx.snapshot, &tx.type_manager, overridden_relates);
         may_error.check(&res);
     });
 }

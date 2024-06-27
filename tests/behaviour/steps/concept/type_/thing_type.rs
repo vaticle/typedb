@@ -37,7 +37,7 @@ macro_rules! with_type {
                     $tx.type_manager.get_relation_type(&$tx.snapshot, &$label.into_typedb()).unwrap().unwrap();
                 $block
             }
-            Kind::Role => unreachable!(),
+            Kind::Role => unreachable!("Can only address roles through relation(relation_label) get role(role_name)"),
         };
     };
 }
@@ -72,7 +72,7 @@ pub async fn type_create(context: &mut Context, root_label: RootLabel, type_labe
             Kind::Attribute => {
                 may_error.check(&tx.type_manager.create_attribute_type(&mut tx.snapshot, &type_label.into_typedb(), false));
             }
-            Kind::Role => unreachable!(),
+            Kind::Role => unreachable!("Can only address roles through relation(relation_label) get role(role_name)"),
         }
     });
 }
@@ -106,10 +106,7 @@ pub async fn type_exists(context: &mut Context, root_label: RootLabel, type_labe
                 let type_ = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap();
                 exists.check(&type_, &format!("type {}", type_label.into_typedb()));
             }
-            Kind::Role => {
-                let type_ = tx.type_manager.get_role_type(&tx.snapshot, &type_label.into_typedb()).unwrap();
-                exists.check(&type_, &format!("type {}", type_label.into_typedb()));
-            }
+            Kind::Role => unreachable!("Can only address roles through relation(relation_label) get role(role_name)"),
         };
     });
 }
@@ -243,7 +240,7 @@ pub async fn type_annotation_categories_contain(
                 .contains(&annotation_category.into_typedb());
                 assert_eq!(contains_or_doesnt.expected_contains(), actual_contains);
             }
-            Kind::Role => unreachable!(),
+            Kind::Role => unreachable!("Can only address roles through relation(relation_label) get role(role_name)"),
         };
     });
 }
@@ -339,13 +336,7 @@ pub async fn type_set_supertype(
                 let res = thistype.set_supertype(&mut tx.snapshot, &tx.type_manager, supertype);
                 may_error.check(&res);
             }
-            Kind::Role => {
-                let thistype = tx.type_manager.get_role_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
-                let supertype =
-                    tx.type_manager.get_role_type(&tx.snapshot, &supertype_label.into_typedb()).unwrap().unwrap();
-                let res = thistype.set_supertype(&mut tx.snapshot, &tx.type_manager, supertype);
-                may_error.check(&res);
-            }
+            Kind::Role => unreachable!("Can only address roles through relation(relation_label) get role(role_name)"),
         };
     });
 }

@@ -473,7 +473,7 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_role_is_inherited<Snapshot>(
+    pub(crate) fn validate_relates_is_inherited<Snapshot>(
         snapshot: &Snapshot,
         relation_type: RelationType<'static>,
         role_type: RoleType<'static>,
@@ -482,7 +482,7 @@ impl OperationTimeValidation {
             Snapshot: ReadableSnapshot,
     {
         let super_relation =
-            TypeReader::get_supertype(snapshot, relation_type).map_err(SchemaValidationError::ConceptRead)?;
+            TypeReader::get_supertype(snapshot, relation_type.clone()).map_err(SchemaValidationError::ConceptRead)?;
         if super_relation.is_none() {
             // TODO: Handle better. This could be misleading.
             return Err(SchemaValidationError::RootModification);
@@ -493,7 +493,7 @@ impl OperationTimeValidation {
         if is_inherited {
             Ok(())
         } else {
-            Err(SchemaValidationError::RelatesNotInherited(role_type))
+            Err(SchemaValidationError::RelatesNotInherited(relation_type, role_type))
         }
     }
 
@@ -505,7 +505,7 @@ impl OperationTimeValidation {
         where
             Snapshot: ReadableSnapshot,
     {
-        let res = object_type_match!(owner, {
+        let is_inherited = object_type_match!(owner, {
             let super_owner =
                 TypeReader::get_supertype(snapshot, owner.clone()).map_err(SchemaValidationError::ConceptRead)?;
             if super_owner.is_none() {
@@ -514,14 +514,13 @@ impl OperationTimeValidation {
             let owns_transitive: HashMap<AttributeType<'static>, Owns<'static>> =
                 TypeReader::get_implemented_interfaces(snapshot, super_owner.unwrap())
                     .map_err(SchemaValidationError::ConceptRead)?;
-            let is_inherited = owns_transitive.contains_key(&attribute);
-            if is_inherited {
-                Ok(())
-            } else {
-                Err(SchemaValidationError::OwnsNotInherited(attribute))
-            }
+            owns_transitive.contains_key(&attribute)
         });
-        res
+        if is_inherited {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::OwnsNotInherited(owner, attribute))
+        }
     }
 
     pub(crate) fn validate_overridden_is_supertype<Snapshot, T>(
@@ -572,7 +571,7 @@ impl OperationTimeValidation {
         if is_inherited {
             Ok(())
         } else {
-            Err(SchemaValidationError::PlaysNotInherited(player.into_owned(), role_type))
+            Err(SchemaValidationError::PlaysNotInherited(player, role_type))
         }
     }
 
