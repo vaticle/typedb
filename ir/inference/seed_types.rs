@@ -114,21 +114,41 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             match pattern {
                 Pattern::Conjunction(_) => unreachable!("Ban?"),
                 Pattern::Disjunction(disjunction) => {
-                    let nested_unary = HashMap::new();
+                    let mut nested_unary = HashMap::new();
                     for conj in &mut disjunction.conjunctions() {
                         let mut c : Conjunction = conj;
                         let branch_annotations = self.seed_types_for_unary_constraints(&c.constraints().constraints, &c.patterns().patterns);
-                        nested_unary.merge(branch_annotations);
-                        for b in branch_annotations {
-
+                        for (variable, types) in branch_annotations {
+                            if !nested_unary.contains_key(&variable) {
+                              nested_unary.insert(variable, BTreeSet::new())
+                            }
+                            nested_unary.get_mut(&variable).unwrap().extend(types);
                         }
                     }
+                    for (variable, types) in nested_unary.iter() {
+                        Self::intersect_unary(&mut unary_annotations, variable, types);
+                    }
                 }
-                Pattern::Negation(_) => todo!(),
-                Pattern::Optional(_) => todo!(),
+                Pattern::Negation(negation) => {
+                    // Only for those local to the negation
+                    let nested_unary = self.seed_types_for_unary_constraints(&negation.conjunction().constraints().constraints, &negation.conjunction().patterns().patterns);
+                    for (variable, types) in nested_unary.iter() {
+                        if !unary_annotations.contains_key(variable) {
+                            unary_annotations.insert(variable, types);
+                        }
+                    }
+                },
+                Pattern::Optional(opt) => {
+                    // Only for those local to the optional
+                    let nested_unary = self.seed_types_for_unary_constraints(&opt.conjunction().constraints().constraints, &opt.conjunction().patterns().patterns);
+                    for (variable, types) in nested_unary.iter() {
+                        if !unary_annotations.contains_key(variable) {
+                            unary_annotations.insert(variable, types);
+                        }
+                    }
+                },
             }
         }
-
 
         let mut from_vec = &mut vec1;
         let mut to_vec = &mut vec2;
@@ -377,7 +397,7 @@ pub mod tests {
     use test_utils::{create_tmp_dir, init_logging};
 
     use crate::{
-        inference::pattern_type_inference::{NestedTypeInferenceGraph, TypeInferenceEdge, TypeInferenceGraph},
+        inference::pattern_type_inference::{TypeInferenceEdge, TypeInferenceGraph},
         pattern::{variable::Variable},
     };
     use crate::inference::seed_types::TypeSeeder;
