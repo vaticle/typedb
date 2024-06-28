@@ -17,12 +17,13 @@ use crate::pattern::{context::PatternContext, Scope, ScopeId};
 pub(crate) struct Disjunction {
     scope_id: ScopeId,
     context: Arc<Mutex<PatternContext>>,
+    pub(crate) conjunctions: Vec<Conjunction>
 }
 
 impl Disjunction {
     pub(crate) fn new_child(parent_scope_id: ScopeId, context: Arc<Mutex<PatternContext>>) -> Self {
         let scope_id = context.lock().unwrap().create_child_scope(parent_scope_id);
-        Self { scope_id, context }
+        Self { scope_id, context, conjunctions: Vec::new() }
     }
 
     pub(crate) fn variables(&self) -> Box<dyn Iterator<Item = Variable>> {
@@ -31,6 +32,12 @@ impl Disjunction {
 
     pub(crate) fn context(&self) -> MutexGuard<PatternContext> {
         self.context.lock().unwrap()
+    }
+
+    pub(crate) fn add_conjunction(&mut self) -> &mut Conjunction {
+        let disjunction = Conjunction::new_child(self.scope_id, self.context.clone());
+        self.conjunctions.push(disjunction);
+        self.conjunctions.last_mut().unwrap()
     }
 }
 

@@ -67,10 +67,10 @@ pub trait BinaryConstraintWrapper {
     fn annotate_right_to_left_for_type(&self, seeder:  &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>);
 }
 
-pub(crate) fn seed_types<Snapshot: ReadableSnapshot>(constraints: &Vec<Constraint>, snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>) -> TypeInferenceGraph {
+pub(crate) fn seed_types<Snapshot: ReadableSnapshot>(conjunction: &Conjunction, snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>) -> TypeInferenceGraph {
     // Seed unary types
     let seeder = TypeSeeder { snapshot, type_manager };
-    seeder.seed_types(constraints, &Vec::new())
+    seeder.seed_types(&conjunction.constraints().constraints, &conjunction.patterns().patterns)
 }
 
 pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
@@ -82,6 +82,8 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         // Seed unary types
         let unary_annotations = self.seed_types_for_unary_constraints(constraints, patterns);
         let edges = self.seed_types_for_binary_constraints(constraints, &unary_annotations);
+        println!("{:?}", unary_annotations);
+        println!("{:?}", edges);
         TypeInferenceGraph {
             vertices: unary_annotations,
             edges: edges,
@@ -115,34 +117,33 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                 Pattern::Conjunction(_) => unreachable!("Ban?"),
                 Pattern::Disjunction(disjunction) => {
                     let mut nested_unary = HashMap::new();
-                    for conj in &mut disjunction.conjunctions() {
-                        let mut c : Conjunction = conj;
+                    for c in &mut disjunction.conjunctions.iter() {
                         let branch_annotations = self.seed_types_for_unary_constraints(&c.constraints().constraints, &c.patterns().patterns);
                         for (variable, types) in branch_annotations {
                             if !nested_unary.contains_key(&variable) {
-                              nested_unary.insert(variable, BTreeSet::new())
+                              nested_unary.insert(variable, BTreeSet::new());
                             }
                             nested_unary.get_mut(&variable).unwrap().extend(types);
                         }
                     }
-                    for (variable, types) in nested_unary.iter() {
+                    for (variable, types) in nested_unary.into_iter() {
                         Self::intersect_unary(&mut unary_annotations, variable, types);
                     }
                 }
                 Pattern::Negation(negation) => {
                     // Only for those local to the negation
-                    let nested_unary = self.seed_types_for_unary_constraints(&negation.conjunction().constraints().constraints, &negation.conjunction().patterns().patterns);
-                    for (variable, types) in nested_unary.iter() {
-                        if !unary_annotations.contains_key(variable) {
+                    let nested_unary = self.seed_types_for_unary_constraints(&negation.conjunction.constraints().constraints, &negation.conjunction.patterns().patterns);
+                    for (variable, types) in nested_unary.into_iter() {
+                        if !unary_annotations.contains_key(&variable) {
                             unary_annotations.insert(variable, types);
                         }
                     }
                 },
                 Pattern::Optional(opt) => {
                     // Only for those local to the optional
-                    let nested_unary = self.seed_types_for_unary_constraints(&opt.conjunction().constraints().constraints, &opt.conjunction().patterns().patterns);
-                    for (variable, types) in nested_unary.iter() {
-                        if !unary_annotations.contains_key(variable) {
+                    let nested_unary = self.seed_types_for_unary_constraints(&opt.conjunction.constraints().constraints, &opt.conjunction.patterns().patterns);
+                    for (variable, types) in nested_unary.into_iter() {
+                        if !unary_annotations.contains_key(&variable) {
                             unary_annotations.insert(variable, types);
                         }
                     }
@@ -398,10 +399,10 @@ pub mod tests {
 
     use crate::{
         inference::pattern_type_inference::{TypeInferenceEdge, TypeInferenceGraph},
-        pattern::{variable::Variable},
     };
-    use crate::inference::seed_types::TypeSeeder;
+    use crate::inference::seed_types::{seed_types, TypeSeeder};
     use crate::inference::type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity};
+    use crate::pattern::conjunction::Conjunction;
     use crate::pattern::constraint::{Constraint, Has, Isa, Type};
 
     fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
@@ -442,11 +443,6 @@ pub mod tests {
         // cat-name sub animal-name; dog-name sub animal-name;
 
         // Some version of `$a isa animal, has name $n;`
-        let var_animal = Variable::new(0);
-        let var_name = Variable::new(1);
-        let var_animal_type = Variable::new(2);
-        let var_name_type = Variable::new(3);
-
         let label_animal = "animal".to_owned();
         let label_cat = "cat".to_owned();
         let label_dog = "dog".to_owned();
@@ -490,6 +486,11 @@ pub mod tests {
 
         {
             // // Case 1: $a isa cat, has animal-name $n;
+            let mut conjunction = Conjunction::new_root();
+            let var_animal = conjunction.get_or_declare_variable("animal").unwrap();
+            let var_name = conjunction.get_or_declare_variable(&"name").unwrap();
+            let var_animal_type = conjunction.get_or_declare_variable(&"animal_type").unwrap();
+            let var_name_type =  conjunction.get_or_declare_variable(&"name_type").unwrap();
 
             let expected_tig = {
                 let types_ta =  BTreeSet::from([type_cat.clone()]);
@@ -513,21 +514,17 @@ pub mod tests {
 
             // Try seeding
             let snapshot = storage.clone().open_snapshot_write();
-            let constraints = vec![
-                Constraint::Isa(Isa::new(var_animal, var_animal_type)),
-                Constraint::Type(Type::new(var_animal_type, label_cat)),
+            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
+            conjunction.constraints_mut().add_type(var_animal_type, &label_cat);
 
-                Constraint::Isa(Isa::new(var_name, var_name_type)),
-                Constraint::Type(Type::new(var_name_type, label_name)),
+            conjunction.constraints_mut().add_isa(var_name, var_name_type);
+            conjunction.constraints_mut().add_type(var_name_type, &label_name);
 
-                Constraint::Has(Has::new(var_animal, var_name)),
-            ];
+            conjunction.constraints_mut().add_has(var_animal, var_name);
             let seeder = TypeSeeder { snapshot: &snapshot, type_manager: &type_manager };
-            let unary_annotations= seeder.seed_types_for_unary_constraints(&constraints, &Vec::new());
-            assert_eq!(expected_tig.vertices, unary_annotations);
-
-            let edges = seeder.seed_types_for_binary_constraints(&constraints, &unary_annotations);
-            assert_eq!(expected_tig.edges, edges);
+            let tig = seeder.seed_types(&conjunction.constraints().constraints, &Vec::new());
+            assert_eq!(expected_tig.vertices, tig.vertices);
+            assert_eq!(expected_tig.edges, tig.edges);
         }
     }
 

@@ -79,7 +79,7 @@ impl Constraints {
     pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Isa<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, thing)
-                && self.context.lock().unwrap().is_variable_available(self.scope, type_)
+                && self.context.lock().unwrap().is_variable_available(self.scope, type_),
         );
         let isa = Isa::new(thing, type_);
         self.context.lock().unwrap().set_variable_category(thing, VariableCategory::Thing, isa.clone().into())?;
