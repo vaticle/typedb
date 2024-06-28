@@ -1284,17 +1284,20 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         snapshot: &mut Snapshot,
         attribute: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        let current_value_type = TypeReader::get_value_type_without_source(snapshot, attribute.clone())
+        let declared_value_type = TypeReader::get_value_type_declared(snapshot, attribute.clone())
             .map_err(|source| ConceptWriteError::ConceptRead { source })?;
 
-        if current_value_type.is_none() {
-            Ok(())
-        } else {
-            OperationTimeValidation::validate_when_attribute_type_loses_value_type(snapshot, attribute.clone(), current_value_type)
-                .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
+        // TODO: Maybe we want to return Error if we want to unset an inherited value type just like with annotations?
+        // Just ignoring this case for now for simplicity...
+        match declared_value_type {
+            Some(_) => {
+                OperationTimeValidation::validate_value_type_can_be_unset(snapshot, attribute.clone(), declared_value_type)
+                    .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
 
-            TypeWriter::storage_unset_value_type(snapshot, attribute);
-            Ok(())
+                TypeWriter::storage_unset_value_type(snapshot, attribute);
+                Ok(())
+            },
+            None => Ok(()),
         }
     }
 
@@ -1324,7 +1327,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         subtype: AttributeType<'static>,
         supertype: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        OperationTimeValidation::validate_value_types_compatible(
+        OperationTimeValidation::validate_value_type_is_compatible_with_new_supertypes_value_type(
             snapshot,
             subtype.clone(),
             supertype.clone(),

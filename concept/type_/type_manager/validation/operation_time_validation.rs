@@ -196,7 +196,7 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_value_types_compatible<Snapshot: ReadableSnapshot>(
+    pub(crate) fn validate_value_type_is_compatible_with_new_supertypes_value_type<Snapshot: ReadableSnapshot>(
         snapshot: &Snapshot,
         subtype: AttributeType<'static>,
         supertype: AttributeType<'static>,
@@ -227,6 +227,26 @@ impl OperationTimeValidation {
                         get_label!(snapshot, subtype), subtype_declared_value_type))
                 }
             },
+        }
+    }
+
+    pub(crate) fn validate_value_type_can_be_unset<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+        declared_value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError> {
+        let attribute_supertype = TypeReader::get_supertype(snapshot, attribute_type.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        match &attribute_supertype {
+            Some(supertype) => {
+                let supertype_value_type = TypeReader::get_value_type_without_source(snapshot, supertype.clone())
+                    .map_err(SchemaValidationError::ConceptRead)?;
+                match supertype_value_type {
+                    Some(_) => Ok(()),
+                    None => Self::validate_when_attribute_type_loses_value_type(snapshot, attribute_type, declared_value_type),
+                }
+            },
+            None => Self::validate_when_attribute_type_loses_value_type(snapshot, attribute_type, declared_value_type),
         }
     }
 
