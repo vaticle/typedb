@@ -28,7 +28,7 @@ pub(crate) struct TypeInferenceGraph<'this> {
     pub(crate) conjunction: &'this Conjunction,
     pub(crate) vertices: VertexConstraints,
     pub(crate) edges: Vec<TypeInferenceEdge<'this>>,
-    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraph<'this>>,
+    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraphDisjunction<'this>>,
 }
 
 impl<'this> TypeInferenceGraph<'this> {
@@ -191,14 +191,13 @@ impl<'this> TypeInferenceEdge<'this> {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct NestedTypeInferenceGraph<'this> {
-    pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
-}
 
-impl<'this> NestedTypeInferenceGraph<'this> {
-    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints) {
-        for nested_graph in &mut self.nested_graph_disjunction {
+pub trait NestedTypeInferenceGraph {
+
+    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints);
+    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexConstraints) -> bool;
+    fn prune_self_from_vertices_impl<'a>(nested_graphs: &mut [TypeInferenceGraph<'a>], parent_vertices: &VertexConstraints) {
+        for nested_graph in nested_graphs {
             for (vertex, vertex_types) in &mut nested_graph.vertices {
                 if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
                     vertex_types.retain(|type_| parent_vertex_types.contains(&type_))
@@ -208,12 +207,12 @@ impl<'this> NestedTypeInferenceGraph<'this> {
         }
     }
 
-    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexConstraints) -> bool {
+    fn prune_vertices_from_self_impl<'a>(nested_graphs: &[TypeInferenceGraph<'a>], parent_vertices: &mut VertexConstraints) -> bool {
         let mut is_modified = false;
         for (parent_vertex, parent_vertex_types) in parent_vertices {
             let size_before = parent_vertex_types.len();
             parent_vertex_types.retain(|type_| {
-                self.nested_graph_disjunction.iter().any(|nested_graph| {
+                nested_graphs.iter().any(|nested_graph| {
                     nested_graph
                         .vertices
                         .get(&parent_vertex)
@@ -224,6 +223,21 @@ impl<'this> NestedTypeInferenceGraph<'this> {
             is_modified = is_modified || size_before != parent_vertex_types.len();
         }
         is_modified
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct NestedTypeInferenceGraphDisjunction<'this> {
+    pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
+}
+
+impl<'this> NestedTypeInferenceGraph for NestedTypeInferenceGraphDisjunction<'this> {
+    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints) {
+        Self::prune_self_from_vertices_impl(self.nested_graph_disjunction.as_mut_slice(), parent_vertices);
+    }
+
+    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexConstraints) -> bool {
+        Self::prune_vertices_from_self_impl(self.nested_graph_disjunction.as_slice(), parent_vertices)
     }
 }
 
@@ -255,6 +269,7 @@ pub mod tests {
     use crate::{
         inference::pattern_type_inference::{NestedTypeInferenceGraph, TypeInferenceEdge, TypeInferenceGraph},
     };
+    use crate::inference::pattern_type_inference::NestedTypeInferenceGraphDisjunction;
     use crate::inference::seed_types::{seed_types, TypeSeeder};
     use crate::inference::type_inference::TypeAnnotation;
     use crate::inference::type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity};
@@ -294,17 +309,17 @@ pub mod tests {
 
 
 
-    impl<'this> PartialEq<Self> for NestedTypeInferenceGraph<'this> {
+    impl<'this> PartialEq<Self> for NestedTypeInferenceGraphDisjunction<'this> {
         fn eq(&self, other: &Self) -> bool {
             self.nested_graph_disjunction == other.nested_graph_disjunction
         }
     }
 
-    impl<'this> Eq for NestedTypeInferenceGraph<'this> {
+    impl<'this> Eq for NestedTypeInferenceGraphDisjunction<'this> {
 
     }
 
-    pub(crate) fn expected_edge(constraint: &Constraint, left: Variable, right: Variable, left_right_type_pairs: Vec<(TypeAnnotation, TypeAnnotation)>) -> TypeInferenceEdge {
+    pub(crate) fn expected_edge(constraint: &Constraint<Variable>, left: Variable, right: Variable, left_right_type_pairs: Vec<(TypeAnnotation, TypeAnnotation)>) -> TypeInferenceEdge {
         let mut left_to_right = BTreeMap::new();
         let mut right_to_left = BTreeMap::new();
         for (l,r) in left_right_type_pairs {
@@ -412,7 +427,7 @@ pub mod tests {
             conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME).unwrap();
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             let constraints = &conjunction.constraints().constraints;
-            
+
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
@@ -618,7 +633,7 @@ pub mod tests {
                     expected_edge(&root_conj.constraints().constraints[1], var_name, var_name_type, vec![(type_catname.clone(), type_name.clone()), (type_dogname.clone(), type_name.clone())]),
                     expected_edge(&root_conj.constraints().constraints[2], var_animal, var_name, vec![(type_cat.clone(), type_catname.clone()), (type_dog.clone(), type_dogname.clone())])
                 ],
-                nested_graphs: vec![NestedTypeInferenceGraph {
+                nested_graphs: vec![NestedTypeInferenceGraphDisjunction {
                     nested_graph_disjunction: expected_nested_graphs,
                 }],
             };
