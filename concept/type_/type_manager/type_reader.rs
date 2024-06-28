@@ -161,7 +161,7 @@ impl TypeReader {
         snapshot: &impl ReadableSnapshot,
         type_: impl TypeAPI<'a>,
     ) -> Result<Option<Label<'static>>, ConceptReadError> {
-        Self::get_type_property::<Label<'static>>(snapshot, type_)
+        Self::get_type_property_declared::<Label<'static>>(snapshot, type_)
     }
 
     pub(crate) fn get_implemented_interfaces_declared<IMPL>(
@@ -326,14 +326,29 @@ impl TypeReader {
             .map(|v| v.first().unwrap().clone())
     }
 
-    pub(crate) fn get_value_type(
+    pub(crate) fn get_value_type_declared(
         snapshot: &impl ReadableSnapshot,
         type_: AttributeType<'_>,
     ) -> Result<Option<ValueType>, ConceptReadError> {
-        Self::get_type_property::<ValueType>(snapshot, type_)
+        Self::get_type_property_declared::<ValueType>(snapshot, type_)
     }
 
-    pub(crate) fn get_type_property<'a, PROPERTY>(
+    pub(crate) fn get_value_type(
+        snapshot: &impl ReadableSnapshot,
+        type_: AttributeType<'static>,
+    ) -> Result<Option<(ValueType, AttributeType<'static>)>, ConceptReadError> {
+        Self::get_type_property::<ValueType, AttributeType<'static>>(snapshot, type_)
+    }
+
+    pub(crate) fn get_value_type_without_source(
+        snapshot: &impl ReadableSnapshot,
+        type_: AttributeType<'static>,
+    ) -> Result<Option<ValueType>, ConceptReadError> {
+        Self::get_value_type(snapshot, type_)
+            .map(|result| result.map(|(value_type, _)| value_type))
+    }
+
+    pub(crate) fn get_type_property_declared<'a, PROPERTY>(
         snapshot: &impl ReadableSnapshot,
         type_: impl TypeVertexEncoding<'a>,
     ) -> Result<Option<PROPERTY>, ConceptReadError>
@@ -348,11 +363,29 @@ impl TypeReader {
         Ok(property)
     }
 
+    pub(crate) fn get_type_property<'a, PROPERTY, SOURCE>(
+        snapshot: &impl ReadableSnapshot,
+        type_: SOURCE,
+    ) -> Result<Option<(PROPERTY, SOURCE)>, ConceptReadError>
+        where
+            PROPERTY: TypeVertexPropertyEncoding<'static>,
+            SOURCE: TypeAPI<'static> + Clone,
+    {
+        let mut type_opt = Some(type_);
+        while let Some(curr_type) = type_opt {
+            if let Some(property) = Self::get_type_property_declared::<PROPERTY>(snapshot, curr_type.clone())? {
+                return Ok(Some((property, curr_type.clone())));
+            }
+            type_opt = Self::get_supertype(snapshot, curr_type)?;
+        }
+        Ok(None)
+    }
+
     pub(crate) fn get_type_ordering(
         snapshot: &impl ReadableSnapshot,
         role_type: RoleType<'_>,
     ) -> Result<Ordering, ConceptReadError> {
-        Ok(Self::get_type_property(snapshot, role_type)?.unwrap())
+        Ok(Self::get_type_property_declared(snapshot, role_type)?.unwrap())
     }
 
     pub(crate) fn get_type_annotations_declared<T: KindAPI<'static>>(

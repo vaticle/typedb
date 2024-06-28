@@ -361,7 +361,10 @@ impl TypeCache {
         &self.plays.get(&plays).unwrap().annotations
     }
 
-    pub(crate) fn get_attribute_type_value_type<'a>(&self, attribute_type: AttributeType<'a>) -> &Option<ValueType> {
+    pub(crate) fn get_attribute_type_value_type<'a>(
+        &self,
+        attribute_type: AttributeType<'a>
+    ) -> &Option<(ValueType, AttributeType<'static>)> {
         &AttributeType::get_cache(&self, attribute_type).value_type
     }
 

@@ -33,6 +33,7 @@ pub enum SchemaValidationError {
     ConceptRead(ConceptReadError),
     RootModification,
     LabelUniqueness(Label<'static>),
+    NameUniqueness(String),
     RoleNameUniqueness(Label<'static>),
     CyclicTypeHierarchy(Label<'static>, Label<'static>), // TODO: Add details of what caused it
     RelatesNotInherited(RelationType<'static>, RoleType<'static>),
@@ -58,6 +59,9 @@ pub enum SchemaValidationError {
     CannotUnsetInheritedAnnotation(AnnotationCategory, Label<'static>),
     CannotUnsetInheritedEdgeAnnotation(AnnotationCategory),
     UnsupportedAnnotationForType(AnnotationCategory), // TODO: Also works for owns, relates and plays, consider renaming... How to pass the type as well? Considering edges!
+    ValueTypeNotCompatibleWithExitingValueTypeOf(Label<'static>, Label<'static>, ValueType),
+    ValueTypeNotCompatibleWithSubtypesValueType(Label<'static>, Label<'static>, ValueType),
+    NonAbstractSubtypeWithoutValueTypeExists(Label<'static>, Label<'static>),
 }
 
 impl fmt::Display for SchemaValidationError {
@@ -71,6 +75,7 @@ impl Error for SchemaValidationError {
         match self {
             Self::ConceptRead(source) => Some(source),
             Self::LabelUniqueness(_) => None,
+            Self::NameUniqueness(_) => None,
             Self::RoleNameUniqueness(_) => None,
             Self::RootModification => None,
             Self::CyclicTypeHierarchy(_, _) => None,
@@ -97,6 +102,9 @@ impl Error for SchemaValidationError {
             Self::CannotUnsetInheritedAnnotation(_, _) => None,
             Self::CannotUnsetInheritedEdgeAnnotation(_) => None,
             Self::UnsupportedAnnotationForType(_) => None,
+            Self::ValueTypeNotCompatibleWithExitingValueTypeOf(_, _, _) => None,
+            Self::ValueTypeNotCompatibleWithSubtypesValueType(_, _, _) => None,
+            Self::NonAbstractSubtypeWithoutValueTypeExists(_, _) => None,
         }
     }
 }

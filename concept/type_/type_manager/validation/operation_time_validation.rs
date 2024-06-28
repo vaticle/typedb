@@ -15,6 +15,7 @@ use encoding::{
     layout::prefix::Prefix,
     value::{label::Label, value_type::ValueType},
 };
+use encoding::EncodingKeyspace::Schema;
 use encoding::graph::type_::edge::TypeEdgeEncoding;
 use lending_iterator::LendingIterator;
 use storage::{key_range::KeyRange, snapshot::ReadableSnapshot};
@@ -134,6 +135,7 @@ impl OperationTimeValidation {
         let entity_clash = TypeReader::get_labelled_type::<EntityType<'static>>(snapshot, &new_label)
             .map_err(SchemaValidationError::ConceptRead)?
             .is_some();
+        // TODO: Check struct clash?
 
         if attribute_clash || relation_clash || entity_clash {
             Err(SchemaValidationError::LabelUniqueness(new_label.clone()))
@@ -175,6 +177,22 @@ impl OperationTimeValidation {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn validate_struct_name_uniqueness<'a, Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        name: &String,
+    ) -> Result<(), SchemaValidationError> {
+        let struct_clash = TypeReader::get_struct_definition_key(snapshot, name.as_str())
+            .map_err(SchemaValidationError::ConceptRead)?
+            .is_some();
+        // TODO: Check other types clash?
+
+        if struct_clash {
+            Err(SchemaValidationError::NameUniqueness(name.clone()))
+        } else {
+            Ok(())
+        }
     }
 
     pub(crate) fn validate_value_types_compatible(
@@ -675,6 +693,74 @@ impl OperationTimeValidation {
             Some(Ok(_)) => Err(SchemaValidationError::DeletingTypeWithInstances(get_label!(snapshot, attribute_type))),
             Some(Err(err)) => Err(SchemaValidationError::ConceptRead(err.clone())),
         }
+    }
+
+    pub(crate) fn validate_value_type_compatible_with_existing_value_type<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+        value_type: ValueType,
+        existing_value_type_with_source: Option<(ValueType, AttributeType<'static>)>,
+    ) -> Result<(), SchemaValidationError> {
+        if let Some((existing_value_type, existing_value_type_source)) = existing_value_type_with_source {
+            return if existing_value_type == value_type {
+                Ok(())
+            } else {
+                Err(SchemaValidationError::ValueTypeNotCompatibleWithExitingValueTypeOf(
+                    get_label!(snapshot, attribute_type),
+                    get_label!(snapshot, existing_value_type_source),
+                    existing_value_type,
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_value_type_compatible_with_subtypes_value_types<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+        value_type: ValueType,
+    ) -> Result<(), SchemaValidationError> {
+        let subtypes = TypeReader::get_subtypes_transitive(snapshot, attribute_type.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for subtype in subtypes {
+            let subtype_value_type_opt = TypeReader::get_value_type_declared(snapshot, subtype.clone())
+                .map_err(SchemaValidationError::ConceptRead)?;
+            if let Some(subtype_value_type) = subtype_value_type_opt {
+                if subtype_value_type != value_type {
+                    let subtype = subtype.clone();
+                    return Err(SchemaValidationError::ValueTypeNotCompatibleWithSubtypesValueType(
+                        get_label!(snapshot, attribute_type),
+                        get_label!(snapshot, subtype),
+                        subtype_value_type,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_no_non_abstract_subtypes_without_value_type<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+    ) -> Result<(), SchemaValidationError> {
+        let subtypes = TypeReader::get_subtypes_transitive(snapshot, attribute_type.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        for subtype in subtypes {
+            let no_value_type = TypeReader::get_value_type_declared(snapshot, subtype.clone())
+                .map_err(SchemaValidationError::ConceptRead)?
+                .is_none();
+
+            if no_value_type
+                && !Self::type_has_declared_annotation_category(snapshot, subtype.clone(), AnnotationCategory::Abstract)? {
+                    let subtype = subtype.clone();
+                    return Err(SchemaValidationError::NonAbstractSubtypeWithoutValueTypeExists(
+                        get_label!(snapshot, attribute_type),
+                        get_label!(snapshot, subtype),
+                    ));
+                }
+            }
+        Ok(())
     }
 
     pub(crate) fn validate_exact_type_no_instances_role<Snapshot: ReadableSnapshot>(

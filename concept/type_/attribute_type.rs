@@ -120,7 +120,10 @@ impl<'a> AttributeType<'a> {
         snapshot: &Snapshot,
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<Option<ValueType>, ConceptReadError> {
-        type_manager.get_attribute_type_value_type(snapshot, self.clone().into_owned())
+        type_manager
+            .get_attribute_type_value_type(snapshot, self.clone().into_owned())
+            .map(|value_type_opt| value_type_opt
+                .map(|(value_type, source)| value_type))
     }
 
     pub fn set_value_type<Snapshot: WritableSnapshot>(

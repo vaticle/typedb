@@ -60,7 +60,7 @@ pub(crate) struct RoleTypeCache {
 #[derive(Debug)]
 pub(crate) struct AttributeTypeCache {
     pub(super) common_type_cache: CommonTypeCache<AttributeType<'static>>,
-    pub(super) value_type: Option<ValueType>,
+    pub(super) value_type: Option<(ValueType, AttributeType<'static>)>,
     pub(super) owns_declared: HashSet<Owns<'static>>,
     pub(super) owns: HashMap<ObjectType<'static>, Owns<'static>>,
 }
