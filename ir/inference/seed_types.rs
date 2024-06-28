@@ -120,27 +120,29 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                         }
                     }
                     for (variable, types) in nested_unary.into_iter() {
+                        println!("{:?} -> {:?}", variable, types);
                         Self::intersect_unary(&mut unary_annotations, variable, types);
                     }
                 }
-                Pattern::Negation(negation) => {
-                    // Only for those local to the negation
-                    let nested_unary = self.seed_types_for_unary_constraints(&negation.conjunction.constraints().constraints, &negation.conjunction.patterns().patterns);
-                    for (variable, types) in nested_unary.into_iter() {
-                        if !unary_annotations.contains_key(&variable) {
-                            unary_annotations.insert(variable, types);
-                        }
-                    }
-                },
-                Pattern::Optional(opt) => {
-                    // Only for those local to the optional
-                    let nested_unary = self.seed_types_for_unary_constraints(&opt.conjunction.constraints().constraints, &opt.conjunction.patterns().patterns);
-                    for (variable, types) in nested_unary.into_iter() {
-                        if !unary_annotations.contains_key(&variable) {
-                            unary_annotations.insert(variable, types);
-                        }
-                    }
-                },
+                Pattern::Negation(_) | Pattern::Optional(_) => {} // Do nothing.
+                // Pattern::Negation(negation) => {
+                //     // Only for those local to the negation
+                //     let nested_unary = self.seed_types_for_unary_constraints(&negation.conjunction.constraints().constraints, &negation.conjunction.patterns().patterns);
+                //     for (variable, types) in nested_unary.into_iter() {
+                //         if !unary_annotations.contains_key(&variable) {
+                //             unary_annotations.insert(variable, types);
+                //         }
+                //     }
+                // },
+                // Pattern::Optional(opt) => {
+                //     // Only for those local to the optional
+                //     let nested_unary = self.seed_types_for_unary_constraints(&opt.conjunction.constraints().constraints, &opt.conjunction.patterns().patterns);
+                //     for (variable, types) in nested_unary.into_iter() {
+                //         if !unary_annotations.contains_key(&variable) {
+                //             unary_annotations.insert(variable, types);
+                //         }
+                //     }
+                // },
             }
         }
 
@@ -169,6 +171,8 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
 
         if !from_vec.is_empty() {
+            println!("{:?}", unary_annotations);
+            println!("{:?}", from_vec);
             todo!("This is rare. Just fill in the remaining variables with all the types")
         }
 
