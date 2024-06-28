@@ -213,7 +213,7 @@ impl TypeReader {
         implementation: IMPL,
     ) -> Result<Option<IMPL>, ConceptReadError>
     where
-        IMPL: TypeEdgeEncoding<'static> + Hash + Eq,
+        IMPL: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Hash + Eq,
     {
         let override_property_key = EdgeOverride::<IMPL>::build_key(implementation);
         snapshot
@@ -420,7 +420,7 @@ impl TypeReader {
         edge: EDGE,
     ) -> Result<HashSet<Annotation>, ConceptReadError>
     where
-        EDGE: TypeEdgeEncoding<'b> + InterfaceImplementation<'b>,
+        EDGE: InterfaceImplementation<'b>,
     {
         let type_edge = edge.to_canonical_type_edge();
         snapshot
@@ -462,7 +462,7 @@ impl TypeReader {
         edge: EDGE,
     ) -> Result<HashMap<Annotation, EDGE>, ConceptReadError>
     where
-        EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static>,
+        EDGE: InterfaceImplementation<'static>,
     {
         let mut annotations: HashMap<Annotation, EDGE> = HashMap::new();
         let mut edge_opt = Some(edge);

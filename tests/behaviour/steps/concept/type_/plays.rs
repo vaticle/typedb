@@ -156,6 +156,24 @@ pub async fn get_plays_set_override(
 }
 
 #[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get plays\\({type_label}\\) unset override{may_error}")]
+pub async fn get_plays_unset_override(
+    context: &mut Context,
+    root_label: RootLabel,
+    type_label: Label,
+    role_label: Label,
+    may_error: MayError,
+) {
+    let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_schema_tx!(context, |tx| {
+        let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
+        let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
+        let res = plays.unset_override(&mut tx.snapshot, &tx.type_manager);
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get plays overridden\\({type_label}\\) {exists_or_doesnt}")]
 pub async fn get_plays_overridden_exists(
     context: &mut Context,

@@ -80,3 +80,11 @@ where
         }
     }
 }
+
+pub(crate) fn is_cardinality_narrowed_correctly(
+    supertype_annotation: &AnnotationCardinality,
+    subtype_annotation: &AnnotationCardinality,
+) -> bool
+{
+    supertype_annotation.narrowed_correctly_by(subtype_annotation)
+}

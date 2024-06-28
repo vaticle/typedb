@@ -15,7 +15,7 @@ use storage::snapshot::ReadableSnapshot;
 use crate::{
     error::ConceptReadError,
     type_::{
-        annotation::AnnotationCategory,
+        annotation::{AnnotationCategory, AnnotationCardinality},
         attribute_type::AttributeType,
         object_type::ObjectType,
         role_type::RoleType,
@@ -46,7 +46,7 @@ pub enum SchemaValidationError {
     TypeIsNotAbstract(Label<'static>),
     NonAbstractSupertypeOfAbstractSubtype(Label<'static>, Label<'static>),
     OwnsAbstractType(Label<'static>),
-    TypeOrderingIsIncompatible(Ordering, Ordering),
+    OrderingDoesNotMatchWithSupertype(Label<'static>, Label<'static>),
     InvalidOrderingForDistinctAnnotation(Label<'static>),
     AbsentValueType,
     IncompatibleValueType(Option<ValueType>),
@@ -54,6 +54,7 @@ pub enum SchemaValidationError {
     DeletingTypeWithSubtypes(Label<'static>),
     DeletingTypeWithInstances(Label<'static>),
     InvalidCardinalityArguments(u64, Option<u64>),
+    CardinalityShouldNarrowInheritedCardinality(AnnotationCardinality),
     CannotUnsetInheritedAnnotation(AnnotationCategory, Label<'static>),
     CannotUnsetInheritedEdgeAnnotation(AnnotationCategory),
     UnsupportedAnnotationForType(AnnotationCategory), // TODO: Also works for owns, relates and plays, consider renaming... How to pass the type as well? Considering edges!
@@ -78,7 +79,7 @@ impl Error for SchemaValidationError {
             Self::PlaysNotInherited(_, _) => None,
             Self::OverriddenTypeNotSupertype(_, _) => None,
             Self::PlaysNotDeclared(_, _) => None,
-            Self::TypeOrderingIsIncompatible(_, _) => None,
+            Self::OrderingDoesNotMatchWithSupertype(_, _) => None,
             Self::InvalidOrderingForDistinctAnnotation(_) => None,
             Self::AnnotationCanOnlyBeSetOnAttributeOrOwns(_, _) => None,
             Self::TypeDoesNotHaveAnnotation(_) => None,
@@ -92,6 +93,7 @@ impl Error for SchemaValidationError {
             Self::DeletingTypeWithSubtypes(_) => None,
             Self::DeletingTypeWithInstances(_) => None,
             Self::InvalidCardinalityArguments(_, _) => None,
+            Self::CardinalityShouldNarrowInheritedCardinality(_) => None,
             Self::CannotUnsetInheritedAnnotation(_, _) => None,
             Self::CannotUnsetInheritedEdgeAnnotation(_) => None,
             Self::UnsupportedAnnotationForType(_) => None,

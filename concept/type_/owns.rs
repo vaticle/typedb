@@ -108,8 +108,15 @@ impl<'a> Owns<'a> {
         type_manager: &TypeManager<Snapshot>,
         overridden: Owns<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: Validation
         type_manager.set_owns_overridden(snapshot, self.clone().into_owned(), overridden)
+    }
+
+    pub fn unset_override<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.unset_owns_overridden(snapshot, self.clone().into_owned())
     }
 
     pub fn get_annotations_declared<'this, Snapshot: ReadableSnapshot>(
@@ -135,10 +142,10 @@ impl<'a> Owns<'a> {
         annotation: OwnsAnnotation,
     ) -> Result<(), ConceptWriteError> {
         match annotation {
-            OwnsAnnotation::Distinct(_) => type_manager.set_owns_annotation_distinct(snapshot, self.clone())?,
+            OwnsAnnotation::Distinct(_) => type_manager.set_owns_annotation_distinct(snapshot, self.clone().into_owned())?,
             OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone())?,
             OwnsAnnotation::Cardinality(cardinality) => {
-                type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)?
+                type_manager.set_edge_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)?
             }
             OwnsAnnotation::Unique(_) => type_manager.set_edge_annotation_unique(snapshot, self.clone())?,
             OwnsAnnotation::Regex(regex) => type_manager.set_edge_annotation_regex(snapshot, self.clone(), regex)?,
@@ -170,7 +177,7 @@ impl<'a> Owns<'a> {
         type_manager: &TypeManager<Snapshot>,
         ordering: Ordering,
     ) -> Result<(), ConceptWriteError> {
-        type_manager.set_owns_ordering(snapshot, self.clone(), ordering)
+        type_manager.set_owns_ordering(snapshot, self.clone().into_owned(), ordering)
     }
 
     pub fn get_ordering<Snapshot: ReadableSnapshot>(

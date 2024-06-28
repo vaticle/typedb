@@ -88,6 +88,25 @@ pub async fn relation_role_set_override(
 }
 
 #[apply(generic_step)]
+#[step(expr = r"relation\({type_label}\) get role\({type_label}\) unset override{may_error}")]
+pub async fn relation_role_unset_override(
+    context: &mut Context,
+    type_label: Label,
+    role_label: Label,
+    may_error: MayError,
+) {
+    with_schema_tx!(context, |tx| {
+        let relation_type = tx.type_manager.get_relation_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        let relates = relation_type
+            .get_relates_of_role(&tx.snapshot, &tx.type_manager, role_label.into_typedb().name().as_str())
+            .unwrap()
+            .unwrap();
+        let res = relates.unset_override(&mut tx.snapshot, &tx.type_manager);
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = r"relation\({type_label}\) get roles {contains_or_doesnt}:")]
 pub async fn relation_roles_contain(
     context: &mut Context,

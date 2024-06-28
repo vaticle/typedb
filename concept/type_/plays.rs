@@ -54,8 +54,15 @@ impl<'a> Plays<'a> {
         type_manager: &TypeManager<Snapshot>,
         overridden: Plays<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: Validation
         type_manager.set_plays_overridden(snapshot, self.clone().into_owned(), overridden)
+    }
+
+    pub fn unset_override<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.unset_plays_overridden(snapshot, self.clone().into_owned())
     }
 
     pub fn get_annotations_declared<'this, Snapshot: ReadableSnapshot>(
@@ -82,7 +89,7 @@ impl<'a> Plays<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             PlaysAnnotation::Cardinality(cardinality) => {
-                type_manager.set_edge_annotation_cardinality(snapshot, self.clone(), cardinality)?
+                type_manager.set_edge_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)?
             }
         }
         Ok(()) // TODO

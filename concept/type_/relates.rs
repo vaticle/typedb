@@ -48,6 +48,14 @@ impl<'a> Relates<'a> {
         type_manager.set_relates_overridden(snapshot, self.clone().into_owned(), overridden)
     }
 
+    pub fn unset_override<Snapshot: WritableSnapshot>(
+        &self,
+        snapshot: &mut Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.unset_relates_overridden(snapshot, self.clone().into_owned())
+    }
+
     pub fn get_cardinality<Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,

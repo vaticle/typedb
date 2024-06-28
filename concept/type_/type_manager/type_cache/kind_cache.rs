@@ -82,6 +82,7 @@ pub(crate) struct PlaysCache {
 
 #[derive(Debug)]
 pub(crate) struct RelatesCache {
+    pub(super) overrides: Option<Relates<'static>>,
     pub(super) annotations_declared: HashSet<RelatesAnnotation>,
     pub(super) annotations: HashMap<RelatesAnnotation, Relates<'static>>,
 }
@@ -283,6 +284,7 @@ impl RelatesCache {
             let role = RoleType::new(edge.to().into_owned());
             let relates = Relates::new(relation, role);
             let cache = RelatesCache {
+                overrides: TypeReader::get_implementation_override(snapshot, relates.clone()).unwrap(),
                 annotations_declared: TypeReader::get_type_edge_annotations_declared(snapshot, relates.clone())
                     .unwrap()
                     .into_iter()

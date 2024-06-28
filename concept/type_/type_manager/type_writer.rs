@@ -215,10 +215,6 @@ impl<Snapshot: WritableSnapshot> TypeWriter<Snapshot> {
         Self::storage_put_type_edge_property(snapshot, owns, Some(ordering))
     }
 
-    pub(crate) fn storage_delete_owns_ordering(snapshot: &mut Snapshot, owns: Owns<'_>) {
-        Self::storage_delete_type_edge_property::<Ordering>(snapshot, owns)
-    }
-
     pub(crate) fn storage_insert_type_edge_property<'a, P>(
         snapshot: &mut Snapshot,
         edge: impl TypeEdgeEncoding<'a>,

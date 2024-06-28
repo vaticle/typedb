@@ -79,6 +79,19 @@ impl AnnotationCardinality {
     pub fn end(&self) -> Option<u64> {
         self.end_inclusive
     }
+
+    pub fn narrowed_correctly_by(&self, other: &Self) -> bool {
+        self.start_narrowed_correctly_by(other.start())
+            && self.end_narrowed_correctly_by(other.end())
+    }
+
+    fn start_narrowed_correctly_by(&self, other_start_inclusive: u64) -> bool {
+        self.start_inclusive <= other_start_inclusive
+    }
+
+    fn end_narrowed_correctly_by(&self, other_end_inclusive: Option<u64>) -> bool {
+        self.end_inclusive.unwrap_or(u64::MAX) >= other_end_inclusive.unwrap_or(u64::MAX)
+    }
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]

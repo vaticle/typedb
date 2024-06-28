@@ -182,6 +182,7 @@ impl TypeCache {
     {
         &T::get_cache(self, type_).common_type_cache().supertypes
     }
+
     pub(crate) fn get_subtypes<'a, 'this, T, CACHE>(&'this self, type_: T) -> &'this Vec<T::SelfStatic>
     where
         T: KindAPI<'a> + CacheGetter<CacheType = CACHE>,
@@ -303,6 +304,13 @@ impl TypeCache {
         relates: Relates<'c>,
     ) -> &'c HashMap<RelatesAnnotation, Relates<'static>> {
         &self.relates.get(&relates).unwrap().annotations
+    }
+
+    pub(crate) fn get_relates_override<'c>(
+        &'c self,
+        relates: Relates<'c>
+    ) -> &'c Option<Relates<'static>> {
+        &self.relates.get(&relates).unwrap().overrides
     }
 
     pub(crate) fn get_plays_for_role_type_declared<'a>(&self, role_type: RoleType<'a>) -> &HashSet<Plays<'static>> {
