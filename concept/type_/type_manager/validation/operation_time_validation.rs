@@ -41,6 +41,7 @@ use crate::{
         Ordering,
     },
 };
+use crate::error::ConceptWriteError;
 use crate::type_::InterfaceImplementation;
 
 macro_rules! object_type_match {
@@ -195,28 +196,61 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_value_types_compatible(
-        subtype_value_type: Option<ValueType>,
-        supertype_value_type: Option<ValueType>,
+    pub(crate) fn validate_value_types_compatible<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        subtype: AttributeType<'static>,
+        supertype: AttributeType<'static>,
     ) -> Result<(), SchemaValidationError> {
-        let is_compatible = match (&subtype_value_type, &supertype_value_type) {
-            (None, None) | (None, Some(_)) | (Some(_), None) => true,
-            (Some(sub), Some(sup)) => sup == sub,
-        };
 
-        if is_compatible {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::IncompatibleValueTypes(subtype_value_type, supertype_value_type))
+        let subtype_declared_value_type = TypeReader::get_value_type_declared(snapshot, subtype.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        let subtype_transitive_value_type = TypeReader::get_value_type_without_source(snapshot, subtype.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        let supertype_value_type = TypeReader::get_value_type_without_source(snapshot, supertype.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        match (&subtype_declared_value_type, &subtype_transitive_value_type, &supertype_value_type) {
+            (None, None, None) => Ok(()),
+            (None, None, Some(_)) => Ok(()),
+            (None, Some(_), None) => {
+                Self::validate_when_attribute_type_loses_value_type(snapshot, subtype, subtype_declared_value_type)
+            },
+            (Some(_), None, None) => Ok(()),
+            (Some(_), Some(_), None) => Ok(()),
+            | (None, Some(old_value_type), Some(new_value_type))
+            | (Some(old_value_type), None, Some(new_value_type))
+            | (Some(old_value_type), Some(_), Some(new_value_type)) => {
+                if old_value_type == new_value_type {
+                    Ok(())
+                } else {
+                    Err(SchemaValidationError::CannotChangeValueTypeOfAttributeType(
+                        get_label!(snapshot, subtype), subtype_declared_value_type))
+                }
+            },
         }
     }
 
-    pub(crate) fn validate_value_type_exists(
+    pub(crate) fn validate_value_type_compatible_with_abstractness<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
         value_type: Option<ValueType>,
+        abstract_set: Option<bool>,
     ) -> Result<(), SchemaValidationError> {
+        let is_abstract = abstract_set.unwrap_or(
+            Self::type_has_annotation_category(snapshot, attribute_type.clone(), AnnotationCategory::Abstract)?
+        );
+
         match &value_type {
             Some(_) => Ok(()),
-            None => Err(SchemaValidationError::AbsentValueType) // TODO: Put label here!!
+            None => {
+                if is_abstract {
+                    Ok(())
+                } else {
+                    Err(SchemaValidationError::AttributeTypeWithoutValueTypeShouldBeAbstract(
+                        get_label!(snapshot, attribute_type)
+                    ))
+                }
+            }
         }
     }
 
@@ -738,6 +772,22 @@ impl OperationTimeValidation {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn validate_when_attribute_type_loses_value_type<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+        value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError> {
+        match value_type {
+            Some(_) => {
+                Self::validate_value_type_compatible_with_abstractness(snapshot, attribute_type.clone(), None, None)?;
+                Self::validate_no_non_abstract_subtypes_without_value_type(snapshot, attribute_type)
+                // TODO: Re-enable when we get the thing_manager
+                // OperationTimeValidation::validate_exact_type_no_instances_attribute(snapshot, self, attribute.clone())
+            }
+            None => Ok(())
+        }
     }
 
     pub(crate) fn validate_no_non_abstract_subtypes_without_value_type<Snapshot: ReadableSnapshot>(

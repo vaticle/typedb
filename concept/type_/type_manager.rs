@@ -1287,18 +1287,14 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         let current_value_type = TypeReader::get_value_type_without_source(snapshot, attribute.clone())
             .map_err(|source| ConceptWriteError::ConceptRead { source })?;
 
-        match current_value_type {
-            Some(_) => {
-                OperationTimeValidation::validate_no_non_abstract_subtypes_without_value_type(snapshot, attribute.clone())
-                    .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
-                // TODO: Re-enable when we get the thing_manager
-                // OperationTimeValidation::validate_exact_type_no_instances_attribute(snapshot, self, attribute.clone())
-                //     .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
+        if current_value_type.is_none() {
+            Ok(())
+        } else {
+            OperationTimeValidation::validate_when_attribute_type_loses_value_type(snapshot, attribute.clone(), current_value_type)
+                .map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
 
-                TypeWriter::storage_unset_value_type(snapshot, attribute);
-                Ok(())
-            }
-            None => Ok(())
+            TypeWriter::storage_unset_value_type(snapshot, attribute);
+            Ok(())
         }
     }
 
@@ -1329,10 +1325,11 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         supertype: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_value_types_compatible(
-            TypeReader::get_value_type_without_source(snapshot, subtype.clone())?,
-            TypeReader::get_value_type_without_source(snapshot, supertype.clone())?,
-        )
-            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+            snapshot,
+            subtype.clone(),
+            supertype.clone(),
+        ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         OperationTimeValidation::validate_type_is_abstract(snapshot, supertype.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
@@ -1544,8 +1541,11 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_no_subtypes(snapshot, type_.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
-        OperationTimeValidation::validate_value_type_exists(
+        OperationTimeValidation::validate_value_type_compatible_with_abstractness(
+            snapshot,
+            type_.clone(),
             TypeReader::get_value_type_without_source(snapshot, type_.clone())?,
+            Some(false),
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         Self::unset_annotation_abstract(self, snapshot, type_)
