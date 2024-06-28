@@ -1577,10 +1577,13 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         regex: AnnotationRegex,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_annotation_regex_compatible_value_type(
+            snapshot,
+            type_.clone(),
             TypeReader::get_value_type_without_source(snapshot, type_.clone())?
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         // TODO: Validate that regex value is correct
         // TODO: Verify that there is no regex on owns
+        // TODO: Verify that there is no regex on supertypes or subtypes
 
         TypeWriter::storage_insert_type_vertex_property::<AnnotationRegex>(snapshot, type_, Some(regex));
         Ok(())
@@ -1752,14 +1755,16 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         regex: AnnotationRegex,
     ) -> Result<(), ConceptWriteError> {
         OperationTimeValidation::validate_annotation_regex_compatible_value_type(
+            snapshot,
+            owns.attribute(),
             TypeReader::get_value_type_without_source(snapshot, owns.attribute().clone())?
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         OperationTimeValidation::validate_owns_attribute_type_does_not_have_annotation_category_when_setting_owns_annotation(
             snapshot, owns.clone(), AnnotationCategory::Regex,
         ).map_err(|source| ConceptWriteError::SchemaValidation { source })?;
-        // TODO: Verify that there is no regex on subtype (owns that overrides us)
-        // TODO: Verify that there is no regex on supertype (owns that we override)
+        // TODO: Validate that regex value is correct
+        // TODO: Verify that there is no regex on supertypes or subtypes
 
         TypeWriter::storage_put_type_edge_property::<AnnotationRegex>(snapshot, owns, Some(regex));
         Ok(())
