@@ -4,13 +4,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use answer::variable::Variable;
 use crate::{
     inference::type_inference::VertexConstraints,
 };
 use crate::inference::type_inference::TypeAnnotation;
+use crate::pattern::conjunction::Conjunction;
+use crate::pattern::constraint::Constraint;
 
 // TODO: Resolve questions in the comment below & delete
 /*
@@ -21,14 +23,15 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
     determined from the declared types, or by doing type-inference on it in isolation.
 */
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeInferenceGraph {
+#[derive(Debug)]
+pub(crate) struct TypeInferenceGraph<'this> {
+    pub(crate) conjunction: &'this Conjunction,
     pub(crate) vertices: VertexConstraints,
-    pub(crate) edges: Vec<TypeInferenceEdge>,
-    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraph>,
+    pub(crate) edges: Vec<TypeInferenceEdge<'this>>,
+    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraph<'this>>,
 }
 
-impl TypeInferenceGraph {
+impl<'this> TypeInferenceGraph<'this> {
     fn run_type_inference(&mut self) {
         let mut is_modified = self.prune_vertices_from_constraints(); // We may need this as pre-condition
         while is_modified {
@@ -58,22 +61,24 @@ impl TypeInferenceGraph {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeInferenceEdge {
+#[derive(Debug)]
+pub(crate) struct TypeInferenceEdge<'this> {
+    constraint: &'this Constraint<Variable>,
     left: Variable,
     right: Variable,
     left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
     right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
 }
 
-impl TypeInferenceEdge {
+impl<'this> TypeInferenceEdge<'this> {
     // Construction
     pub(crate) fn new(
+        constraint: &'this Constraint<Variable>,
         left: Variable,
         right: Variable,
         initial_left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
         initial_right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
-    ) -> TypeInferenceEdge {
+    ) -> TypeInferenceEdge<'this> {
         // The final left_to_right & right_to_left sets must be consistent with each other. i.e.
         //      left_to_right.keys() == union(right_to_left.values()) AND
         //      right_to_left.keys() == union(left_to_right.values())
@@ -84,7 +89,7 @@ impl TypeInferenceEdge {
         let right_types = Self::intersect_first_keys_with_union_of_second_values(&right_to_left, &left_to_right);
         Self::prune_keys_not_in_first_and_values_not_in_second(&mut left_to_right, &left_types, &right_types);
         Self::prune_keys_not_in_first_and_values_not_in_second(&mut right_to_left, &right_types, &left_types);
-        TypeInferenceEdge { left, right, left_to_right, right_to_left }
+        TypeInferenceEdge { constraint, left, right, left_to_right, right_to_left }
     }
 
     fn intersect_first_keys_with_union_of_second_values(
@@ -109,7 +114,7 @@ impl TypeInferenceEdge {
 
     // Updates
     fn remove_type(&mut self, from_variable: Variable, type_: TypeAnnotation) {
-        let TypeInferenceEdge { left, right, left_to_right, right_to_left } = self;
+        let TypeInferenceEdge { constraint, left, right, left_to_right, right_to_left } = self;
         if &from_variable == left {
             Self::remove_type_from(&type_, left_to_right, right_to_left);
         } else if &from_variable == right {
@@ -186,12 +191,12 @@ impl TypeInferenceEdge {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NestedTypeInferenceGraph {
-    nested_graph_disjunction: Vec<TypeInferenceGraph>,
+#[derive(Debug)]
+pub(crate) struct NestedTypeInferenceGraph<'this> {
+    nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
 }
 
-impl NestedTypeInferenceGraph {
+impl<'this> NestedTypeInferenceGraph<'this> {
     fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints) {
         for nested_graph in &mut self.nested_graph_disjunction {
             for (vertex, vertex_types) in &mut nested_graph.vertices {
@@ -222,8 +227,10 @@ impl NestedTypeInferenceGraph {
     }
 }
 
+
 #[cfg(test)]
 pub mod tests {
+
     use std::collections::{BTreeMap, BTreeSet};
     use std::sync::{Arc, Mutex};
     use itertools::Itertools;
@@ -249,13 +256,9 @@ pub mod tests {
         inference::pattern_type_inference::{NestedTypeInferenceGraph, TypeInferenceEdge, TypeInferenceGraph},
     };
     use crate::inference::seed_types::{seed_types, TypeSeeder};
-    use crate::inference::type_inference::tests::tests__new_type;
     use crate::inference::type_inference::TypeAnnotation;
     use crate::inference::type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity};
     use crate::pattern::conjunction::Conjunction;
-    use crate::pattern::constraint::{Constraint, Has, Isa, Type};
-    use crate::pattern::context::PatternContext;
-    use crate::pattern::ScopeId;
 
     const LABEL_ANIMAL: &str = "animal";
     const LABEL_CAT: &str = "cat";
@@ -349,10 +352,6 @@ pub mod tests {
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
         let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
 
-        let var_animal = Variable::new(0);
-        let var_name = Variable::new(1);
-        let var_animal_type = Variable::new(2);
-        let var_name_type = Variable::new(3);
 
         {
             // Case 1: $a isa cat, has animal-name $n;
@@ -361,11 +360,13 @@ pub mod tests {
             let (var_animal, var_name, var_animal_type, var_name_type) = ["animal", "name", "animal_type", "name_type"]
                 .iter().map(|name| conjunction.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
 
-            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
-            conjunction.constraints_mut().add_type(var_animal_type, LABEL_CAT);
-            conjunction.constraints_mut().add_isa(var_name, var_name_type);
-            conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME);
-            conjunction.constraints_mut().add_has(var_animal, var_name);
+            conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
+            conjunction.constraints_mut().add_type(var_animal_type, LABEL_CAT).unwrap();
+            conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+            conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME).unwrap();
+            conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+            let constraint_has = conjunction.constraints().constraints.last().unwrap();
+            
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
@@ -396,11 +397,12 @@ pub mod tests {
             let (var_animal, var_name, var_animal_type, var_name_type) = ["animal", "name", "animal_type", "name_type"]
                 .iter().map(|name| conjunction.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
 
-            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
-            conjunction.constraints_mut().add_type(var_animal_type, LABEL_ANIMAL);
-            conjunction.constraints_mut().add_isa(var_name, var_name_type);
-            conjunction.constraints_mut().add_type(var_name_type, LABEL_CATNAME);
-            conjunction.constraints_mut().add_has(var_animal, var_name);
+            conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
+            conjunction.constraints_mut().add_type(var_animal_type, LABEL_ANIMAL).unwrap();
+            conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+            conjunction.constraints_mut().add_type(var_name_type, LABEL_CATNAME).unwrap();
+            conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+            let constraint_has = conjunction.constraints().constraints.last().unwrap();
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
@@ -413,12 +415,7 @@ pub mod tests {
                     (var_animal_type, BTreeSet::from([type_animal.clone()])),
                     (var_name_type, BTreeSet::from([type_catname.clone()])),
                 ]),
-                edges: vec![TypeInferenceEdge::new(
-                    var_animal,
-                    var_name,
-                    expected_left_to_right,
-                    expected_right_to_left,
-                )],
+                edges: vec![TypeInferenceEdge::new(var_animal, var_name, expected_left_to_right, expected_right_to_left)],
                 nested_graphs: vec![],
             };
             assert_eq!(expected_tig, tig);
@@ -431,11 +428,13 @@ pub mod tests {
             let (var_animal, var_name, var_animal_type, var_name_type) = ["animal", "name", "animal_type", "name_type"]
                 .iter().map(|name| conjunction.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
 
-            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
-            conjunction.constraints_mut().add_type(var_animal_type, LABEL_CAT);
-            conjunction.constraints_mut().add_isa(var_name, var_name_type);
-            conjunction.constraints_mut().add_type(var_name_type, LABEL_DOGNAME);
-            conjunction.constraints_mut().add_has(var_animal, var_name);
+            conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
+            conjunction.constraints_mut().add_type(var_animal_type, LABEL_CAT).unwrap();
+            conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+            conjunction.constraints_mut().add_type(var_name_type, LABEL_DOGNAME).unwrap();
+            conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+
+            let constraint_has = conjunction.constraints().constraints.last().unwrap();
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
@@ -460,13 +459,21 @@ pub mod tests {
             let (var_animal, var_name, var_animal_type, var_name_type) = ["animal", "name", "animal_type", "name_type"]
                 .iter().map(|name| conjunction.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
 
-            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
-            conjunction.constraints_mut().add_type(var_animal_type, LABEL_ANIMAL);
-            conjunction.constraints_mut().add_isa(var_name, var_name_type);
-            conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME);
-            conjunction.constraints_mut().add_has(var_animal, var_name);
+            conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
+            conjunction.constraints_mut().add_type(var_animal_type, LABEL_ANIMAL).unwrap();
+            conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+            conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME).unwrap();
+            conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+            let constraint_has = conjunction.constraints().constraints.last().unwrap();
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
+
+            let expected_vertices = BTreeMap::from([
+                (var_animal, types_a),
+                (var_name, types_n),
+                (var_animal_type, BTreeSet::from([type_animal.clone()])),
+                (var_name_type, BTreeSet::from([type_name.clone()])),
+            ]);
 
             let expected_left_to_right = BTreeMap::from([
                 (type_animal.clone(), BTreeSet::from([type_name.clone()])),
@@ -506,41 +513,30 @@ pub mod tests {
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
         let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
 
+        let mut root_conj = Conjunction::new_root();
+        let (var_animal, var_name, var_name_type) = ["animal", "name", "name_type"]
+            .iter().map(|name| root_conj.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
         {
             // Case 1: {$a isa cat;} or {$a isa dog;} $a has animal-name $n;
-            let mut root_conj = Conjunction::new_root();
-            let (var_animal, var_name, var_name_type) = ["animal", "name", "name_type"]
-                .iter().map(|name| root_conj.get_or_declare_variable(*name).unwrap()).collect_tuple().unwrap();
+
             let disj = root_conj.patterns_mut().add_disjunction();
-            {
-                let mut branch1 = disj.add_conjunction();
-                let var_animal_type = branch1.get_or_declare_variable("b1_animal_type").unwrap();
-                branch1.constraints_mut().add_isa(var_animal, var_animal_type);
-                branch1.constraints_mut().add_type(var_animal_type, LABEL_CAT);
-            }
-            {
-                let mut branch2 = disj.add_conjunction();
-                let var_animal_type = branch2.get_or_declare_variable("b2_animal_type").unwrap();
-                branch2.constraints_mut().add_isa(var_animal, var_animal_type);
-                branch2.constraints_mut().add_type(var_animal_type, LABEL_DOG);
-            }
-            root_conj.constraints_mut().add_has(var_animal, var_name);
+            let mut branch1 = disj.add_conjunction();
+            let b1_var_animal_type = branch1.get_or_declare_variable("b1_animal_type").unwrap();
+            branch1.constraints_mut().add_isa(var_animal, b1_var_animal_type).unwrap();
+            branch1.constraints_mut().add_type(b1_var_animal_type, LABEL_CAT).unwrap();
+
+            let mut branch2 = disj.add_conjunction();
+            let b2_var_animal_type = branch2.get_or_declare_variable("b2_animal_type").unwrap();
+            branch2.constraints_mut().add_isa(var_animal, b2_var_animal_type).unwrap();
+            branch2.constraints_mut().add_type(b2_var_animal_type, LABEL_DOG).unwrap();
+            root_conj.constraints_mut().add_has(var_animal, var_name).unwrap();
+
 
 
             let snapshot = storage.clone().open_snapshot_write();
             let mut tig = seed_types(&root_conj, &snapshot, &type_manager);
             tig.run_type_inference();
 
-            let branch_1_graph = TypeInferenceGraph {
-                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()]))]),
-                edges: vec![],
-                nested_graphs: vec![],
-            };
-            let branch_2_graph = TypeInferenceGraph {
-                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_dog.clone()]))]),
-                edges: vec![],
-                nested_graphs: vec![],
-            };
             let expected_left_to_right = BTreeMap::from([
                 (type_cat.clone(), BTreeSet::from([type_catname.clone()])),
                 (type_dog.clone(), BTreeSet::from([type_dogname.clone()])),
@@ -549,19 +545,35 @@ pub mod tests {
                 (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
                 (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
             ]);
+
+            let mut expected_nested_graphs : Vec<TypeInferenceGraph> = Vec::new();
+            expected_nested_graphs.push(TypeInferenceGraph {
+                conjunction: &root_conj.patterns().patterns.get(0).unwrap().as_conjunction().unwrap(),
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()]))]),
+                edges: vec![],
+                nested_graphs: vec![],
+            });
+            expected_nested_graphs.push(TypeInferenceGraph {
+                conjunction: &root_conj.patterns().patterns.get(0).unwrap().as_conjunction().unwrap(),
+                vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_dog.clone()]))]),
+                edges: vec![],
+                nested_graphs: vec![],
+            });
             let expected_graph = TypeInferenceGraph {
+                conjunction: &root_conj,
                 vertices: BTreeMap::from([
                     (var_animal, BTreeSet::from([type_cat.clone(), type_dog.clone()])),
                     (var_name, BTreeSet::from([type_catname.clone(), type_dogname.clone()])),
                 ]),
                 edges: vec![TypeInferenceEdge::new(
+                    &root_conj.constraints().constraints.last().unwrap(),
                     var_animal,
                     var_name,
                     expected_left_to_right,
                     expected_right_to_left,
                 )],
                 nested_graphs: vec![NestedTypeInferenceGraph {
-                    nested_graph_disjunction: vec![branch_1_graph.clone(), branch_2_graph.clone()],
+                    nested_graph_disjunction: expected_nested_graphs,
                 }],
             };
             assert_eq!(expected_graph, tig);

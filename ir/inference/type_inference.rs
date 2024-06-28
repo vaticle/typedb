@@ -22,6 +22,7 @@ use crate::{
     },
     program::{program::Program, FunctionalBlock},
 };
+use crate::inference::pattern_type_inference::TypeInferenceGraph;
 
 /*
 Design:
@@ -54,29 +55,3 @@ pub fn infer_types(program: &Program) {
     todo!()
 }
 
-
-#[cfg(test)]
-pub mod tests {
-    use bytes::byte_array::ByteArray;
-    use bytes::Bytes;
-    use concept::type_::attribute_type::AttributeType;
-    use concept::type_::entity_type::EntityType;
-    use concept::type_::relation_type::RelationType;
-    use concept::type_::role_type::RoleType;
-    use concept::type_::TypeAPI;
-    use encoding::graph::type_::Kind;
-    use encoding::graph::type_::vertex::{TypeIDUInt, TypeVertex};
-    use encoding::layout::prefix::Prefix;
-    use crate::inference::type_inference::TypeAnnotation;
-    use crate::inference::type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity, SchemaTypeRelation, SchemaTypeRole};
-
-    pub(crate) fn tests__new_type(kind: Kind, type_name: TypeIDUInt) -> TypeAnnotation {
-        let bytes = type_name.to_be_bytes();
-        match kind {
-            Kind::Entity => SchemaTypeEntity(EntityType::new(TypeVertex::new(Bytes::Array(ByteArray::copy_concat([&Prefix::VertexEntityType.prefix_id().bytes(), &bytes]))))),
-            Kind::Attribute => SchemaTypeAttribute(AttributeType::new(TypeVertex::new(Bytes::Array(ByteArray::copy_concat([&Prefix::VertexAttributeType.prefix_id().bytes(), &bytes]))))),
-            Kind::Relation => SchemaTypeRelation(RelationType::new(TypeVertex::new(Bytes::Array(ByteArray::copy_concat([&Prefix::VertexRelationType.prefix_id().bytes(), &bytes]))))),
-            Kind::Role => SchemaTypeRole(RoleType::new(TypeVertex::new(Bytes::Array(ByteArray::copy_concat([&Prefix::VertexRoleType.prefix_id().bytes(), &bytes]))))),
-        }
-    }
-}

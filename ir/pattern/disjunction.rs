@@ -11,7 +11,7 @@ use std::{
 
 use answer::variable::Variable;
 
-use crate::pattern::{context::PatternContext, Scope, ScopeId};
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]
 pub(crate) struct Disjunction {

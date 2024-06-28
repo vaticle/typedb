@@ -25,16 +25,6 @@ pub trait BinaryConstraintWrapper {
     fn left(&self) -> Variable;
     fn right(&self) -> Variable;
 
-    fn build_type_inference_edge(
-        &self,
-        seeder: &TypeSeeder<impl ReadableSnapshot>,
-        unary_constraints: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
-    ) -> TypeInferenceEdge {
-        let left_to_right = self.try_annotate_left_to_right(seeder, unary_constraints).unwrap();
-        let right_to_left = self.try_annotate_right_to_left(seeder, unary_constraints).unwrap();
-        TypeInferenceEdge::new(self.left(), self.right(), left_to_right, right_to_left)
-    }
-
     fn try_annotate_left_to_right(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, unary_annotations: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>) -> Option<BTreeMap<TypeAnnotation,BTreeSet<TypeAnnotation>>> {
         if let Some(left_types) =unary_annotations.get(&self.left()) {
             let mut left_to_right = BTreeMap::new();
@@ -67,10 +57,11 @@ pub trait BinaryConstraintWrapper {
     fn annotate_right_to_left_for_type(&self, seeder:  &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>);
 }
 
-pub(crate) fn seed_types<Snapshot: ReadableSnapshot>(conjunction: &Conjunction, snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>) -> TypeInferenceGraph {
+
+pub(crate) fn seed_types<'graph, Snapshot: ReadableSnapshot>(conjunction: &'graph Conjunction, snapshot: &'_ Snapshot, type_manager: &'_ TypeManager<Snapshot>) -> TypeInferenceGraph<'graph> {
     // Seed unary types
     let seeder = TypeSeeder { snapshot, type_manager };
-    seeder.seed_types(&conjunction.constraints().constraints, &conjunction.patterns().patterns)
+    seeder.seed_types(&conjunction)
 }
 
 pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
@@ -78,13 +69,15 @@ pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
     type_manager: &'this TypeManager<Snapshot>,
 }
 impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
-    pub(crate) fn seed_types(&self, constraints: &Vec<Constraint>, patterns: &Vec<Pattern>) -> TypeInferenceGraph {
+    pub(crate) fn seed_types<'graph>(
+        &'this self, conjunction: &'graph Conjunction) -> TypeInferenceGraph<'graph> {
         // Seed unary types
+        let (constraints, patterns) = (&conjunction.constraints().constraints, &conjunction.patterns().patterns);
         let unary_annotations = self.seed_types_for_unary_constraints(constraints, patterns);
         let edges = self.seed_types_for_binary_constraints(constraints, &unary_annotations);
-        println!("{:?}", unary_annotations);
-        println!("{:?}", edges);
+
         TypeInferenceGraph {
+            conjunction,
             vertices: unary_annotations,
             edges: edges,
             nested_graphs: Vec::new()
@@ -92,13 +85,13 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     }
 
     fn seed_types_for_unary_constraints(
-        &self, constraints: &Vec<Constraint>, nested: &Vec<Pattern>
+        &self, constraints: &Vec<Constraint<Variable>>, nested: &Vec<Pattern>
     ) -> BTreeMap<Variable, BTreeSet<TypeAnnotation>> {
         // First we populate the type variables
         let mut unary_annotations = BTreeMap::new();
 
-        let mut vec1: Vec<&Constraint> = Vec::with_capacity(constraints.len());
-        let mut vec2: Vec<&Constraint> = Vec::with_capacity(constraints.len());
+        let mut vec1: Vec<&Constraint<Variable>> = Vec::with_capacity(constraints.len());
+        let mut vec2: Vec<&Constraint<Variable>> = Vec::with_capacity(constraints.len());
         for constraint in constraints {
             match constraint {
                 Constraint::Type(type_constraint) => {
@@ -208,48 +201,32 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
     }
 
-    fn seed_types_for_binary_constraints(
-        &self, constraints: &Vec<Constraint>, unary_annotations: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
-    ) -> Vec<TypeInferenceEdge> {
+    fn seed_types_for_binary_constraints<'graph>(
+        &self, constraints: &'graph Vec<Constraint<Variable>>, unary_annotations: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
+    ) -> Vec<TypeInferenceEdge<'graph>> {
         // TODO: We should try to be clever about how we handle types without unary constraints
         // First we populate the type variables
         let mut edges: Vec<TypeInferenceEdge> = Vec::new();
         for constraint in constraints {
             match constraint {
-                Constraint::RolePlayer(role_player) => edges.extend(self.seed_types_for_role_player(role_player, unary_annotations)),
-                Constraint::Has(has_edge) => edges.push(self.seed_types_for_has(has_edge, unary_annotations)),
-                Constraint::Comparison(_) => todo!("?"),
-
-                Constraint::FunctionCallBinding(_) |
-                Constraint::ExpressionBinding(_) |
-                Constraint::Isa(_) |
-                Constraint::Type(_) => {} // Do nothing
+                Constraint::RolePlayer(unwrapped) => todo!(),
+                Constraint::Isa(unwrapped) => { // TODO: Do we need isa here?
+                    let left_to_right = unwrapped.try_annotate_left_to_right(self, unary_annotations).unwrap();
+                    let right_to_left = unwrapped.try_annotate_right_to_left(self, unary_annotations).unwrap();
+                    edges.push(TypeInferenceEdge::new(&constraint, unwrapped.left(), unwrapped.right(), left_to_right, right_to_left));
+                },
+                Constraint::Has(unwrapped) => {
+                    let left_to_right = unwrapped.try_annotate_left_to_right(self, unary_annotations).unwrap();
+                    let right_to_left = unwrapped.try_annotate_right_to_left(self, unary_annotations).unwrap();
+                    edges.push(TypeInferenceEdge::new(&constraint, unwrapped.left(), unwrapped.right(), left_to_right, right_to_left));
+                }
+                Constraint::Type(_) | Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Comparison(_) => {} // Do nothing
             }
         }
         edges
     }
 
-    fn seed_types_for_isa(
-        &self, isa: &Isa, unary_annotations: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
-    ) -> TypeInferenceEdge {
-        isa.build_type_inference_edge(self, unary_annotations)
-    }
-
-    fn seed_types_for_role_player(
-        &self, role_player: &RolePlayer, unary_constraints: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
-    ) -> [TypeInferenceEdge; 2] {
-        todo!("That filter is odd")
-        // let vars = role_player.variables().collect(); // TODO: Refactor
-        // let (left, right, filter) = (vars[0], vars[1], if vars.len() > 2  { Some(vars[2]) } else { None });
-    }
-
-    fn seed_types_for_has(
-        &self, has: &Has, unary_constraints: &BTreeMap<Variable, BTreeSet<TypeAnnotation>>
-    ) -> TypeInferenceEdge {
-        has.build_type_inference_edge(self, unary_constraints)
-    }
-
-    fn get_annotation_for_type_label(&self, type_: &Type) -> TypeAnnotation {
+    fn get_annotation_for_type_label(&self, type_: &Type<Variable>) -> TypeAnnotation {
         if let Some(attribute) = self.type_manager.get_attribute_type(self.snapshot, &Label::build(&type_.type_)).unwrap() {
             TypeAnnotation::SchemaTypeAttribute(attribute)
         } else if let Some(entity) = self.type_manager.get_entity_type(self.snapshot, &Label::build(&type_.type_)).unwrap() {
@@ -280,7 +257,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     }
 }
 
-impl BinaryConstraintWrapper for Has {
+impl BinaryConstraintWrapper for Has<Variable> {
     fn left(&self) -> Variable {
         self.owner
     }
@@ -315,7 +292,7 @@ impl BinaryConstraintWrapper for Has {
     }
 }
 
-impl BinaryConstraintWrapper for Isa {
+impl BinaryConstraintWrapper for Isa<Variable> {
     fn left(&self) -> Variable {
         self.thing
     }
@@ -492,6 +469,15 @@ pub mod tests {
             let var_animal_type = conjunction.get_or_declare_variable(&"animal_type").unwrap();
             let var_name_type =  conjunction.get_or_declare_variable(&"name_type").unwrap();
 
+            // Try seeding
+            {
+                conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
+                conjunction.constraints_mut().add_type(var_animal_type, &label_cat).unwrap();
+                conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+                conjunction.constraints_mut().add_type(var_name_type, &label_name).unwrap();
+                conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+            }
+
             let expected_tig = {
                 let types_ta =  BTreeSet::from([type_cat.clone()]);
                 let types_a = BTreeSet::from([type_cat.clone()]);
@@ -505,28 +491,20 @@ pub mod tests {
                     (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
                 ]);
 
+                let constraint_has = conjunction.constraints().constraints.last().unwrap();
                 TypeInferenceGraph {
+                    conjunction: &conjunction,
                     vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n), (var_animal_type, types_ta), (var_name_type, types_tn)]),
-                    edges: vec![TypeInferenceEdge::new(var_animal, var_name, left_to_right.clone(), right_to_left.clone())],
+                    edges: vec![TypeInferenceEdge::new(&constraint_has, var_animal, var_name, left_to_right.clone(), right_to_left.clone())],
                     nested_graphs: vec![],
                 }
             };
 
-            // Try seeding
             let snapshot = storage.clone().open_snapshot_write();
-            conjunction.constraints_mut().add_isa(var_animal, var_animal_type);
-            conjunction.constraints_mut().add_type(var_animal_type, &label_cat);
-
-            conjunction.constraints_mut().add_isa(var_name, var_name_type);
-            conjunction.constraints_mut().add_type(var_name_type, &label_name);
-
-            conjunction.constraints_mut().add_has(var_animal, var_name);
             let seeder = TypeSeeder { snapshot: &snapshot, type_manager: &type_manager };
-            let tig = seeder.seed_types(&conjunction.constraints().constraints, &Vec::new());
-            assert_eq!(expected_tig.vertices, tig.vertices);
-            assert_eq!(expected_tig.edges, tig.edges);
+            let tig = seeder.seed_types(&conjunction);
+
+            assert_eq!(expected_tig, tig);
         }
     }
-
-
 }

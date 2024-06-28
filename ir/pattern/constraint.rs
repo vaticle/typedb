@@ -31,7 +31,7 @@ pub struct Constraints {
     scope: ScopeId,
     context: Arc<Mutex<PatternContext>>,
 
-    pub(crate) constraints: Vec<Constraint>,
+    pub(crate) constraints: Vec<Constraint<Variable>>,
 
     // TODO: could also store indexes into the Constraints vec? Depends how expensive Constraints are and if we delete
     left_constrained_index: HashMap<Variable, Vec<Constraint<Variable>>>,
@@ -68,15 +68,15 @@ impl Constraints {
         self.constraints.last().unwrap()
     }
 
-    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Type<Variable>, PatternDefinitionError> {
+
+    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Constraint, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let type_ = Type::new(variable, type_.to_string());
         self.context.lock().unwrap().set_variable_category(variable, VariableCategory::Type, type_.clone().into())?;
-        let as_ref = self.add_constraint(type_);
-        Ok(as_ref.as_type().unwrap())
+        Ok(self.add_constraint(type_))
     }
 
-    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Isa<Variable>, PatternDefinitionError> {
+    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Constraint, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, thing)
                 && self.context.lock().unwrap().is_variable_available(self.scope, type_),
@@ -84,11 +84,10 @@ impl Constraints {
         let isa = Isa::new(thing, type_);
         self.context.lock().unwrap().set_variable_category(thing, VariableCategory::Thing, isa.clone().into())?;
         self.context.lock().unwrap().set_variable_category(type_, VariableCategory::Type, isa.clone().into())?;
-        let as_ref = self.add_constraint(isa);
-        Ok(as_ref.as_isa().unwrap())
+        Ok(self.add_constraint(isa))
     }
 
-    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Has<Variable>, PatternDefinitionError> {
+    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Constraint, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, owner)
                 && self.context.lock().unwrap().is_variable_available(self.scope, attribute)
@@ -100,15 +99,15 @@ impl Constraints {
             VariableCategory::Attribute,
             has.clone().into(),
         )?;
-        let as_ref = self.add_constraint(has);
-        Ok(as_ref.as_has().unwrap())
+        self.add_constraint(has);
+        Ok(self.constraints.last().unwrap())
     }
 
     pub fn add_function_call(
         &mut self,
         assigned: Vec<Variable>,
         function_call: FunctionCall<Variable>,
-    ) -> Result<&FunctionCallBinding<Variable>, PatternDefinitionError> {
+    ) -> Result<&Constraint, PatternDefinitionError> {
         use PatternDefinitionError::FunctionCallReturnArgCountMismatch;
         debug_assert!(assigned.iter().all(|var| self.context.lock().unwrap().is_variable_available(self.scope, *var)));
 
@@ -133,15 +132,14 @@ impl Constraints {
             }
         }
 
-        let as_ref = self.add_constraint(binding);
-        Ok(as_ref.as_function_call_binding().unwrap())
+        Ok(self.add_constraint(binding))
     }
 
     pub fn add_expression(
         &mut self,
         variable: Variable,
         expression: Expression<Variable>,
-    ) -> Result<&ExpressionBinding<Variable>, PatternDefinitionError> {
+    ) -> Result<&Constraint, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let binding = ExpressionBinding::new(variable, expression);
         self.context.lock().unwrap().set_variable_category(
@@ -149,8 +147,7 @@ impl Constraints {
             VariableCategory::Value,
             binding.clone().into(),
         )?;
-        let as_ref = self.add_constraint(binding);
-        Ok(as_ref.as_expression_binding().unwrap())
+        Ok(self.add_constraint(binding))
     }
 }
 
