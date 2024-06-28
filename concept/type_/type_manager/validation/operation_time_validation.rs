@@ -213,7 +213,7 @@ impl OperationTimeValidation {
             (None, None, None) => Ok(()),
             (None, None, Some(_)) => Ok(()),
             (None, Some(_), None) => {
-                Self::validate_when_attribute_type_loses_value_type(snapshot, subtype, subtype_declared_value_type)
+                Self::validate_when_attribute_type_loses_value_type(snapshot, subtype, subtype_transitive_value_type)
             },
             (Some(_), None, None) => Ok(()),
             (Some(_), Some(_), None) => Ok(()),
