@@ -1371,6 +1371,8 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         OperationTimeValidation::validate_ownership_abstractness(snapshot, owner.clone(), attribute.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
+        // TODO: Cannot set owns if overridden / supertype
+
         let owns = Owns::new(ObjectType::new(owner.clone().into_vertex()), attribute.clone());
         TypeWriter::storage_put_interface_impl(snapshot, owns.clone());
         TypeWriter::storage_put_type_edge_property(snapshot, owns, Some(ordering));
@@ -1426,6 +1428,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         role: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
         // TODO: Validation
+        // TODO: Cannot set plays if overridden / supertype
         let plays = Plays::new(ObjectType::new(player.into_vertex()), role);
         TypeWriter::storage_put_interface_impl(snapshot, plays.clone());
         Ok(plays)
@@ -1438,14 +1441,8 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         role: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
         // TODO: Validation.
-        // TODO: This could really return the plays
-        OperationTimeValidation::validate_plays_is_declared(
-            snapshot,
-            ObjectType::new(player.clone().into_vertex()),
-            role.clone(),
-        )
-            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
+        // TODO: Maybe search for plays, not build new one?
         let plays = Plays::new(ObjectType::new(player.into_vertex()), role);
         TypeWriter::storage_delete_interface_impl(snapshot, plays);
         Ok(())

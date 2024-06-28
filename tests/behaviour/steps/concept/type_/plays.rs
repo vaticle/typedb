@@ -108,12 +108,10 @@ pub async fn get_declared_plays_contain(
 #[step(expr = "{root_label}\\({type_label}\\) get plays {is_empty_or_not}")]
 pub async fn get_plays_is_empty(
     context: &mut Context,
-    step: &Step,
     root_label: RootLabel,
     type_label: Label,
     is_empty_or_not: IsEmptyOrNot,
 ) {
-    let expected_labels = util::iter_table(step).map(|str| str.to_owned()).collect_vec();
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_read_tx!(context, |tx| {
         let actual_is_empty = object_type

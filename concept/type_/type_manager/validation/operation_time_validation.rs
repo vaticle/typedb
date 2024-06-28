@@ -677,25 +677,6 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_plays_is_declared<Snapshot>(
-        snapshot: &Snapshot,
-        player: ObjectType<'static>,
-        role_type: RoleType<'static>,
-    ) -> Result<(), SchemaValidationError>
-        where
-            Snapshot: ReadableSnapshot,
-    {
-        let plays = Plays::new(ObjectType::new(player.clone().into_vertex()), role_type.clone());
-        let is_declared = TypeReader::get_implemented_interfaces_declared::<Plays<'static>>(snapshot, player.clone())
-            .map_err(SchemaValidationError::ConceptRead)?
-            .contains(&plays);
-        if is_declared {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::PlaysNotDeclared(player.into_owned(), role_type))
-        }
-    }
-
     // TODO: Refactor
     pub(crate) fn validate_exact_type_no_instances_entity<Snapshot: ReadableSnapshot>(
         snapshot: &Snapshot,
