@@ -193,7 +193,7 @@ impl<'this> TypeInferenceEdge<'this> {
 
 #[derive(Debug)]
 pub(crate) struct NestedTypeInferenceGraph<'this> {
-    nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
+    pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
 }
 
 impl<'this> NestedTypeInferenceGraph<'this> {
@@ -304,7 +304,7 @@ pub mod tests {
 
     }
 
-    fn expected_edge(constraint: &Constraint, left: Variable, right: Variable, left_right_type_pairs: Vec<(TypeAnnotation, TypeAnnotation)>) -> TypeInferenceEdge {
+    pub(crate) fn expected_edge(constraint: &Constraint, left: Variable, right: Variable, left_right_type_pairs: Vec<(TypeAnnotation, TypeAnnotation)>) -> TypeInferenceEdge {
         let mut left_to_right = BTreeMap::new();
         let mut right_to_left = BTreeMap::new();
         for (l,r) in left_right_type_pairs {
@@ -416,8 +416,6 @@ pub mod tests {
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
-            let expected_left_to_right = BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]);
-            let expected_right_to_left = BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]);
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
                 vertices: BTreeMap::from([
@@ -433,6 +431,8 @@ pub mod tests {
                 ],
                 nested_graphs: vec![],
             };
+            assert_eq!(expected_tig.vertices, tig.vertices);
+
             assert_eq!(expected_tig, tig);
         }
 
@@ -452,8 +452,6 @@ pub mod tests {
             let mut tig = seed_types(&conjunction, &snapshot, &type_manager);
             tig.run_type_inference();
 
-            let expected_left_to_right = BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]);
-            let expected_right_to_left = BTreeMap::from([(type_catname.clone(), BTreeSet::from([type_cat.clone()]))]);
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
                 vertices: BTreeMap::from([
@@ -593,7 +591,7 @@ pub mod tests {
             let b1 = disj.conjunctions.get(0).unwrap();
             let b2 = disj.conjunctions.get(1).unwrap();
             let b1_isa = &b1.constraints().constraints[0];
-            let b2_isa = &b1.constraints().constraints[1];
+            let b2_isa = &b2.constraints().constraints[0];
             let mut expected_nested_graphs : Vec<TypeInferenceGraph> = Vec::new();
             expected_nested_graphs.push(TypeInferenceGraph {
                 conjunction: b1,
@@ -625,8 +623,6 @@ pub mod tests {
                 }],
             };
 
-            assert_eq!(expected_graph.vertices, tig.vertices);
-            assert_eq!(expected_graph.edges, tig.edges);
             assert_eq!(expected_graph.nested_graphs, tig.nested_graphs);
 
             assert_eq!(expected_graph, tig);
