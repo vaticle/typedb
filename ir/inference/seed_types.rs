@@ -36,10 +36,15 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
 
     pub(crate) fn seed_types<'graph>(
         &'this self, conjunction: &'graph Conjunction) -> TypeInferenceGraph<'graph> {
-        // Seed unary types
         let mut tig = self.recursively_allocate(conjunction);
+
         self.seed_vertex_annotations_from_type_and_function_return(&mut tig);
-        self.seed_edges_and_propagate_annotations(&mut tig, &BTreeMap::new());
+        let mut something_changed = true;
+        while something_changed {
+            something_changed = self.propagate_vertex_annotations(&mut tig);
+        }
+
+        self.seed_edges(&mut tig);
 
         tig
     }
@@ -51,13 +56,13 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             match pattern {
                 Pattern::Conjunction(_) => { todo!("ban?") }
                 Pattern::Disjunction(disjunction) => {
-                    let shared_variables: HashSet<Variable> = disjunction.conjunctions.iter().flat_map(|conj| conj.constraints().constraints.iter())
+                    let shared_variables: BTreeSet<Variable> = disjunction.conjunctions.iter().flat_map(|conj| conj.constraints().constraints.iter())
                         .flat_map(|constraint| constraint.variables()).filter(|x| conj_variables.contains(x))
                         .collect();
-                    let shared_vertex_annotations = shared_variables.iter().map(|v| (*v, None)).collect();
                     nested.push(NestedTypeInferenceGraphDisjunction {
                         nested_graph_disjunction: (&disjunction.conjunctions).iter().map(|c| self.recursively_allocate(c)).collect(),
-                        shared_vertex_annotations
+                        shared_variables,
+                        shared_vertex_annotations: BTreeMap::new()
                     });
                 },
                 Pattern::Negation(_) => { todo!() }
@@ -73,6 +78,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
     }
 
+    // Phase 1: Collect all type & function return annotations
     fn seed_vertex_annotations_from_type_and_function_return<'graph>(
         &self, tig: &mut TypeInferenceGraph<'graph>,
     ) {
@@ -96,123 +102,6 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         // TODO: nested_negation & nested_optional
     }
 
-    fn seed_edges_and_propagate_annotations<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>, parent_vertices: &VertexAnnotations) {
-        // TODO: This is a naive implementation and likely has great scope for simple optimisations
-        // Prefer annotations from the parent where available
-        for (variable, parent_annotations) in parent_vertices {
-            Self::intersect_unary(&mut tig.vertices, *variable, Cow::Borrowed(parent_annotations));
-        }
-
-        let constraints = &tig.conjunction.constraints().constraints;
-        let mut vec1: Vec<&Constraint> = Vec::with_capacity(constraints.len());
-        let mut vec2: Vec<&Constraint> = Vec::with_capacity(constraints.len());
-        for c in constraints {
-            match c {
-                Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => { },
-                c => vec1.push(c),
-            };
-        }
-
-        let mut from_vec = &mut vec1;
-        let mut to_vec = &mut vec2;
-        let mut nested_have_caused_change = true;
-        while nested_have_caused_change {
-            let mut prev_size = from_vec.len() + 1;
-            while from_vec.len() != prev_size {
-                prev_size = from_vec.len();
-                for c in &mut *from_vec {
-                    let edge_opt = match c {
-                        Constraint::Isa(isa) => self.try_initialise_edge_and_populate_vertex(c, isa, &mut tig.vertices),
-                        Constraint::RolePlayer(rp) => todo!("self.try_infer_unary_annotations_from_binary_constraints(rp, &mut unary_annotations)"),
-                        Constraint::Has(has) => self.try_initialise_edge_and_populate_vertex(c, has, &mut tig.vertices),
-                        Constraint::Comparison(cmp) => todo!("self.try_infer_unary_annotations_from_binary_constraints(cmp, &mut unary_annotations)"), // I'm not thrilled about this.
-                        Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => unreachable!()
-                    };
-                    if let Some(edge) = edge_opt {
-                        tig.edges.push(edge);
-                    } else {
-                        to_vec.push(*c);
-                    }
-                }
-                from_vec.clear(); // Clear & swap avoids re-allocation
-                let t = from_vec;
-                from_vec = to_vec;
-                to_vec = t;
-
-            }
-            // Propagate to & from nested patterns
-            nested_have_caused_change = false;
-            for nested in &mut tig.nested_disjunctions {
-                self.reconcile_nested_disjunction(nested, &mut tig.vertices);
-                for (variable, types_opt) in nested.shared_vertex_annotations.iter() {
-                    if let Some(types) = types_opt {
-                        nested_have_caused_change = nested_have_caused_change | Self::intersect_unary(&mut tig.vertices, *variable, Cow::Borrowed(types));
-                    }
-                }
-            }
-            // TODO: Nested negation & nested optionals
-        }
-    }
-
-    fn try_initialise_edge_and_populate_vertex<'conj>(&self, constraint: &'conj Constraint<Variable>, inner: &impl BinaryConstraintWrapper, vertices: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>) -> Option<TypeInferenceEdge<'conj>> {
-        let (left, right) = (inner.left(), inner.right());
-        match (vertices.get(&left), vertices.get(&right)) {
-            (None, None) => {
-                None
-            },
-            (Some(left_types), Some(right_types)) => {
-                let left_to_right = inner.annotate_left_to_right(self, left_types);
-                let right_to_left = inner.annotate_right_to_left(self, right_types);
-                Some(TypeInferenceEdge::build(constraint, left, right, left_to_right, right_to_left))
-            }
-            (Some(left_types), None) => {
-                let left_to_right = inner.annotate_left_to_right(self, left_types);
-                let right_types = left_to_right.values().flatten().map(|type_| type_.clone()).collect();
-                let right_to_left = inner.annotate_right_to_left(self, &right_types);
-                vertices.insert(right, right_types);
-                Some(TypeInferenceEdge::build(constraint, left, right, left_to_right, right_to_left))
-            }
-            (None, Some(right_types), ) => {
-                let right_to_left = inner.annotate_right_to_left(self, right_types);
-                let left_types = right_to_left.values().flatten().map(|type_| type_.clone()).collect();
-                let left_to_right = inner.annotate_left_to_right(self, &left_types);
-                vertices.insert(left, left_types);
-                Some(TypeInferenceEdge::build(constraint, left, right, left_to_right, right_to_left))
-            }
-        }
-    }
-
-    fn reconcile_nested_disjunction(&self, nested: &mut NestedTypeInferenceGraphDisjunction, parent_vertices: &mut VertexAnnotations) {
-        for nested_tig in &mut nested.nested_graph_disjunction {
-            self.seed_edges_and_propagate_annotations(nested_tig, parent_vertices);
-        }
-        // Update shared variables
-        let NestedTypeInferenceGraphDisjunction { shared_vertex_annotations, nested_graph_disjunction } = nested;
-        for (variable, types_opt) in shared_vertex_annotations.iter_mut() {
-            let set_for_variable = self.try_union_annotations_across_all_branches(nested_graph_disjunction, *variable);
-            if types_opt.is_some() {
-                debug_assert!(set_for_variable.is_some());
-                types_opt.as_mut().unwrap().retain(|x| set_for_variable.as_ref().unwrap().contains(x))
-            } else {
-                if set_for_variable.is_some() {
-                    *types_opt = set_for_variable;
-                }
-            }
-        }
-    }
-
-    fn try_union_annotations_across_all_branches(&self, disjunction: &Vec<TypeInferenceGraph<'_>>, variable: Variable) -> Option<BTreeSet<TypeAnnotation>>{
-        if disjunction.iter().all(|nested_tig| nested_tig.vertices.contains_key(&variable)) {
-            Some(
-                disjunction.iter()
-                    .flat_map(|nested_tig| nested_tig.vertices.get(&variable).unwrap().iter().map(|type_| type_.clone()))
-                    .collect()
-            )
-        } else {
-            None
-        }
-    }
-
     fn get_annotation_for_type_label(&self, type_: &Type<Variable>) -> TypeAnnotation {
         if let Some(attribute) = self.type_manager.get_attribute_type(self.snapshot, &Label::build(&type_.type_)).unwrap() {
             TypeAnnotation::SchemaTypeAttribute(attribute)
@@ -227,6 +116,100 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
     }
 
+
+    // Phase 2: Use constraints to infer annotations on other vertices
+    fn propagate_vertex_annotations<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> bool {
+        // TODO: This is a naive implementation and likely has great scope for simple optimisations
+        // Prefer annotations from the parent where available
+        let mut something_changed = false;
+        for c in &tig.conjunction.constraints().constraints {
+            something_changed = something_changed | self.try_propagating_vertex_annotation(c, &mut tig.vertices);
+        }
+
+            // Propagate to & from nested patterns
+        for nested in &mut tig.nested_disjunctions {
+            something_changed = something_changed | self.reconcile_nested_disjunction(nested, &mut tig.vertices);
+        }
+        // TODO: Nested negation & nested optionals
+        something_changed
+    }
+
+    fn try_propagating_vertex_annotation<'conj>(&self, constraint: &'conj Constraint, vertices: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>) -> bool {
+        match constraint {
+            Constraint::Isa(isa) => self.try_propagating_vertex_annotation_impl(constraint, isa, vertices),
+            Constraint::RolePlayer(rp) => todo!("self.try_infer_unary_annotations_from_binary_constraints(rp, &mut unary_annotations)"),
+            Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(constraint, has, vertices),
+            Constraint::Comparison(cmp) => todo!("self.try_infer_unary_annotations_from_binary_constraints(cmp, &mut unary_annotations)"), // I'm not thrilled about this.
+            Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => false
+        }
+    }
+
+    fn try_propagating_vertex_annotation_impl<'conj>(&self, constraint: &'conj Constraint, inner: &impl BinaryConstraintWrapper, vertices: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>) -> bool {
+        let (left, right) = (inner.left(), inner.right());
+        match (vertices.get(&left), vertices.get(&right)) {
+            (None, None) => false,
+            (Some(_), Some(_)) => false,
+            (Some(left_types), None) => {
+                let left_to_right = inner.annotate_left_to_right(self, left_types);
+                vertices.insert(right, left_to_right.values().flatten().map(|type_| type_.clone()).collect());
+                true
+            }
+            (None, Some(right_types), ) => {
+                let right_to_left = inner.annotate_right_to_left(self, right_types);
+                vertices.insert(left, right_to_left.values().flatten().map(|type_| type_.clone()).collect());
+                true
+            }
+        }
+    }
+
+    fn reconcile_nested_disjunction(&self, nested: &mut NestedTypeInferenceGraphDisjunction, parent_vertices: &mut VertexAnnotations) -> bool {
+        let mut something_changed = false;
+
+        // Apply annotations ot the parent on the nested
+        for nested_tig in &mut nested.nested_graph_disjunction {
+            for (variable, parent_annotations) in parent_vertices.iter() {
+                Self::intersect_unary(&mut nested_tig.vertices, *variable, Cow::Borrowed(parent_annotations));
+            }
+        }
+
+        // Propagate it within the child & recursively into nested
+        for nested_tig in &mut nested.nested_graph_disjunction {
+            something_changed = something_changed | self.propagate_vertex_annotations(nested_tig);
+        }
+
+        // Update shared variables of the disjunction
+        let NestedTypeInferenceGraphDisjunction { shared_vertex_annotations, nested_graph_disjunction, shared_variables } = nested;
+        for variable in shared_variables.iter() {
+            if !shared_vertex_annotations.contains_key(variable) {
+                if let Some(types_from_branches) = self.try_union_annotations_across_all_branches(nested_graph_disjunction, *variable) {
+                    shared_vertex_annotations.insert(*variable, types_from_branches);
+                }
+            }
+        }
+
+        // Update parent from the shared variables
+        for (variable, types) in shared_vertex_annotations.iter() {
+            if !parent_vertices.contains_key(variable) {
+                parent_vertices.insert(*variable, types.clone());
+                something_changed = true;
+            }
+        }
+
+        something_changed
+    }
+
+    fn try_union_annotations_across_all_branches(&self, disjunction: &Vec<TypeInferenceGraph<'_>>, variable: Variable) -> Option<BTreeSet<TypeAnnotation>>{
+        if disjunction.iter().all(|nested_tig| nested_tig.vertices.contains_key(&variable)) {
+            Some(
+                disjunction.iter()
+                    .flat_map(|nested_tig| nested_tig.vertices.get(&variable).unwrap().iter().map(|type_| type_.clone()))
+                    .collect()
+            )
+        } else {
+            None
+        }
+    }
+
     fn intersect_unary(unary_annotations: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>, variable: Variable, new_annotations: Cow<BTreeSet<TypeAnnotation>>) -> bool {
         if let Some(existing_annotations) = unary_annotations.get_mut(&variable) {
             let size_before = existing_annotations.len();
@@ -238,6 +221,26 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
     }
 
+    // Phase 3: seed edges
+    fn seed_edges<'conj>(&self, tig: &mut TypeInferenceGraph<'conj>) {
+        let TypeInferenceGraph { conjunction, edges, vertices, .. } = tig;
+        for constraint in &conjunction.constraints().constraints {
+            match constraint {
+                Constraint::Isa(isa) => edges.push(self.seed_edge(constraint, isa, vertices)),
+                Constraint::RolePlayer(rp) => todo!("self.seed_edge(rp, &tig.vertices)"),
+                Constraint::Has(has) => edges.push(self.seed_edge(constraint, has, vertices)),
+                Constraint::Comparison(cmp) => todo!("self.seed_edge(cmp, &tig.vertices)"), // I'm not thrilled about this.
+                Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => { } // Do nothing
+            }
+        }
+    }
+
+    fn seed_edge<'conj>(&self, constraint: &'conj Constraint, inner: &impl BinaryConstraintWrapper, vertices: &VertexAnnotations) -> TypeInferenceEdge<'conj> {
+        let (left, right) = (inner.left(), inner.right());
+        let left_to_right = inner.annotate_left_to_right(self, vertices.get(&left).unwrap());
+        let right_to_left = inner.annotate_right_to_left(self, vertices.get(&right).unwrap());
+        TypeInferenceEdge::build(constraint, left, right, left_to_right, right_to_left)
+    }
 }
 
 pub trait BinaryConstraintWrapper {

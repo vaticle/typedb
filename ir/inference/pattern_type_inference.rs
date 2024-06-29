@@ -230,15 +230,18 @@ pub trait NestedTypeInferenceGraph {
 #[derive(Debug)]
 pub(crate) struct NestedTypeInferenceGraphDisjunction<'this> {
     pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
-    pub(crate) shared_vertex_annotations: BTreeMap<Variable, Option<BTreeSet<TypeAnnotation>>>,
+    pub(crate) shared_variables: BTreeSet<Variable>,
+    pub(crate) shared_vertex_annotations: BTreeMap<Variable, BTreeSet<TypeAnnotation>>,
 }
 
 impl<'this> NestedTypeInferenceGraph for NestedTypeInferenceGraphDisjunction<'this> {
     fn prune_self_from_vertices(&mut self, parent_vertices: &VertexAnnotations) {
+        // TODO: Use shared_vertex_annotations
         Self::prune_self_from_vertices_impl(self.nested_graph_disjunction.as_mut_slice(), parent_vertices);
     }
 
     fn prune_vertices_from_self(&self, parent_vertices: &mut VertexAnnotations) -> bool {
+        // TODO: Use shared_vertex_annotations
         Self::prune_vertices_from_self_impl(self.nested_graph_disjunction.as_slice(), parent_vertices)
     }
 }
@@ -637,6 +640,7 @@ pub mod tests {
                 ],
                 nested_disjunctions: vec![NestedTypeInferenceGraphDisjunction {
                     nested_graph_disjunction: expected_nested_graphs,
+                    shared_variables: BTreeSet::new(),
                     shared_vertex_annotations: BTreeMap::new()
                 }],
             };
