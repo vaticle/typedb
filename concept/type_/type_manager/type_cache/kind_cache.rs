@@ -105,8 +105,10 @@ pub(crate) struct CommonTypeCache<T: KindAPI<'static>> {
 pub struct OwnerPlayerCache {
     pub(super) owns_declared: HashSet<Owns<'static>>,
     pub(super) owns: HashMap<AttributeType<'static>, Owns<'static>>,
+    pub(super) owns_overridden: HashMap<AttributeType<'static>, Owns<'static>>,
     pub(super) plays_declared: HashSet<Plays<'static>>,
     pub(super) plays: HashMap<RoleType<'static>, Plays<'static>>,
+    pub(super) plays_overridden: HashMap<RoleType<'static>, Plays<'static>>,
 }
 
 impl EntityTypeCache {
@@ -339,14 +341,20 @@ impl OwnerPlayerCache {
             owns: TypeReader::get_implemented_interfaces::<Owns<'static>, T>(
                 snapshot,
                 type_.clone(),
-            )
-            .unwrap(),
+            ).unwrap(),
+            owns_overridden: TypeReader::get_overridden_interfaces::<Owns<'static>, T>(
+                snapshot,
+                type_.clone(),
+            ).unwrap(),
             plays_declared: TypeReader::get_implemented_interfaces_declared::<Plays<'static>>(snapshot, type_.clone()).unwrap(),
             plays: TypeReader::get_implemented_interfaces::<Plays<'static>, T>(
                 snapshot,
                 type_.clone(),
-            )
-            .unwrap(),
+            ).unwrap(),
+            plays_overridden: TypeReader::get_overridden_interfaces::<Plays<'static>, T>(
+                snapshot,
+                type_.clone(),
+            ).unwrap(),
         }
     }
 }

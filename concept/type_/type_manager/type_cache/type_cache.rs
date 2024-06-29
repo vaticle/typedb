@@ -270,6 +270,17 @@ impl TypeCache {
         &T::get_cache(self, type_).owner_player_cache().owns
     }
 
+    pub(crate) fn get_overridden_owns<'a, 'this, T, CACHE>(
+        &'this self,
+        type_: T,
+    ) -> &HashMap<AttributeType<'static>, Owns<'static>>
+        where
+            T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
+            CACHE: HasOwnerPlayerCache + 'this,
+    {
+        &T::get_cache(self, type_).owner_player_cache().owns_overridden
+    }
+
     pub(crate) fn get_role_type_ordering<'a>(&self, role_type: RoleType<'a>) -> Ordering {
         RoleType::get_cache(&self, role_type).ordering
     }
@@ -341,6 +352,17 @@ impl TypeCache {
         CACHE: HasOwnerPlayerCache + 'this,
     {
         &T::get_cache(self, type_).owner_player_cache().plays
+    }
+
+    pub(crate) fn get_overridden_plays<'a, 'this, T, CACHE>(
+        &'this self,
+        type_: T,
+    ) -> &'this HashMap<RoleType<'static>, Plays<'static>>
+        where
+            T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
+            CACHE: HasOwnerPlayerCache + 'this,
+    {
+        &T::get_cache(self, type_).owner_player_cache().plays_overridden
     }
 
     pub(crate) fn get_plays_override<'c>(&'c self, plays: Plays<'c>) -> &'c Option<Plays<'static>> {

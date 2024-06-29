@@ -315,8 +315,7 @@ impl<'a> PlayerAPI<'a> for EntityType<'a> {
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
-        let plays = type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())?;
-        Ok(Plays::new(ObjectType::Entity(self.clone().into_owned()), role_type))
+        type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())
     }
 
     fn delete_plays<Snapshot: WritableSnapshot>(

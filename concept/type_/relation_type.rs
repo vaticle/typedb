@@ -345,7 +345,6 @@ impl<'a> PlayerAPI<'a> for RelationType<'a> {
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
-        // TODO: decide behaviour (ok or error) if already playing
         type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())
     }
 

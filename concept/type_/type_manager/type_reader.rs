@@ -194,11 +194,11 @@ impl TypeReader {
                 Self::get_implemented_interfaces_declared::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
             for implementation in declared_implementations.into_iter() {
                 let interface = implementation.interface();
-                if !overridden_interfaces.contains(&interface) {
-                    debug_assert!(!transitive_implementations.contains_key(&interface)); // TODO: This fails in the case of implicit overrides, such as redeclaring an ownership with a stronger annotation.
+                // We may encounter transitive implementations multiple times (relaxed schema validation
+                // or self-override for annotations narrowing)
+                if !overridden_interfaces.contains(&interface) && !transitive_implementations.contains_key(&interface) {
                     transitive_implementations.insert(implementation.interface(), implementation.clone());
                 }
-                // Has to be outside so we ignore transitively overridden ones too
                 if let Some(overridden) = Self::get_implementation_override(snapshot, implementation.clone())? {
                     overridden_interfaces.add(overridden.interface());
                 }
@@ -206,6 +206,31 @@ impl TypeReader {
             current_type = Self::get_supertype(snapshot, current_type.unwrap())?;
         }
         Ok(transitive_implementations)
+    }
+
+    pub(crate) fn get_overridden_interfaces<IMPL, T>(
+        snapshot: &impl ReadableSnapshot,
+        object_type: T,
+    ) -> Result<HashMap<IMPL::InterfaceType, IMPL>, ConceptReadError>
+        where
+            T: TypeAPI<'static>,
+            IMPL: InterfaceImplementation<'static> + Hash + Eq,
+    {
+        let mut overridden_interfaces: HashMap<IMPL::InterfaceType, IMPL> = HashMap::new();
+        let mut current_type = Some(object_type);
+        while current_type.is_some() {
+            let declared_implementations =
+                Self::get_implemented_interfaces_declared::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
+            for implementation in declared_implementations.into_iter() {
+                if let Some(overridden) = Self::get_implementation_override(snapshot, implementation.clone())? {
+                    if !overridden_interfaces.contains_key(&overridden.interface()) {
+                        overridden_interfaces.insert(overridden.interface(), overridden);
+                    }
+                }
+            }
+            current_type = Self::get_supertype(snapshot, current_type.unwrap())?;
+        }
+        Ok(overridden_interfaces)
     }
 
     pub(crate) fn get_implementation_override<IMPL>(

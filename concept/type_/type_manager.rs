@@ -597,6 +597,38 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         }
     }
 
+    pub(crate) fn get_entity_type_overridden_owns(
+        &self,
+        snapshot: &Snapshot,
+        entity_type: EntityType<'static>,
+    ) -> Result<MaybeOwns<'_, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_overridden_owns(entity_type)))
+        } else {
+            let owns = TypeReader::get_overridden_interfaces::<Owns<'static>, EntityType<'static>>(
+                snapshot,
+                entity_type.clone(),
+            )?;
+            Ok(MaybeOwns::Owned(owns))
+        }
+    }
+
+    pub(crate) fn get_relation_type_overridden_owns(
+        &self,
+        snapshot: &Snapshot,
+        relation_type: RelationType<'static>,
+    ) -> Result<MaybeOwns<'_, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_overridden_owns(relation_type)))
+        } else {
+            let owns = TypeReader::get_overridden_interfaces::<Owns<'static>, RelationType<'static>>(
+                snapshot,
+                relation_type.clone(),
+            )?;
+            Ok(MaybeOwns::Owned(owns))
+        }
+    }
+
     pub(crate) fn relation_index_available(
         &self,
         snapshot: &Snapshot,
@@ -627,6 +659,7 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
             Ok(MaybeOwns::Owned(plays))
         }
     }
+
     pub(crate) fn get_entity_type_plays(
         &self,
         snapshot: &Snapshot,
@@ -636,6 +669,22 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
             Ok(MaybeOwns::Borrowed(cache.get_plays(entity_type)))
         } else {
             let plays = TypeReader::get_implemented_interfaces::<Plays<'static>, EntityType<'static>>(
+                snapshot,
+                entity_type.clone(),
+            )?;
+            Ok(MaybeOwns::Owned(plays))
+        }
+    }
+
+    pub(crate) fn get_entity_type_overridden_plays(
+        &self,
+        snapshot: &Snapshot,
+        entity_type: EntityType<'static>,
+    ) -> Result<MaybeOwns<'_, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_overridden_plays(entity_type)))
+        } else {
+            let plays = TypeReader::get_overridden_interfaces::<Plays<'static>, EntityType<'static>>(
                 snapshot,
                 entity_type.clone(),
             )?;
@@ -672,7 +721,23 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         }
     }
 
-    pub(crate) fn get_plays_overridden(
+    pub(crate) fn get_relation_type_overridden_plays(
+        &self,
+        snapshot: &Snapshot,
+        relation_type: RelationType<'static>,
+    ) -> Result<MaybeOwns<'_, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_overridden_plays(relation_type)))
+        } else {
+            let plays = TypeReader::get_overridden_interfaces::<Plays<'static>, RelationType<'static>>(
+                snapshot,
+                relation_type.clone(),
+            )?;
+            Ok(MaybeOwns::Owned(plays))
+        }
+    }
+
+    pub(crate) fn get_plays_overridde(
         &self,
         snapshot: &Snapshot,
         plays: Plays<'static>,
@@ -1370,8 +1435,8 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         // TODO: Validation
         OperationTimeValidation::validate_ownership_abstractness(snapshot, owner.clone(), attribute.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
-
-        // TODO: Cannot set owns if overridden / supertype
+        OperationTimeValidation::validate_attribute_type_owns_not_overridden(snapshot, owner.clone(), attribute.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
 
         let owns = Owns::new(ObjectType::new(owner.clone().into_vertex()), attribute.clone());
         TypeWriter::storage_put_interface_impl(snapshot, owns.clone());
@@ -1428,7 +1493,9 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         role: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
         // TODO: Validation
-        // TODO: Cannot set plays if overridden / supertype
+        OperationTimeValidation::validate_role_plays_not_overridden(snapshot, player.clone(), role.clone())
+            .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
         let plays = Plays::new(ObjectType::new(player.into_vertex()), role);
         TypeWriter::storage_put_interface_impl(snapshot, plays.clone());
         Ok(plays)
