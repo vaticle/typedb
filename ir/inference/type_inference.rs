@@ -39,7 +39,7 @@ Note: On function call boundaries, can assume the current set of schema types pe
 
  */
 
-pub(crate) type VertexConstraints = BTreeMap<Variable, BTreeSet<TypeAnnotation>>;
+pub(crate) type VertexAnnotations = BTreeMap<Variable, BTreeSet<TypeAnnotation>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) enum TypeAnnotation {

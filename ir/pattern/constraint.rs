@@ -69,14 +69,14 @@ impl Constraints {
     }
 
 
-    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Constraint, PatternDefinitionError> {
+    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let type_ = Type::new(variable, type_.to_string());
         self.context.lock().unwrap().set_variable_category(variable, VariableCategory::Type, type_.clone().into())?;
         Ok(self.add_constraint(type_))
     }
 
-    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Constraint, PatternDefinitionError> {
+    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, thing)
                 && self.context.lock().unwrap().is_variable_available(self.scope, type_),
@@ -87,7 +87,7 @@ impl Constraints {
         Ok(self.add_constraint(isa))
     }
 
-    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Constraint, PatternDefinitionError> {
+    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, owner)
                 && self.context.lock().unwrap().is_variable_available(self.scope, attribute)
@@ -107,7 +107,7 @@ impl Constraints {
         &mut self,
         assigned: Vec<Variable>,
         function_call: FunctionCall<Variable>,
-    ) -> Result<&Constraint, PatternDefinitionError> {
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         use PatternDefinitionError::FunctionCallReturnArgCountMismatch;
         debug_assert!(assigned.iter().all(|var| self.context.lock().unwrap().is_variable_available(self.scope, *var)));
 
@@ -139,7 +139,7 @@ impl Constraints {
         &mut self,
         variable: Variable,
         expression: Expression<Variable>,
-    ) -> Result<&Constraint, PatternDefinitionError> {
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let binding = ExpressionBinding::new(variable, expression);
         self.context.lock().unwrap().set_variable_category(

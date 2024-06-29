@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use answer::variable::Variable;
 use crate::{
-    inference::type_inference::VertexConstraints,
+    inference::type_inference::VertexAnnotations,
 };
 use crate::inference::type_inference::TypeAnnotation;
 use crate::pattern::conjunction::Conjunction;
@@ -26,9 +26,9 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
 #[derive(Debug)]
 pub(crate) struct TypeInferenceGraph<'this> {
     pub(crate) conjunction: &'this Conjunction,
-    pub(crate) vertices: VertexConstraints,
+    pub(crate) vertices: VertexAnnotations,
     pub(crate) edges: Vec<TypeInferenceEdge<'this>>,
-    pub(crate) nested_graphs: Vec<NestedTypeInferenceGraphDisjunction<'this>>,
+    pub(crate) nested_disjunctions: Vec<NestedTypeInferenceGraphDisjunction<'this>>,
 }
 
 impl<'this> TypeInferenceGraph<'this> {
@@ -44,7 +44,7 @@ impl<'this> TypeInferenceGraph<'this> {
         for edge in &mut self.edges {
             edge.prune_self_from_vertices(&self.vertices)
         }
-        for nested_graph in &mut self.nested_graphs {
+        for nested_graph in &mut self.nested_disjunctions {
             nested_graph.prune_self_from_vertices(&self.vertices)
         }
     }
@@ -54,7 +54,7 @@ impl<'this> TypeInferenceGraph<'this> {
         for edge in &mut self.edges {
             is_modified = is_modified || edge.prune_vertices_from_self(&mut self.vertices);
         }
-        for nested_graph in &mut self.nested_graphs {
+        for nested_graph in &mut self.nested_disjunctions {
             is_modified = is_modified || nested_graph.prune_vertices_from_self(&mut self.vertices);
         }
         is_modified
@@ -63,16 +63,17 @@ impl<'this> TypeInferenceGraph<'this> {
 
 #[derive(Debug)]
 pub(crate) struct TypeInferenceEdge<'this> {
-    constraint: &'this Constraint<Variable>,
-    left: Variable,
-    right: Variable,
-    left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
-    right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+    pub(crate) constraint: &'this Constraint<Variable>,
+    pub(crate) left: Variable,
+    pub(crate) right: Variable,
+    pub(crate) left_to_right: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
+    pub(crate) right_to_left: BTreeMap<TypeAnnotation, BTreeSet<TypeAnnotation>>,
 }
 
 impl<'this> TypeInferenceEdge<'this> {
     // Construction
-    pub(crate) fn new(
+
+    pub(crate) fn build(
         constraint: &'this Constraint<Variable>,
         left: Variable,
         right: Variable,
@@ -152,7 +153,7 @@ impl<'this> TypeInferenceEdge<'this> {
     }
 
     // prune_vertices
-    fn prune_vertices_from_self(&self, vertices: &mut VertexConstraints) -> bool {
+    fn prune_vertices_from_self(&self, vertices: &mut VertexAnnotations) -> bool {
         let mut is_modified = false;
         {
             let left_vertices = vertices.get_mut(&self.left).unwrap();
@@ -169,7 +170,7 @@ impl<'this> TypeInferenceEdge<'this> {
         is_modified
     }
 
-    fn prune_self_from_vertices(&mut self, vertices: &VertexConstraints) {
+    fn prune_self_from_vertices(&mut self, vertices: &VertexAnnotations) {
         {
             let left_vertices = vertices.get(&self.left).unwrap();
             let prune_left: Vec<TypeAnnotation> = self
@@ -194,9 +195,9 @@ impl<'this> TypeInferenceEdge<'this> {
 
 pub trait NestedTypeInferenceGraph {
 
-    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints);
-    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexConstraints) -> bool;
-    fn prune_self_from_vertices_impl<'a>(nested_graphs: &mut [TypeInferenceGraph<'a>], parent_vertices: &VertexConstraints) {
+    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexAnnotations);
+    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexAnnotations) -> bool;
+    fn prune_self_from_vertices_impl<'a>(nested_graphs: &mut [TypeInferenceGraph<'a>], parent_vertices: &VertexAnnotations) {
         for nested_graph in nested_graphs {
             for (vertex, vertex_types) in &mut nested_graph.vertices {
                 if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
@@ -207,7 +208,7 @@ pub trait NestedTypeInferenceGraph {
         }
     }
 
-    fn prune_vertices_from_self_impl<'a>(nested_graphs: &[TypeInferenceGraph<'a>], parent_vertices: &mut VertexConstraints) -> bool {
+    fn prune_vertices_from_self_impl<'a>(nested_graphs: &[TypeInferenceGraph<'a>], parent_vertices: &mut VertexAnnotations) -> bool {
         let mut is_modified = false;
         for (parent_vertex, parent_vertex_types) in parent_vertices {
             let size_before = parent_vertex_types.len();
@@ -229,14 +230,15 @@ pub trait NestedTypeInferenceGraph {
 #[derive(Debug)]
 pub(crate) struct NestedTypeInferenceGraphDisjunction<'this> {
     pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
+    pub(crate) shared_vertex_annotations: BTreeMap<Variable, Option<BTreeSet<TypeAnnotation>>>,
 }
 
 impl<'this> NestedTypeInferenceGraph for NestedTypeInferenceGraphDisjunction<'this> {
-    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexConstraints) {
+    fn prune_self_from_vertices(&mut self, parent_vertices: &VertexAnnotations) {
         Self::prune_self_from_vertices_impl(self.nested_graph_disjunction.as_mut_slice(), parent_vertices);
     }
 
-    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexConstraints) -> bool {
+    fn prune_vertices_from_self(&self, parent_vertices: &mut VertexAnnotations) -> bool {
         Self::prune_vertices_from_self_impl(self.nested_graph_disjunction.as_slice(), parent_vertices)
     }
 }
@@ -245,7 +247,7 @@ impl<'this> NestedTypeInferenceGraph for NestedTypeInferenceGraphDisjunction<'th
 #[cfg(test)]
 pub mod tests {
 
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
     use std::sync::{Arc, Mutex};
     use itertools::Itertools;
 
@@ -271,7 +273,7 @@ pub mod tests {
     };
     use crate::inference::pattern_type_inference::NestedTypeInferenceGraphDisjunction;
     use crate::inference::seed_types::{seed_types, TypeSeeder};
-    use crate::inference::type_inference::TypeAnnotation;
+    use crate::inference::type_inference::{TypeAnnotation, VertexAnnotations};
     use crate::inference::type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity};
     use crate::pattern::conjunction::Conjunction;
     use crate::pattern::constraint::Constraint;
@@ -299,7 +301,7 @@ pub mod tests {
 
     impl<'this> PartialEq<Self> for TypeInferenceGraph<'this> {
         fn eq(&self, other: &Self) -> bool {
-            self.vertices == other.vertices && self.edges == other.edges && self.nested_graphs == other.nested_graphs
+            self.vertices == other.vertices && self.edges == other.edges && self.nested_disjunctions == other.nested_disjunctions
         }
     }
 
@@ -444,7 +446,7 @@ pub mod tests {
                     expected_edge(&constraints[2], var_name, var_name_type, vec![(type_catname.clone(), type_name.clone())]),
                     expected_edge(&constraints[4], var_animal, var_name, vec![(type_cat.clone(), type_catname.clone())])
                 ],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             };
             assert_eq!(expected_tig.vertices, tig.vertices);
 
@@ -480,7 +482,7 @@ pub mod tests {
                     expected_edge(&constraints[2], var_name, var_name_type, vec![(type_catname.clone(), type_catname.clone())]),
                     expected_edge(&constraints[4], var_animal, var_name, vec![(type_cat.clone(), type_catname.clone())])
                 ],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -515,7 +517,7 @@ pub mod tests {
                     expected_edge(&constraints[2], var_name, var_name_type, vec![]),
                     expected_edge(&constraints[4], var_animal, var_name, vec![])
                 ],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -551,7 +553,7 @@ pub mod tests {
                     expected_edge(&constraints[2], var_name, var_name_type, vec![(type_catname.clone(), type_name.clone()), (type_dogname.clone(), type_name.clone()), (type_name.clone(), type_name.clone())]),
                     expected_edge(&constraints[4], var_animal, var_name, vec![(type_cat.clone(), type_catname.clone()), (type_dog.clone(), type_dogname.clone()), (type_animal.clone(), type_name.clone())])
                 ],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -612,13 +614,13 @@ pub mod tests {
                 conjunction: b1,
                 vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_cat.clone()])), (b1_var_animal_type, BTreeSet::from([type_cat.clone()]))]),
                 edges: vec![expected_edge(b1_isa, var_animal, b1_var_animal_type, vec![(type_cat.clone(), type_cat.clone())])],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             });
             expected_nested_graphs.push(TypeInferenceGraph {
                 conjunction: b2,
                 vertices: BTreeMap::from([(var_animal, BTreeSet::from([type_dog.clone()])), (b2_var_animal_type, BTreeSet::from([type_dog.clone()]))]),
                 edges: vec![expected_edge(b2_isa, var_animal, b2_var_animal_type, vec![(type_dog.clone(), type_dog.clone())])],
-                nested_graphs: vec![],
+                nested_disjunctions: vec![],
             });
             let expected_graph = TypeInferenceGraph {
                 conjunction: &root_conj,
@@ -633,12 +635,13 @@ pub mod tests {
                     expected_edge(&root_conj.constraints().constraints[1], var_name, var_name_type, vec![(type_catname.clone(), type_name.clone()), (type_dogname.clone(), type_name.clone())]),
                     expected_edge(&root_conj.constraints().constraints[2], var_animal, var_name, vec![(type_cat.clone(), type_catname.clone()), (type_dog.clone(), type_dogname.clone())])
                 ],
-                nested_graphs: vec![NestedTypeInferenceGraphDisjunction {
+                nested_disjunctions: vec![NestedTypeInferenceGraphDisjunction {
                     nested_graph_disjunction: expected_nested_graphs,
+                    shared_vertex_annotations: BTreeMap::new()
                 }],
             };
 
-            assert_eq!(expected_graph.nested_graphs, tig.nested_graphs);
+            assert_eq!(expected_graph.nested_disjunctions, tig.nested_disjunctions);
 
             assert_eq!(expected_graph, tig);
         }
