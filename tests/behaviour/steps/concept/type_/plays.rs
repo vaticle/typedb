@@ -199,7 +199,7 @@ pub async fn get_plays_overridden_get_label(
     expected_overridden: Label,
 ) {
     let player_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
-    with_schema_tx!(context, |tx| {
+    with_read_tx!(context, |tx| {
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
         let plays = player_type.get_plays_role(&tx.snapshot, &tx.type_manager, role_type).unwrap().unwrap();
         let actual_overridden_opt = plays.get_override(&tx.snapshot, &tx.type_manager).unwrap();
