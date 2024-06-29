@@ -254,8 +254,6 @@ pub(crate) trait InterfaceImplementation<'a>:
     fn object(&self) -> Self::ObjectType;
 
     fn interface(&self) -> Self::InterfaceType;
-
-    fn unwrap_annotation(annotation: Self::AnnotationType) -> Annotation;
 }
 
 pub struct EdgeOverride<EDGE: TypeEdgeEncoding<'static>> {

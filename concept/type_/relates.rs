@@ -162,13 +162,6 @@ impl<'a> InterfaceImplementation<'a> for Relates<'a> {
     fn interface(&self) -> RoleType<'a> {
         self.role.clone()
     }
-
-    fn unwrap_annotation(annotation: RelatesAnnotation) -> Annotation {
-        match annotation {
-            RelatesAnnotation::Distinct(distinct) => Annotation::Distinct(distinct),
-            RelatesAnnotation::Cardinality(cardinality) => Annotation::Cardinality(cardinality),
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

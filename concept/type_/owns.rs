@@ -224,16 +224,6 @@ impl<'a> InterfaceImplementation<'a> for Owns<'a> {
     fn interface(&self) -> AttributeType<'a> {
         self.attribute.clone()
     }
-
-    fn unwrap_annotation(annotation: OwnsAnnotation) -> Annotation {
-        match annotation {
-            OwnsAnnotation::Distinct(distinct) => Annotation::Distinct(distinct),
-            OwnsAnnotation::Key(key) => Annotation::Key(key),
-            OwnsAnnotation::Cardinality(cardinality) => Annotation::Cardinality(cardinality),
-            OwnsAnnotation::Unique(unique) => Annotation::Unique(unique),
-            OwnsAnnotation::Regex(regex) => Annotation::Regex(regex),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

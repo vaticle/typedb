@@ -5,6 +5,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
+use itertools::Itertools;
 
 use encoding::{
     error::{EncodingError, EncodingError::UnexpectedPrefix},
@@ -328,8 +329,12 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         type_manager: &TypeManager<Snapshot>,
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<Owns<'static>>, ConceptReadError> {
-        let expected_owns = Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type);
-        Ok(self.get_owns_declared(snapshot, type_manager)?.contains(&expected_owns).then_some(expected_owns))
+        Ok(self.get_owns(snapshot, type_manager)?
+            .iter()
+            .map(|(_, owns)| owns)
+            .find(|owns| owns.attribute() == attribute_type)
+            .cloned()
+        )
     }
 }
 
@@ -376,8 +381,12 @@ impl<'a> PlayerAPI<'a> for RelationType<'a> {
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<Option<Plays<'static>>, ConceptReadError> {
-        let expected_plays = Plays::new(ObjectType::Relation(self.clone().into_owned()), role_type);
-        Ok(self.get_plays_declared(snapshot, type_manager)?.contains(&expected_plays).then_some(expected_plays))
+        Ok(self.get_plays(snapshot, type_manager)?
+            .iter()
+            .map(|(_, plays)| plays)
+            .find(|plays| plays.role() == role_type)
+            .cloned()
+        )
     }
 }
 

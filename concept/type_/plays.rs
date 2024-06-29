@@ -17,6 +17,7 @@ use crate::{
         InterfaceImplementation, TypeAPI,
     },
 };
+use crate::type_::owns::OwnsAnnotation;
 use crate::type_::role_type::RoleTypeAnnotation;
 use crate::type_::type_manager::validation::SchemaValidationError;
 use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
@@ -133,11 +134,8 @@ impl<'a> TypeEdgeEncoding<'a> for Plays<'a> {
     }
 }
 
-// Can plays not be annotated?
-pub struct __PlaceholderPlaysAnnotation {}
-
 impl<'a> InterfaceImplementation<'a> for Plays<'a> {
-    type AnnotationType = __PlaceholderPlaysAnnotation;
+    type AnnotationType = PlaysAnnotation;
     type ObjectType = ObjectType<'a>;
     type InterfaceType = RoleType<'a>;
 
@@ -147,10 +145,6 @@ impl<'a> InterfaceImplementation<'a> for Plays<'a> {
 
     fn interface(&self) -> RoleType<'a> {
         self.role.clone()
-    }
-
-    fn unwrap_annotation(annotation: __PlaceholderPlaysAnnotation) -> Annotation {
-        unreachable!();
     }
 }
 
