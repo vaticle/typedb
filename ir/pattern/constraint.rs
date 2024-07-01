@@ -114,6 +114,40 @@ impl Constraints {
         Ok(self.constraints.last().unwrap())
     }
 
+    pub fn add_role_player(
+        &mut self,
+        relation: Variable,
+        player: Variable,
+        role: Option<Variable>,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+        debug_assert!(
+            self.context.lock().unwrap().is_variable_available(self.scope, relation)
+                && self.context.lock().unwrap().is_variable_available(self.scope, player)
+                && (role.is_none() || self.context.lock().unwrap().is_variable_available(self.scope, role.unwrap()))
+        );
+        let role_player = RolePlayer::new(relation, player, role);
+        // TODO: Introduce relation category
+        self.context.lock().unwrap().set_variable_category(
+            relation,
+            VariableCategory::Object,
+            role_player.clone().into(),
+        )?;
+        self.context.lock().unwrap().set_variable_category(
+            player,
+            VariableCategory::Object,
+            role_player.clone().into(),
+        )?;
+        if let Some(role_type) = role {
+            self.context.lock().unwrap().set_variable_category(
+                role_type,
+                VariableCategory::RoleImpl,
+                role_player.clone().into(),
+            )?;
+        }
+        self.add_constraint(role_player);
+        Ok(self.constraints.last().unwrap())
+    }
+
     pub fn add_function_call(
         &mut self,
         assigned: Vec<Variable>,

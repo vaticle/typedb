@@ -313,7 +313,16 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         for constraint in &conjunction.constraints().constraints {
             match constraint {
                 Constraint::Isa(isa) => edges.push(self.seed_edge(constraint, isa, vertices)),
-                Constraint::RolePlayer(rp) => todo!("self.seed_edge(rp, &tig.vertices)"),
+                Constraint::RolePlayer(role_player) => {
+                    if role_player.role_type.is_some() {
+                        let relation_role = RelationRoleEdge { role_player };
+                        let player_role = PlayerRoleEdge { role_player };
+                        edges.push(self.seed_edge(constraint, &relation_role, vertices));
+                        edges.push(self.seed_edge(constraint, &player_role, vertices));
+                    } else {
+                        todo!("Can we always have a role-player variable?")
+                    }
+                }
                 Constraint::Has(has) => edges.push(self.seed_edge(constraint, has, vertices)),
                 Constraint::Comparison(cmp) => todo!("self.seed_edge(cmp, &tig.vertices)"), // I'm not thrilled about this.
                 Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => {} // Do nothing
@@ -587,6 +596,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
             .for_each(|type_| {
                 collector.insert(type_);
             });
+        println!("PlayerRole lr({:?}) Collected: {:?}", left_type, collector);
     }
 
     fn annotate_right_to_left_for_type(
@@ -610,6 +620,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
             .for_each(|type_| {
                 collector.insert(type_);
             });
+        println!("PlayerRole rl({:?}) Collected: {:?}", right_type, collector);
     }
 }
 
@@ -640,6 +651,7 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
             .for_each(|type_| {
                 collector.insert(type_);
             });
+        println!("Relationrole lr({:?}) Collected: {:?}", left_type, collector);
     }
 
     fn annotate_right_to_left_for_type(
@@ -652,15 +664,15 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
             TypeAnnotation::SchemaTypeRole(role_type) => role_type,
             _ => todo!("Return an error for using a non-role where an role was expected"),
         };
-        todo!("Implement role_type.get_relations");
-        // role_type
-        //     .get_relates_transitive(seeder.snapshot, seeder.type_manager)
-        //     .unwrap()
-        //     .iter()
-        //     .map(|(relation, _)| TypeAnnotation::SchemaTypeRelation(relation.clone()))
-        //     .for_each(|type_| {
-        //         collector.insert(type_);
-        //     });
+        role_type
+            .get_relations_transitive(seeder.snapshot, seeder.type_manager)
+            .unwrap()
+            .iter()
+            .map(|relates| TypeAnnotation::SchemaTypeRelation(relates.relation().clone()))
+            .for_each(|type_| {
+                collector.insert(type_);
+            });
+        println!("Relationrole rl({:?}) Collected: {:?}", right_type, collector);
     }
 }
 

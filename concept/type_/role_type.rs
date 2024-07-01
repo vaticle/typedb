@@ -60,6 +60,23 @@ impl<'a> RoleType<'a> {
     ) -> Result<MaybeOwns<'m, HashMap<ObjectType<'static>, Plays<'static>>>, ConceptReadError> {
         type_manager.get_plays_for_role_type_transitive(snapshot, self.clone().into_owned())
     }
+
+    pub fn get_relation<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, Relates<'static>>, ConceptReadError> {
+        type_manager.get_relates_for_role_type(snapshot, self.clone().into_owned())
+    }
+
+    pub fn get_relations_transitive<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashSet<Relates<'static>>>, ConceptReadError> {
+        type_manager.get_relates_for_role_type_transitive(snapshot, self.clone().into_owned())
+    }
+
     pub fn get_ordering<Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,

@@ -499,6 +499,32 @@ impl<Snapshot: ReadableSnapshot> TypeManager<Snapshot> {
         }
     }
 
+    pub(crate) fn get_relates_for_role_type(
+        &self,
+        snapshot: &Snapshot,
+        role_type: RoleType<'static>,
+    ) -> Result<MaybeOwns<'_, Relates<'static>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_relates_for_role_type(role_type.clone())))
+        } else {
+            let relates = TypeReader::get_relates_for_role_type(snapshot, role_type.clone())?;
+            Ok(MaybeOwns::Owned(relates))
+        }
+    }
+
+    pub(crate) fn get_relates_for_role_type_transitive(
+        &self,
+        snapshot: &Snapshot,
+        role_type: RoleType<'static>,
+    ) -> Result<MaybeOwns<'_, HashSet<Relates<'static>>>, ConceptReadError> {
+        if let Some(cache) = &self.type_cache {
+            Ok(MaybeOwns::Borrowed(cache.get_relates_for_role_type_transitive(role_type.clone())))
+        } else {
+            let relates = TypeReader::get_relates_for_role_type_transitive(snapshot, role_type.clone())?;
+            Ok(MaybeOwns::Owned(relates))
+        }
+    }
+
     pub(crate) fn get_plays_for_role_type(
         &self,
         snapshot: &Snapshot,
@@ -970,7 +996,7 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         // OperationTimeValidation::validate_exact_type_no_instances_role(snapshot, role_type.clone().into_owned())
         //     .map_err(|source| ConceptWriteError::SchemaValidation {source})?;
 
-        let relates = TypeReader::get_relation(snapshot, role_type.clone().into_owned()).unwrap();
+        let relates = TypeReader::get_relates_for_role_type(snapshot, role_type.clone().into_owned()).unwrap();
         let relation = relates.relation();
         let role = relates.role();
         TypeWriter::storage_delete_relates(snapshot, relation.clone(), role.clone());

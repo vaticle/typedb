@@ -250,7 +250,7 @@ pub mod tests {
         thing::thing_manager::ThingManager,
         type_::{
             annotation::AnnotationAbstract, attribute_type::AttributeTypeAnnotation, type_manager::TypeManager,
-            Ordering, OwnerAPI,
+            Ordering, OwnerAPI, PlayerAPI,
         },
     };
     use durability::wal::WAL;
@@ -278,7 +278,7 @@ pub mod tests {
             seed_types::TypeSeeder,
             type_inference::{
                 TypeAnnotation,
-                TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity},
+                TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity, SchemaTypeRelation, SchemaTypeRole},
             },
         },
         pattern::{conjunction::Conjunction, constraint::Constraint},
@@ -291,6 +291,10 @@ pub mod tests {
     const LABEL_NAME: &str = "name";
     const LABEL_CATNAME: &str = "cat-name";
     const LABEL_DOGNAME: &str = "dog-name";
+
+    const LABEL_FEARS: &str = "fears";
+    const LABEL_HAS_FEAR: &str = "has-fear";
+    const LABEL_IS_FEARED: &str = "is-feared";
 
     impl<'this> PartialEq<Self> for TypeInferenceEdge<'this> {
         fn eq(&self, other: &Self) -> bool {
@@ -363,9 +367,7 @@ pub mod tests {
         storage
     }
 
-    fn managers<Snapshot: ReadableSnapshot>(
-        storage: Arc<MVCCStorage<WALClient>>,
-    ) -> (Arc<TypeManager<Snapshot>>, ThingManager<Snapshot>) {
+    fn managers<Snapshot: ReadableSnapshot>() -> (Arc<TypeManager<Snapshot>>, ThingManager<Snapshot>) {
         let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
         let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
         let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
@@ -379,11 +381,16 @@ pub mod tests {
     fn setup_types<Snapshot: WritableSnapshot + CommittableSnapshot<WALClient>>(
         snapshot_: Snapshot,
         type_manager: &TypeManager<Snapshot>,
-    ) -> ((TypeAnnotation, TypeAnnotation, TypeAnnotation), (TypeAnnotation, TypeAnnotation, TypeAnnotation)) {
+    ) -> (
+        (TypeAnnotation, TypeAnnotation, TypeAnnotation),
+        (TypeAnnotation, TypeAnnotation, TypeAnnotation),
+        (TypeAnnotation, TypeAnnotation, TypeAnnotation),
+    ) {
         // dog sub animal, owns dog-name; cat sub animal owns cat-name;
         // cat-name sub animal-name; dog-name sub animal-name;
         let mut snapshot = snapshot_;
 
+        // Attributes
         let name = type_manager.create_attribute_type(&mut snapshot, &Label::build(LABEL_NAME), false).unwrap();
         let catname = type_manager.create_attribute_type(&mut snapshot, &Label::build(LABEL_CATNAME), false).unwrap();
         let dogname = type_manager.create_attribute_type(&mut snapshot, &Label::build(LABEL_DOGNAME), false).unwrap();
@@ -392,22 +399,34 @@ pub mod tests {
         catname.set_supertype(&mut snapshot, type_manager, name.clone()).unwrap();
         dogname.set_supertype(&mut snapshot, type_manager, name.clone()).unwrap();
 
+        // Entities
         let animal = type_manager.create_entity_type(&mut snapshot, &Label::build(LABEL_ANIMAL), false).unwrap();
         let cat = type_manager.create_entity_type(&mut snapshot, &Label::build(LABEL_CAT), false).unwrap();
         let dog = type_manager.create_entity_type(&mut snapshot, &Label::build(LABEL_DOG), false).unwrap();
         cat.set_supertype(&mut snapshot, type_manager, animal.clone()).unwrap();
         dog.set_supertype(&mut snapshot, type_manager, animal.clone()).unwrap();
 
+        // Ownerships
         let animal_owns = animal.set_owns(&mut snapshot, type_manager, name.clone(), Ordering::Unordered).unwrap();
         let cat_owns = cat.set_owns(&mut snapshot, type_manager, catname.clone(), Ordering::Unordered).unwrap();
         let dog_owns = dog.set_owns(&mut snapshot, type_manager, dogname.clone(), Ordering::Unordered).unwrap();
         cat_owns.set_override(&mut snapshot, type_manager, animal_owns.clone()).unwrap();
         dog_owns.set_override(&mut snapshot, type_manager, animal_owns.clone()).unwrap();
+
+        // Relations
+        let fears = type_manager.create_relation_type(&mut snapshot, &Label::build(LABEL_FEARS), false).unwrap();
+        let has_fear = fears.create_relates(&mut snapshot, &type_manager, LABEL_HAS_FEAR, Ordering::Unordered).unwrap();
+        let is_feared =
+            fears.create_relates(&mut snapshot, &type_manager, LABEL_IS_FEARED, Ordering::Unordered).unwrap();
+        cat.set_plays(&mut snapshot, &type_manager, has_fear.clone());
+        dog.set_plays(&mut snapshot, &type_manager, is_feared.clone());
+
         snapshot.commit().unwrap();
 
         (
             (SchemaTypeEntity(animal), SchemaTypeEntity(cat), SchemaTypeEntity(dog)),
             (SchemaTypeAttribute(name), SchemaTypeAttribute(catname), SchemaTypeAttribute(dogname)),
+            (SchemaTypeRelation(fears), SchemaTypeRole(has_fear), SchemaTypeRole(is_feared)),
         )
     }
 
@@ -415,9 +434,9 @@ pub mod tests {
     fn basic_binary_edges() {
         // Some version of `$a isa animal, has name $n;`
         let storage = setup_storage();
-        let (type_manager, thing_manager) = managers(storage.clone());
+        let (type_manager, thing_manager) = managers();
 
-        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname)) =
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), _) =
             setup_types(storage.clone().open_snapshot_write(), &type_manager);
 
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
@@ -475,7 +494,6 @@ pub mod tests {
                 nested_negations: vec![],
                 nested_optionals: vec![],
             };
-            assert_eq!(expected_tig.vertices, tig.vertices);
 
             assert_eq!(expected_tig, tig);
         }
@@ -647,9 +665,9 @@ pub mod tests {
     fn basic_nested_graphs() {
         // Some version of `$a isa animal, has name $n;`
         let storage = setup_storage();
-        let (type_manager, thing_manager) = managers(storage.clone());
+        let (type_manager, thing_manager) = managers();
 
-        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname)) =
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), _) =
             setup_types(storage.clone().open_snapshot_write(), &type_manager);
 
         let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
@@ -755,9 +773,120 @@ pub mod tests {
                 nested_optionals: vec![],
             };
 
-            // assert_eq!(expected_graph.vertices, tig.vertices);
-            // assert_eq!(expected_graph.edges, tig.edges);
-            assert_eq!(expected_graph.nested_disjunctions, tig.nested_disjunctions);
+            assert_eq!(expected_graph, tig);
+        }
+    }
+
+    #[test]
+    fn no_type_constraints() {
+        todo!("Test $x has $y")
+    }
+
+    #[test]
+    fn role_players() {
+        let storage = setup_storage();
+        let (type_manager, thing_manager) = managers();
+
+        let ((type_animal, type_cat, type_dog), _, (type_fears, type_has_fear, type_is_feared)) =
+            setup_types(storage.clone().open_snapshot_write(), &type_manager);
+
+        {
+            // With roles specified
+            let snapshot = storage.clone().open_snapshot_write();
+            let mut conjunction = Conjunction::new_root();
+            let (
+                var_has_fear,
+                var_is_feared,
+                var_fears_type,
+                var_fears,
+                var_role_1,
+                var_role_2,
+                var_role_1_type,
+                var_role_2_type,
+            ) = ["has_fear", "is_feared", "fears_type", "fears", "role1", "role2", "role1_type", "role2_type"]
+                .iter()
+                .map(|name| conjunction.get_or_declare_variable(*name).unwrap())
+                .collect_tuple()
+                .unwrap();
+
+            conjunction.constraints_mut().add_isa(var_fears, var_fears_type).unwrap();
+            conjunction.constraints_mut().add_type(var_fears_type, LABEL_FEARS).unwrap();
+            conjunction.constraints_mut().add_role_player(var_fears, var_has_fear, Some(var_role_1)).unwrap();
+            conjunction.constraints_mut().add_role_player(var_fears, var_is_feared, Some(var_role_2)).unwrap();
+
+            conjunction.constraints_mut().add_isa(var_role_1, var_role_1_type).unwrap();
+            conjunction.constraints_mut().add_type(var_role_1_type, "fears:has-fear").unwrap();
+            conjunction.constraints_mut().add_isa(var_role_2, var_role_2_type).unwrap();
+            conjunction.constraints_mut().add_type(var_role_2_type, "fears:is-feared").unwrap();
+
+            let constraints = &conjunction.constraints().constraints;
+
+            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
+            run_type_inference(&mut tig);
+
+            let expected_graph = TypeInferenceGraph {
+                conjunction: &conjunction,
+                vertices: BTreeMap::from([
+                    (var_has_fear, BTreeSet::from([type_cat.clone()])),
+                    (var_is_feared, BTreeSet::from([type_dog.clone()])),
+                    (var_fears_type, BTreeSet::from([type_fears.clone()])),
+                    (var_fears, BTreeSet::from([type_fears.clone()])),
+                    (var_role_1, BTreeSet::from([type_has_fear.clone()])),
+                    (var_role_2, BTreeSet::from([type_is_feared.clone()])),
+                    (var_role_1_type, BTreeSet::from([type_has_fear.clone()])),
+                    (var_role_2_type, BTreeSet::from([type_is_feared.clone()])),
+                ]),
+                edges: vec![
+                    // isa
+                    expected_edge(
+                        &conjunction.constraints().constraints[0],
+                        var_fears,
+                        var_fears_type,
+                        vec![(type_fears.clone(), type_fears.clone())],
+                    ),
+                    // has-fear edge
+                    expected_edge(
+                        &conjunction.constraints().constraints[2],
+                        var_fears,
+                        var_role_1,
+                        vec![(type_fears.clone(), type_has_fear.clone())],
+                    ),
+                    expected_edge(
+                        &conjunction.constraints().constraints[2],
+                        var_has_fear,
+                        var_role_1,
+                        vec![(type_cat.clone(), type_has_fear.clone())],
+                    ),
+                    // is-feared edge
+                    expected_edge(
+                        &conjunction.constraints().constraints[3],
+                        var_fears,
+                        var_role_2,
+                        vec![(type_fears.clone(), type_is_feared.clone())],
+                    ),
+                    expected_edge(
+                        &conjunction.constraints().constraints[3],
+                        var_is_feared,
+                        var_role_2,
+                        vec![(type_dog.clone(), type_is_feared.clone())],
+                    ),
+                    expected_edge(
+                        &conjunction.constraints().constraints[4],
+                        var_role_1,
+                        var_role_1_type,
+                        vec![(type_has_fear.clone(), type_has_fear.clone())],
+                    ),
+                    expected_edge(
+                        &conjunction.constraints().constraints[6],
+                        var_role_2,
+                        var_role_2_type,
+                        vec![(type_is_feared.clone(), type_is_feared.clone())],
+                    ),
+                ],
+                nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
+            };
 
             assert_eq!(expected_graph, tig);
         }
