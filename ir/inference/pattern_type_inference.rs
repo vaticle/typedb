@@ -36,6 +36,8 @@ pub struct TypeInferenceGraph<'this> {
     pub(crate) vertices: VertexAnnotations,
     pub(crate) edges: Vec<TypeInferenceEdge<'this>>,
     pub(crate) nested_disjunctions: Vec<NestedTypeInferenceGraphDisjunction<'this>>,
+    pub(crate) nested_negations: Vec<TypeInferenceGraph<'this>>,
+    pub(crate) nested_optionals: Vec<TypeInferenceGraph<'this>>,
 }
 
 impl<'this> TypeInferenceGraph<'this> {
@@ -194,14 +196,14 @@ impl<'this> TypeInferenceEdge<'this> {
 
 #[derive(Debug)]
 pub(crate) struct NestedTypeInferenceGraphDisjunction<'this> {
-    pub(crate) nested_graph_disjunction: Vec<TypeInferenceGraph<'this>>,
+    pub(crate) disjunction: Vec<TypeInferenceGraph<'this>>,
     pub(crate) shared_variables: BTreeSet<Variable>,
     pub(crate) shared_vertex_annotations: BTreeMap<Variable, BTreeSet<TypeAnnotation>>,
 }
 
 impl<'this> NestedTypeInferenceGraphDisjunction<'this> {
     fn prune_self_from_vertices<'a>(&mut self, parent_vertices: &VertexAnnotations) {
-        for nested_graph in &mut self.nested_graph_disjunction {
+        for nested_graph in &mut self.disjunction {
             for (vertex, vertex_types) in &mut nested_graph.vertices {
                 if let Some(parent_vertex_types) = parent_vertices.get(&vertex) {
                     vertex_types.retain(|type_| parent_vertex_types.contains(&type_))
@@ -213,14 +215,14 @@ impl<'this> NestedTypeInferenceGraphDisjunction<'this> {
 
     fn prune_vertices_from_self<'a>(&mut self, parent_vertices: &mut VertexAnnotations) -> bool {
         let mut is_modified = false;
-        for nested_graph in &mut self.nested_graph_disjunction {
+        for nested_graph in &mut self.disjunction {
             nested_graph.prune_vertices_from_constraints();
         }
 
         for (parent_vertex, parent_vertex_types) in parent_vertices {
             let size_before = parent_vertex_types.len();
             parent_vertex_types.retain(|type_| {
-                self.nested_graph_disjunction.iter().any(|nested_graph| {
+                self.disjunction.iter().any(|nested_graph| {
                     nested_graph
                         .vertices
                         .get(&parent_vertex)
@@ -314,7 +316,7 @@ pub mod tests {
 
     impl<'this> PartialEq<Self> for NestedTypeInferenceGraphDisjunction<'this> {
         fn eq(&self, other: &Self) -> bool {
-            self.nested_graph_disjunction == other.nested_graph_disjunction
+            self.disjunction == other.disjunction
         }
     }
 
@@ -470,6 +472,8 @@ pub mod tests {
                     ),
                 ],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             };
             assert_eq!(expected_tig.vertices, tig.vertices);
 
@@ -524,6 +528,8 @@ pub mod tests {
                     ),
                 ],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -562,6 +568,8 @@ pub mod tests {
                     expected_edge(&constraints[4], var_animal, var_name, vec![]),
                 ],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -628,6 +636,8 @@ pub mod tests {
                     ),
                 ],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             };
             assert_eq!(expected_tig, tig);
         }
@@ -678,8 +688,8 @@ pub mod tests {
             run_type_inference(&mut tig);
 
             let disj = root_conj.patterns().patterns.get(0).unwrap().as_disjunction().unwrap();
-            let b1 = disj.conjunctions.get(0).unwrap();
-            let b2 = disj.conjunctions.get(1).unwrap();
+            let b1 = disj.conjunctions().get(0).unwrap();
+            let b2 = disj.conjunctions().get(1).unwrap();
             let b1_isa = &b1.constraints().constraints[0];
             let b2_isa = &b2.constraints().constraints[0];
             let mut expected_nested_graphs: Vec<TypeInferenceGraph> = Vec::new();
@@ -696,6 +706,8 @@ pub mod tests {
                     vec![(type_cat.clone(), type_cat.clone())],
                 )],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             });
             expected_nested_graphs.push(TypeInferenceGraph {
                 conjunction: b2,
@@ -710,6 +722,8 @@ pub mod tests {
                     vec![(type_dog.clone(), type_dog.clone())],
                 )],
                 nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             });
             let expected_graph = TypeInferenceGraph {
                 conjunction: &root_conj,
@@ -733,10 +747,12 @@ pub mod tests {
                     ),
                 ],
                 nested_disjunctions: vec![NestedTypeInferenceGraphDisjunction {
-                    nested_graph_disjunction: expected_nested_graphs,
+                    disjunction: expected_nested_graphs,
                     shared_variables: BTreeSet::new(),
                     shared_vertex_annotations: BTreeMap::new(),
                 }],
+                nested_negations: vec![],
+                nested_optionals: vec![],
             };
 
             // assert_eq!(expected_graph.vertices, tig.vertices);

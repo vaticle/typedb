@@ -38,19 +38,48 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
 
     pub(crate) fn seed_types<'graph>(&'this self, conjunction: &'graph Conjunction) -> TypeInferenceGraph<'graph> {
         let mut tig = self.recursively_allocate(conjunction);
-        self.seed_vertex_annotations_from_type_and_function_return(&mut tig);
-        let mut something_changed = true;
-        while something_changed {
-            something_changed = self.propagate_vertex_annotations(&mut tig);
-        }
-
-        self.seed_edges(&mut tig);
-
+        self.seed_types_impl(&mut tig, &BTreeMap::new());
         tig
     }
 
+    pub(crate) fn seed_types_impl<'graph>(
+        &self,
+        tig: &mut TypeInferenceGraph<'graph>,
+        parent_vertices: &VertexAnnotations,
+    ) {
+        tig.conjunction
+            .constraints()
+            .constraints
+            .iter()
+            .flat_map(|constraint| constraint.variables())
+            .dedup()
+            .for_each(|v| {
+                if let Some(parent_annotations) = parent_vertices.get(&v) {
+                    tig.vertices.insert(v, parent_annotations.clone());
+                }
+            });
+
+        self.seed_vertex_annotations_from_type_and_function_return(tig);
+        let mut something_changed = true;
+        while something_changed {
+            something_changed = self.propagate_vertex_annotations(tig);
+        }
+        self.seed_edges(tig);
+
+        // Now we recurse into the nested negations & optionals
+        let TypeInferenceGraph { vertices, nested_negations, nested_optionals, .. } = tig;
+        for nested_tig in nested_negations {
+            self.seed_types_impl(nested_tig, vertices);
+        }
+        for nested_tig in nested_optionals {
+            self.seed_types_impl(nested_tig, vertices);
+        }
+    }
+
     fn recursively_allocate<'conj>(&self, conj: &'conj Conjunction) -> TypeInferenceGraph<'conj> {
-        let mut nested = Vec::new();
+        let mut disjunctions = Vec::new();
+        let mut optionals = Vec::new();
+        let mut negations = Vec::new();
         let conj_variables: HashSet<Variable> =
             conj.constraints().constraints.iter().flat_map(|constraint| constraint.variables()).collect();
         for pattern in &conj.patterns().patterns {
@@ -60,26 +89,23 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                 }
                 Pattern::Disjunction(disjunction) => {
                     let shared_variables: BTreeSet<Variable> = disjunction
-                        .conjunctions
+                        .conjunctions()
                         .iter()
                         .flat_map(|conj| conj.constraints().constraints.iter())
                         .flat_map(|constraint| constraint.variables())
                         .filter(|x| conj_variables.contains(x))
                         .collect();
-                    nested.push(NestedTypeInferenceGraphDisjunction {
-                        nested_graph_disjunction: (&disjunction.conjunctions)
-                            .iter()
-                            .map(|c| self.recursively_allocate(c))
-                            .collect(),
+                    disjunctions.push(NestedTypeInferenceGraphDisjunction {
+                        disjunction: disjunction.conjunctions().iter().map(|c| self.recursively_allocate(c)).collect(),
                         shared_variables,
                         shared_vertex_annotations: BTreeMap::new(),
                     });
                 }
-                Pattern::Negation(_) => {
-                    todo!()
+                Pattern::Negation(negation) => {
+                    negations.push(self.recursively_allocate(negation.conjunction()));
                 }
-                Pattern::Optional(_) => {
-                    todo!()
+                Pattern::Optional(optional) => {
+                    optionals.push(self.recursively_allocate(optional.conjunction()));
                 }
             }
         }
@@ -88,7 +114,9 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             conjunction: conj,
             vertices: BTreeMap::new(),
             edges: Vec::new(),
-            nested_disjunctions: nested,
+            nested_disjunctions: disjunctions,
+            nested_negations: negations,
+            nested_optionals: optionals,
         }
     }
 
@@ -111,7 +139,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             }
         }
         for nested in &mut tig.nested_disjunctions {
-            for nested_tig in &mut nested.nested_graph_disjunction {
+            for nested_tig in &mut nested.disjunction {
                 self.seed_vertex_annotations_from_type_and_function_return(nested_tig)
             }
         }
@@ -144,17 +172,17 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     fn propagate_vertex_annotations<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> bool {
         // TODO: This is a naive implementation and likely has great scope for simple optimisations
         // Prefer annotations from the parent where available
-        let mut something_changed = false;
+        let mut is_modified = false;
         for c in &tig.conjunction.constraints().constraints {
-            something_changed = something_changed | self.try_propagating_vertex_annotation(c, &mut tig.vertices);
+            is_modified = is_modified | self.try_propagating_vertex_annotation(c, &mut tig.vertices);
         }
 
-        // Propagate to & from nested patterns
+        // Propagate to & from nested disjunctions
         for nested in &mut tig.nested_disjunctions {
-            something_changed = something_changed | self.reconcile_nested_disjunction(nested, &mut tig.vertices);
+            is_modified = is_modified | self.reconcile_nested_disjunction(nested, &mut tig.vertices);
         }
-        // TODO: Nested negation & nested optionals
-        something_changed
+
+        is_modified
     }
 
     fn try_propagating_vertex_annotation<'conj>(
@@ -163,11 +191,11 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         vertices: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>,
     ) -> bool {
         match constraint {
-            Constraint::Isa(isa) => self.try_propagating_vertex_annotation_impl(constraint, isa, vertices),
+            Constraint::Isa(isa) => self.try_propagating_vertex_annotation_impl(isa, vertices),
             Constraint::RolePlayer(rp) => {
                 todo!("self.try_infer_unary_annotations_from_binary_constraints(rp, &mut unary_annotations)")
             }
-            Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(constraint, has, vertices),
+            Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(has, vertices),
             Constraint::Comparison(cmp) => {
                 todo!("self.try_infer_unary_annotations_from_binary_constraints(cmp, &mut unary_annotations)")
             } // I'm not thrilled about this.
@@ -177,7 +205,6 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
 
     fn try_propagating_vertex_annotation_impl<'conj>(
         &self,
-        constraint: &'conj Constraint<Variable>,
         inner: &impl BinaryConstraintWrapper,
         vertices: &mut BTreeMap<Variable, BTreeSet<TypeAnnotation>>,
     ) -> bool {
@@ -207,21 +234,21 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         // Apply annotations ot the parent on the nested
         for variable in nested.shared_variables.iter() {
             if let Some(parent_annotations) = parent_vertices.get_mut(variable) {
-                for nested_tig in &mut nested.nested_graph_disjunction {
+                for nested_tig in &mut nested.disjunction {
                     Self::intersect_unary(&mut nested_tig.vertices, *variable, Cow::Borrowed(parent_annotations));
                 }
             }
         }
 
         // Propagate it within the child & recursively into nested
-        for nested_tig in &mut nested.nested_graph_disjunction {
+        for nested_tig in &mut nested.disjunction {
             something_changed = something_changed | self.propagate_vertex_annotations(nested_tig);
         }
 
         // Update shared variables of the disjunction
         let NestedTypeInferenceGraphDisjunction {
             shared_vertex_annotations,
-            nested_graph_disjunction,
+            disjunction: nested_graph_disjunction,
             shared_variables,
         } = nested;
         for variable in shared_variables.iter() {
@@ -291,7 +318,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             }
         }
         for disj in &mut tig.nested_disjunctions {
-            for nested_tig in &mut disj.nested_graph_disjunction {
+            for nested_tig in &mut disj.disjunction {
                 self.seed_edges(nested_tig);
             }
         }
@@ -716,6 +743,8 @@ pub mod tests {
                         ),
                     ],
                     nested_disjunctions: vec![],
+                    nested_negations: vec![],
+                    nested_optionals: vec![],
                 }
             };
 

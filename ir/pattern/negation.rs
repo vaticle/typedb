@@ -14,7 +14,7 @@ use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, S
 #[derive(Debug)]
 pub(crate) struct Negation {
     context: Arc<Mutex<PatternContext>>,
-    pub(crate) conjunction: Conjunction,
+    conjunction: Conjunction,
 }
 
 impl Negation {
@@ -24,6 +24,10 @@ impl Negation {
 
     pub(crate) fn context(&self) -> MutexGuard<PatternContext> {
         self.context.lock().unwrap()
+    }
+
+    pub(crate) fn conjunction(&self) -> &Conjunction {
+        &self.conjunction
     }
 }
 

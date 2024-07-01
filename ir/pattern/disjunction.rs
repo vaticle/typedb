@@ -18,7 +18,7 @@ use crate::pattern::{
 pub(crate) struct Disjunction {
     scope_id: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    pub(crate) conjunctions: Vec<Conjunction>,
+    conjunctions: Vec<Conjunction>,
 }
 
 impl Disjunction {
@@ -39,6 +39,10 @@ impl Disjunction {
         let disjunction = Conjunction::new_child(self.scope_id, self.context.clone());
         self.conjunctions.push(disjunction);
         self.conjunctions.last_mut().unwrap()
+    }
+
+    pub(crate) fn conjunctions(&self) -> &Vec<Conjunction> {
+        &self.conjunctions
     }
 }
 

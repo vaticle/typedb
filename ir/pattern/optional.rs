@@ -15,7 +15,7 @@ use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, S
 #[derive(Debug)]
 pub struct Optional {
     context: Arc<Mutex<PatternContext>>,
-    pub(crate) conjunction: Conjunction,
+    conjunction: Conjunction,
 }
 
 impl Optional {
