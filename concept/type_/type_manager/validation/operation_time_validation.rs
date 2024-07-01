@@ -9,13 +9,11 @@ use std::collections::HashMap;
 use encoding::{
     graph::{
         thing::{edge::ThingEdgeRolePlayer, vertex_object::ObjectVertex},
-        type_::vertex::TypeVertexEncoding,
         Typed,
     },
     layout::prefix::Prefix,
     value::{label::Label, value_type::ValueType},
 };
-use encoding::EncodingKeyspace::Schema;
 use encoding::graph::type_::edge::TypeEdgeEncoding;
 use lending_iterator::LendingIterator;
 use storage::{key_range::KeyRange, snapshot::ReadableSnapshot};
@@ -28,7 +26,7 @@ use crate::{
     },
     type_::{
         annotation::{Annotation, AnnotationAbstract, AnnotationCategory, AnnotationCardinality},
-        attribute_type::AttributeType,
+        attribute_type::{AttributeType, AttributeTypeAnnotation},
         entity_type::EntityType,
         object_type::ObjectType,
         owns::Owns,
@@ -36,14 +34,16 @@ use crate::{
         relation_type::RelationType,
         relates::Relates,
         role_type::RoleType,
-        type_manager::{type_reader::TypeReader, validation::SchemaValidationError},
+        type_manager::{
+            type_reader::TypeReader,
+            validation::{
+                SchemaValidationError,
+            }
+        },
         KindAPI, TypeAPI, ObjectTypeAPI,
-        Ordering,
+        Ordering, InterfaceImplementation
     },
 };
-use crate::error::ConceptWriteError;
-use crate::type_::attribute_type::AttributeTypeAnnotation;
-use crate::type_::InterfaceImplementation;
 
 macro_rules! object_type_match {
     ($obj_var:ident, $block:block) => {
@@ -906,7 +906,61 @@ impl OperationTimeValidation {
         Ok(())
     }
 
-    pub(crate) fn validate_unsetted_annotation_is_not_inherited<T, Snapshot>(
+    pub(crate) fn validate_unsetted_owns_is_not_inherited<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        owner: ObjectType<'static>,
+        attribute_type: AttributeType<'static>,
+    ) -> Result<(), SchemaValidationError> {
+        let all_owns: HashMap<AttributeType<'static>, Owns<'static>> =
+            TypeReader::get_implemented_interfaces(snapshot, owner.clone())
+                .map_err(SchemaValidationError::ConceptRead)?;
+        let found_owns = all_owns.iter()
+            .find(|(existing_owns_attribute_type, existing_owns)|
+                **existing_owns_attribute_type == attribute_type);
+
+        match found_owns {
+            Some((_, owns)) => {
+                if owner == owns.owner() {
+                    Ok(())
+                } else {
+                    let owns_owner = owns.owner();
+                    Err(SchemaValidationError::CannotUnsetInheritedOwns(
+                        get_label!(snapshot, attribute_type), get_label!(snapshot, owner)
+                    ))
+                }
+            },
+            None => Ok(())
+        }
+    }
+
+    pub(crate) fn validate_unsetted_plays_is_not_inherited<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        player: ObjectType<'static>,
+        role_type: RoleType<'static>,
+    ) -> Result<(), SchemaValidationError> {
+        let all_plays: HashMap<RoleType<'static>, Plays<'static>> =
+            TypeReader::get_implemented_interfaces(snapshot, player.clone())
+                .map_err(SchemaValidationError::ConceptRead)?;
+        let found_plays = all_plays.iter()
+            .find(|(existing_plays_role_type, existing_plays)|
+                **existing_plays_role_type == role_type);
+
+        match found_plays {
+            Some((_, plays)) => {
+                if player == plays.player() {
+                    Ok(())
+                } else {
+                    let plays_player = plays.player();
+                    Err(SchemaValidationError::CannotUnsetInheritedPlays(
+                        get_label!(snapshot, role_type), get_label!(snapshot, plays_player)
+                    ))
+                }
+            },
+            None => Ok(())
+        }
+    }
+
+    pub(crate) fn validate_unset_annotation_is_not_inherited<T, Snapshot>(
         snapshot: &Snapshot,
         type_: T,
         annotation_category: AnnotationCategory
@@ -936,7 +990,7 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_unsetted_edge_annotation_is_not_inherited<EDGE, Snapshot>(
+    pub(crate) fn validate_unset_edge_annotation_is_not_inherited<EDGE, Snapshot>(
         snapshot: &Snapshot,
         edge: EDGE,
         annotation_category: AnnotationCategory
@@ -960,6 +1014,189 @@ impl OperationTimeValidation {
                 }
             },
             None => Ok(())
+        }
+    }
+
+    pub(crate) fn validate_set_annotation_is_compatible_with_inherited_annotations<Snapshot>(
+        snapshot: &Snapshot,
+        type_: impl KindAPI<'static>,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let existing_annotations = TypeReader::get_type_annotations(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for (existing_annotation, _) in existing_annotations {
+            let existing_annotation_category = existing_annotation.clone().into().category();
+            if !existing_annotation_category.compatible_to_transitively_add(annotation_category) {
+                return Err(SchemaValidationError::AnnotationIsNotCompatibleWithInheritedAnnotation(
+                    annotation_category, existing_annotation_category, get_label!(snapshot, type_)
+                ))
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_set_edge_annotation_is_compatible_with_inherited_annotations<EDGE, Snapshot>(
+        snapshot: &Snapshot,
+        edge: EDGE,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone,
+    {
+        let existing_annotations = TypeReader::get_type_edge_annotations(snapshot, edge.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for (existing_annotation, _) in existing_annotations {
+            let existing_annotation_category = existing_annotation.category();
+            if !existing_annotation_category.compatible_to_transitively_add(annotation_category) {
+                let interface = edge.interface();
+                return Err(SchemaValidationError::AnnotationIsNotCompatibleWithInheritedAnnotation(
+                    annotation_category, existing_annotation_category, get_label!(snapshot, interface)
+                ))
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_set_annotation_is_compatible_with_declared_annotations<Snapshot>(
+        snapshot: &Snapshot,
+        type_: impl KindAPI<'static>,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let existing_annotations = TypeReader::get_type_annotations_declared(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for existing_annotation in existing_annotations {
+            let existing_annotation_category = existing_annotation.clone().into().category();
+            if !existing_annotation_category.compatible_to_declare_together(annotation_category) {
+                return Err(SchemaValidationError::AnnotationIsNotCompatibleWithDeclaredAnnotation(
+                    annotation_category, existing_annotation_category, get_label!(snapshot, type_)
+                ))
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_set_edge_annotation_is_compatible_with_declared_annotations<EDGE, Snapshot>(
+        snapshot: &Snapshot,
+        edge: EDGE,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Clone,
+    {
+        let existing_annotations = TypeReader::get_type_edge_annotations_declared(snapshot, edge.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for existing_annotation in existing_annotations {
+            let existing_annotation_category = existing_annotation.category();
+            if !existing_annotation_category.compatible_to_declare_together(annotation_category) {
+                let interface = edge.interface();
+                return Err(SchemaValidationError::AnnotationIsNotCompatibleWithDeclaredAnnotation(
+                    annotation_category, existing_annotation_category, get_label!(snapshot, interface)
+                ))
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_owns_value_type_keyable<Snapshot>(
+        snapshot: &Snapshot,
+        owns: Owns<'static>,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let value_type = TypeReader::get_value_type_without_source(snapshot, owns.attribute().clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        if Self::is_owns_value_type_keyable(value_type.clone()) {
+            Ok(())
+        } else {
+            let owner = owns.owner();
+            let attribute_type = owns.attribute();
+            Err(SchemaValidationError::ValueTypeIsNotKeyable(
+                get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type
+            ))
+        }
+    }
+
+    pub fn validate_value_type_keyable_for_all_owns_annotations<Snapshot>(
+        snapshot: &Snapshot,
+        attribute_type: AttributeType<'static>,
+        value_type: Option<ValueType>,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let all_owns = TypeReader::get_implementations_for_interface::<Owns<'static>>(snapshot, attribute_type.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+
+        for (_, owns) in all_owns {
+            Self::validate_owns_value_type_keyable_for_annotations(snapshot, owns, value_type.clone())?
+        }
+        Ok(())
+    }
+
+    fn validate_owns_value_type_keyable_for_annotations<Snapshot>(
+        snapshot: &Snapshot,
+        owns: Owns<'static>,
+        value_type: Option<ValueType>
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+    {
+        let annotations = TypeReader::get_type_edge_annotations(snapshot, owns.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        for (annotation, _) in annotations {
+            match annotation {
+                Annotation::Unique(_) => {
+                    if !Self::is_owns_value_type_keyable(value_type.clone()) {
+                        let owner = owns.owner();
+                        let attribute_type = owns.attribute();
+                        return Err(SchemaValidationError::ValueTypeIsNotKeyableForUniqueAnnotation(
+                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type
+                        ))
+                    }
+                }
+                Annotation::Key(_) => {
+                    if !Self::is_owns_value_type_keyable(value_type.clone()) {
+                        let owner = owns.owner();
+                        let attribute_type = owns.attribute();
+                        return Err(SchemaValidationError::ValueTypeIsNotKeyableForKeyAnnotation(
+                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type
+                        ))
+                    }
+                }
+                | Annotation::Abstract(_)
+                | Annotation::Distinct(_)
+                | Annotation::Independent(_)
+                | Annotation::Cardinality(_)
+                | Annotation::Regex(_)
+                | Annotation::Cascade(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn is_owns_value_type_keyable(value_type_opt: Option<ValueType>) -> bool
+    {
+        match value_type_opt {
+            Some(value_type) => value_type.keyable(),
+            None => true,
         }
     }
 

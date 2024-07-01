@@ -27,32 +27,6 @@ pub(crate) fn are_annotations_compatible(
     Ok(())
 }
 
-fn validate_cardinality_is_compatible_with(
-    subtype_cardinality: AnnotationCardinality,
-    supertype_annotations: &Vec<Annotation>,
-) -> Result<(), SchemaValidationError> {
-    todo!()
-}
-
-fn validate_key_is_compatible_with(
-    key: AnnotationKey,
-    supertype_annotations: &Vec<Annotation>,
-) -> Result<(), SchemaValidationError> {
-    todo!()
-}
-
-fn contains_annotation_category<T, TAnnotation>(
-    annotations_container: &HashMap<TAnnotation, T>,
-    annotation_category: AnnotationCategory
-) -> bool
-    where
-        TAnnotation : Clone + Into<Annotation>,
-{
-    annotations_container.iter()
-        .map(|(annotation, _)| annotation.clone().into().category())
-        .any(|annotation| annotation == annotation_category)
-}
-
 pub(crate) fn is_annotation_inheritable<T, TAnnotation>(
     supertype_annotation: &TAnnotation,
     effective_annotations: &HashMap<TAnnotation, T>,
@@ -60,31 +34,20 @@ pub(crate) fn is_annotation_inheritable<T, TAnnotation>(
 where
     TAnnotation : Clone + Into<Annotation>,
 {
-    let supertype_annotation = supertype_annotation.clone().into();
-    match supertype_annotation { // TODO: Make sure that it is tested correctly for all types!
-        Annotation::Abstract(_) => false,
-        | Annotation::Unique(_)
-        | Annotation::Cardinality(_) => {
-            if contains_annotation_category::<T, TAnnotation>(effective_annotations, AnnotationCategory::Key) {
-                false
-            } else {
-                !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
-            }
-        },
-        | Annotation::Distinct(_)
-        | Annotation::Independent(_)
-        | Annotation::Key(_)
-        | Annotation::Regex(_)
-        | Annotation::Cascade(_) => {
-            !contains_annotation_category::<T, TAnnotation>(effective_annotations, supertype_annotation.category())
+    let supertype_category = supertype_annotation.clone().into().category();
+    if !supertype_category.inheritable() {
+        return false;
+    }
+
+    for (effective_annotation, _) in effective_annotations {
+        let effective_category = effective_annotation.clone().into().category();
+        if effective_category == supertype_category {
+            return false;
+        }
+        if !effective_category.compatible_to_transitively_add(supertype_category) {
+            return false;
         }
     }
-}
 
-pub(crate) fn is_cardinality_narrowed_correctly(
-    supertype_annotation: &AnnotationCardinality,
-    subtype_annotation: &AnnotationCardinality,
-) -> bool
-{
-    supertype_annotation.narrowed_correctly_by(subtype_annotation)
+    true
 }

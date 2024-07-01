@@ -143,12 +143,12 @@ impl<'a> Owns<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             OwnsAnnotation::Distinct(_) => type_manager.set_owns_annotation_distinct(snapshot, self.clone().into_owned())?,
-            OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone())?,
+            OwnsAnnotation::Key(_) => type_manager.set_edge_annotation_key(snapshot, self.clone().into_owned())?,
             OwnsAnnotation::Cardinality(cardinality) => {
                 type_manager.set_edge_annotation_cardinality(snapshot, self.clone().into_owned(), cardinality)?
             }
-            OwnsAnnotation::Unique(_) => type_manager.set_edge_annotation_unique(snapshot, self.clone())?,
-            OwnsAnnotation::Regex(regex) => type_manager.set_edge_annotation_regex(snapshot, self.clone(), regex)?,
+            OwnsAnnotation::Unique(_) => type_manager.set_edge_annotation_unique(snapshot, self.clone().into_owned())?,
+            OwnsAnnotation::Regex(regex) => type_manager.set_edge_annotation_regex(snapshot, self.clone().into_owned(), regex)?,
         }
         Ok(()) // TODO
     }

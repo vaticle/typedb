@@ -66,7 +66,7 @@ pub async fn unset_owns(
     with_schema_tx!(context, |tx| {
         let attr_type =
             tx.type_manager.get_attribute_type(&tx.snapshot, &attribute_type_label.into_typedb()).unwrap().unwrap();
-        let res = object_type.delete_owns(&mut tx.snapshot, &tx.type_manager, attr_type);
+        let res = object_type.unset_owns(&mut tx.snapshot, &tx.type_manager, attr_type);
         may_error.check(&res);
     });
 }

@@ -296,14 +296,13 @@ impl<'a> OwnerAPI<'a> for RelationType<'a> {
         Ok(Owns::new(ObjectType::Relation(self.clone().into_owned()), attribute_type))
     }
 
-    fn delete_owns<Snapshot: WritableSnapshot>(
+    fn unset_owns<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: error if not owned?
-        type_manager.delete_owns(snapshot, self.clone().into_owned(), attribute_type)?;
+        type_manager.unset_owns(snapshot, self.clone().into_owned_object_type(), attribute_type)?;
         Ok(())
     }
 
@@ -348,14 +347,13 @@ impl<'a> PlayerAPI<'a> for RelationType<'a> {
         type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())
     }
 
-    fn delete_plays<Snapshot: WritableSnapshot>(
+    fn unset_plays<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: error if not playing?
-        type_manager.delete_plays(snapshot, self.clone().into_owned(), role_type)
+        type_manager.unset_plays(snapshot, self.clone().into_owned_object_type(), role_type)
     }
 
     fn get_plays_declared<'m, Snapshot: ReadableSnapshot>(

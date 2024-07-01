@@ -51,7 +51,7 @@ pub async fn unset_plays(
     let object_type = get_as_object_type(context, root_label.into_typedb(), &type_label);
     with_schema_tx!(context, |tx| {
         let role_type = tx.type_manager.get_role_type(&tx.snapshot, &role_label.into_typedb()).unwrap().unwrap();
-        let res = object_type.delete_plays(&mut tx.snapshot, &tx.type_manager, role_type);
+        let res = object_type.unset_plays(&mut tx.snapshot, &tx.type_manager, role_type);
         may_error.check(&res);
     });
 }

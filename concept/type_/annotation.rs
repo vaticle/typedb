@@ -18,6 +18,7 @@ use encoding::{
 };
 use resource::constants::snapshot::BUFFER_VALUE_INLINE;
 use serde::{Deserialize, Serialize};
+use crate::type_::attribute_type::AttributeTypeAnnotation;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Annotation {
@@ -158,6 +159,68 @@ impl AnnotationCategory {
             AnnotationCategory::Cardinality => Annotation::Cardinality(AnnotationCardinality::default()),
             AnnotationCategory::Regex => Annotation::Regex(AnnotationRegex::default()),
             AnnotationCategory::Cascade => Annotation::Cascade(AnnotationCascade),
+        }
+    }
+
+    pub fn compatible_to_declare_together(&self, other: AnnotationCategory) -> bool {
+        match self {
+            AnnotationCategory::Unique => {
+                match other {
+                    AnnotationCategory::Key => false,
+                    _ => true,
+                }
+            },
+            AnnotationCategory::Cardinality => {
+                match other {
+                    AnnotationCategory::Key => false,
+                    _ => true,
+                }
+            },
+            AnnotationCategory::Key => {
+                match other {
+                    | AnnotationCategory::Unique
+                    | AnnotationCategory::Cardinality => false,
+                    _ => true,
+                }
+            },
+            | AnnotationCategory::Abstract
+            | AnnotationCategory::Distinct
+            | AnnotationCategory::Independent
+            | AnnotationCategory::Regex
+            | AnnotationCategory::Cascade => true,
+        }
+    }
+
+    pub fn compatible_to_transitively_add(&self, other_to_add: AnnotationCategory) -> bool {
+        match self {
+            AnnotationCategory::Key => {
+                match other_to_add {
+                    AnnotationCategory::Unique => false,
+                    AnnotationCategory::Cardinality => false,
+                    _ => true,
+                }
+            }
+            | AnnotationCategory::Unique
+            | AnnotationCategory::Cardinality
+            | AnnotationCategory::Abstract
+            | AnnotationCategory::Distinct
+            | AnnotationCategory::Independent
+            | AnnotationCategory::Regex
+            | AnnotationCategory::Cascade => true,
+        }
+    }
+
+    pub fn inheritable(&self) -> bool {
+        match self {
+            AnnotationCategory::Abstract => false,
+
+            | AnnotationCategory::Key
+            | AnnotationCategory::Unique
+            | AnnotationCategory::Cardinality
+            | AnnotationCategory::Distinct
+            | AnnotationCategory::Independent
+            | AnnotationCategory::Regex
+            | AnnotationCategory::Cascade => true,
         }
     }
 }

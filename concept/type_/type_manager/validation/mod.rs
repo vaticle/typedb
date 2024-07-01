@@ -23,6 +23,7 @@ use crate::{
         TypeAPI, Ordering
     },
 };
+use crate::type_::annotation::Annotation;
 
 pub mod annotation_compatibility;
 pub mod commit_time_validation;
@@ -57,12 +58,19 @@ pub enum SchemaValidationError {
     DeletingTypeWithInstances(Label<'static>),
     InvalidCardinalityArguments(u64, Option<u64>),
     CardinalityShouldNarrowInheritedCardinality(AnnotationCardinality),
+    CannotUnsetInheritedOwns(Label<'static>, Label<'static>),
+    CannotUnsetInheritedPlays(Label<'static>, Label<'static>),
     CannotUnsetInheritedAnnotation(AnnotationCategory, Label<'static>),
     CannotUnsetInheritedEdgeAnnotation(AnnotationCategory),
     UnsupportedAnnotationForType(AnnotationCategory), // TODO: Also works for owns, relates and plays, consider renaming... How to pass the type as well? Considering edges!
     ValueTypeNotCompatibleWithExitingValueTypeOf(Label<'static>, Label<'static>, ValueType),
     ValueTypeNotCompatibleWithSubtypesValueType(Label<'static>, Label<'static>, ValueType),
     NonAbstractSubtypeWithoutValueTypeExists(Label<'static>, Label<'static>),
+    ValueTypeIsNotKeyable(Label<'static>, Label<'static>, Option<ValueType>),
+    ValueTypeIsNotKeyableForKeyAnnotation(Label<'static>, Label<'static>, Option<ValueType>),
+    ValueTypeIsNotKeyableForUniqueAnnotation(Label<'static>, Label<'static>, Option<ValueType>),
+    AnnotationIsNotCompatibleWithInheritedAnnotation(AnnotationCategory, AnnotationCategory, Label<'static>),
+    AnnotationIsNotCompatibleWithDeclaredAnnotation(AnnotationCategory, AnnotationCategory, Label<'static>),
 }
 
 impl fmt::Display for SchemaValidationError {
@@ -101,12 +109,19 @@ impl Error for SchemaValidationError {
             Self::DeletingTypeWithInstances(_) => None,
             Self::InvalidCardinalityArguments(_, _) => None,
             Self::CardinalityShouldNarrowInheritedCardinality(_) => None,
+            Self::CannotUnsetInheritedOwns(_, _) => None,
+            Self::CannotUnsetInheritedPlays(_, _) => None,
             Self::CannotUnsetInheritedAnnotation(_, _) => None,
             Self::CannotUnsetInheritedEdgeAnnotation(_) => None,
             Self::UnsupportedAnnotationForType(_) => None,
             Self::ValueTypeNotCompatibleWithExitingValueTypeOf(_, _, _) => None,
             Self::ValueTypeNotCompatibleWithSubtypesValueType(_, _, _) => None,
             Self::NonAbstractSubtypeWithoutValueTypeExists(_, _) => None,
+            Self::ValueTypeIsNotKeyable(_, _, _) => None,
+            Self::ValueTypeIsNotKeyableForKeyAnnotation(_, _, _) => None,
+            Self::ValueTypeIsNotKeyableForUniqueAnnotation(_, _, _) => None,
+            Self::AnnotationIsNotCompatibleWithInheritedAnnotation(_, _, _) => None,
+            Self::AnnotationIsNotCompatibleWithDeclaredAnnotation(_, _, _) => None,
         }
     }
 }

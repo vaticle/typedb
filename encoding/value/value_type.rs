@@ -52,6 +52,21 @@ impl ValueType {
         }
     }
 
+    pub fn keyable(&self) -> bool {
+        match self {
+            | ValueType::Boolean
+            | ValueType::Long
+            | ValueType::DateTime
+            | ValueType::DateTimeTZ
+            | ValueType::Duration
+            | ValueType::String => true,
+
+            | ValueType::Double
+            | ValueType::Decimal
+            | ValueType::Struct(_) => false,
+        }
+    }
+
     fn from_category_and_tail(category: ValueTypeCategory, tail: [u8; ValueTypeBytes::TAIL_LENGTH]) -> Self {
         match category {
             ValueTypeCategory::Boolean => Self::Boolean,
