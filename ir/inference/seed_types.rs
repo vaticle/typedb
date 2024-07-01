@@ -10,7 +10,7 @@ use std::{
 };
 
 use answer::variable::Variable;
-use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, TypeAPI, PlayerAPI};
+use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI};
 use encoding::value::label::Label;
 use itertools::Itertools;
 use storage::snapshot::ReadableSnapshot;
@@ -47,17 +47,13 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         tig: &mut TypeInferenceGraph<'graph>,
         parent_vertices: &VertexAnnotations,
     ) {
-        tig.conjunction
-            .constraints()
-            .constraints
-            .iter()
-            .flat_map(|constraint| constraint.variables())
-            .dedup()
-            .for_each(|v| {
+        tig.conjunction.constraints().constraints.iter().flat_map(|constraint| constraint.ids()).dedup().for_each(
+            |v| {
                 if let Some(parent_annotations) = parent_vertices.get(&v) {
                     tig.vertices.insert(v, parent_annotations.clone());
                 }
-            });
+            },
+        );
 
         self.seed_vertex_annotations_from_type_and_function_return(tig);
         let mut something_changed = true;
@@ -81,7 +77,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         let mut optionals = Vec::new();
         let mut negations = Vec::new();
         let conj_variables: HashSet<Variable> =
-            conj.constraints().constraints.iter().flat_map(|constraint| constraint.variables()).collect();
+            conj.constraints().constraints.iter().flat_map(|constraint| constraint.ids()).collect();
         for pattern in &conj.patterns().patterns {
             match pattern {
                 Pattern::Conjunction(_) => {
@@ -92,7 +88,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                         .conjunctions()
                         .iter()
                         .flat_map(|conj| conj.constraints().constraints.iter())
-                        .flat_map(|constraint| constraint.variables())
+                        .flat_map(|constraint| constraint.ids())
                         .filter(|x| conj_variables.contains(x))
                         .collect();
                     disjunctions.push(NestedTypeInferenceGraphDisjunction {
@@ -129,7 +125,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     let annotation = self.get_annotation_for_type_label(&type_constraint);
                     Self::intersect_unary(
                         &mut tig.vertices,
-                        type_constraint.var,
+                        type_constraint.left,
                         Cow::Owned(BTreeSet::from([annotation])),
                     );
                 }
@@ -145,7 +141,6 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
         // TODO: nested_negation & nested_optional
     }
-
 
     fn get_annotation_for_type_label(&self, type_: &Type<Variable>) -> TypeAnnotation {
         if let Some(attribute) =
@@ -196,12 +191,11 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                 if role_player.role_type.is_some() {
                     let relation_role = RelationRoleEdge { role_player };
                     let player_role = PlayerRoleEdge { role_player };
-                    self.try_propagating_vertex_annotation_impl(&relation_role, vertices) ||
-                        self.try_propagating_vertex_annotation_impl(&player_role, vertices)
+                    self.try_propagating_vertex_annotation_impl(&relation_role, vertices)
+                        || self.try_propagating_vertex_annotation_impl(&player_role, vertices)
                 } else {
                     todo!("Can we always have a role-player variable?")
                 }
-
             }
             Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(has, vertices),
             Constraint::Comparison(cmp) => {
@@ -393,11 +387,11 @@ pub trait BinaryConstraintWrapper {
 
 impl BinaryConstraintWrapper for Has<Variable> {
     fn left(&self) -> Variable {
-        self.owner
+        self.owner()
     }
 
     fn right(&self) -> Variable {
-        self.attribute
+        self.attribute()
     }
 
     fn annotate_left_to_right_for_type(
@@ -447,11 +441,11 @@ impl BinaryConstraintWrapper for Has<Variable> {
 
 impl BinaryConstraintWrapper for Isa<Variable> {
     fn left(&self) -> Variable {
-        self.thing
+        self.thing()
     }
 
     fn right(&self) -> Variable {
-        self.type_
+        self.type_()
     }
 
     fn annotate_left_to_right_for_type(
@@ -557,7 +551,6 @@ impl BinaryConstraintWrapper for Isa<Variable> {
     }
 }
 
-
 struct PlayerRoleEdge<'graph> {
     role_player: &'graph RolePlayer<Variable>,
 }
@@ -575,7 +568,12 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
         self.role_player.role_type.unwrap()
     }
 
-    fn annotate_left_to_right_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, left_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+    fn annotate_left_to_right_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        left_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) {
         let player = match left_type {
             TypeAnnotation::SchemaTypeEntity(entity) => ObjectType::Entity(entity.clone()),
             TypeAnnotation::SchemaTypeRelation(relation) => ObjectType::Relation(relation.clone()),
@@ -591,7 +589,12 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
             });
     }
 
-    fn annotate_right_to_left_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+    fn annotate_right_to_left_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        right_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) {
         let role_type = match right_type {
             TypeAnnotation::SchemaTypeRole(role_type) => role_type,
             _ => todo!("Return an error for using a non-role where an role was expected"),
@@ -610,7 +613,6 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
     }
 }
 
-
 impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
     fn left(&self) -> Variable {
         self.role_player.relation
@@ -620,7 +622,12 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
         self.role_player.role_type.unwrap()
     }
 
-    fn annotate_left_to_right_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, left_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+    fn annotate_left_to_right_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        left_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) {
         let relation = match left_type {
             TypeAnnotation::SchemaTypeRelation(relation) => relation.clone(),
             _ => todo!("Return an error for using a non-relation type here"),
@@ -635,7 +642,12 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
             });
     }
 
-    fn annotate_right_to_left_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+    fn annotate_right_to_left_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        right_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) {
         let role_type = match right_type {
             TypeAnnotation::SchemaTypeRole(role_type) => role_type,
             _ => todo!("Return an error for using a non-role where an role was expected"),

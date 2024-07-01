@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use answer::variable::Variable;
+
 use crate::{
     inference::type_inference::{TypeAnnotation, VertexAnnotations},
     pattern::{conjunction::Conjunction, constraint::Constraint},
@@ -239,11 +240,11 @@ impl<'this> NestedTypeInferenceGraphDisjunction<'this> {
 #[cfg(test)]
 pub mod tests {
 
-
     use std::{
         collections::{BTreeMap, BTreeSet},
         sync::Arc,
     };
+
     use answer::variable::Variable;
     use concept::{
         thing::thing_manager::ThingManager,
@@ -281,7 +282,6 @@ pub mod tests {
             },
         },
         pattern::{conjunction::Conjunction, constraint::Constraint},
-
     };
 
     const LABEL_ANIMAL: &str = "animal";

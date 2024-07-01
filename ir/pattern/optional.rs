@@ -10,6 +10,7 @@ use std::{
 };
 
 use answer::variable::Variable;
+
 use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]

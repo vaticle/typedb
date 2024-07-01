@@ -10,9 +10,8 @@ use std::{
 };
 
 use answer::variable::Variable;
-use crate::pattern::{
-    conjunction::Conjunction, context::PatternContext, pattern::Pattern, Scope, ScopeId,
-};
+
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, pattern::Pattern, Scope, ScopeId};
 
 #[derive(Debug)]
 pub(crate) struct Disjunction {

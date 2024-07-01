@@ -12,8 +12,8 @@ use std::{
 };
 
 use answer::variable::Variable;
-use itertools::Itertools;
 use encoding::value::label::Label;
+use itertools::Itertools;
 
 use crate::{
     pattern::{
@@ -68,15 +68,22 @@ impl Constraints {
         self.constraints.last().unwrap()
     }
 
-
-    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+    pub fn add_type(
+        &mut self,
+        variable: Variable,
+        type_: &str,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let type_ = Type::new(variable, type_.to_string());
         self.context.lock().unwrap().set_variable_category(variable, VariableCategory::Type, type_.clone().into())?;
         Ok(self.add_constraint(type_))
     }
 
-    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+    pub fn add_isa(
+        &mut self,
+        thing: Variable,
+        type_: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, thing)
                 && self.context.lock().unwrap().is_variable_available(self.scope, type_),
@@ -87,7 +94,11 @@ impl Constraints {
         Ok(self.add_constraint(isa))
     }
 
-    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+    pub fn add_has(
+        &mut self,
+        owner: Variable,
+        attribute: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, owner)
                 && self.context.lock().unwrap().is_variable_available(self.scope, attribute)
@@ -265,8 +276,8 @@ enum ConstraintIDSide {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Type<ID: IrID> {
-    left: ID,
-    type_: String,
+    pub(crate) left: ID,
+    pub(crate) type_: String,
 }
 
 impl<ID: IrID> Type<ID> {
@@ -300,6 +311,7 @@ impl<ID: IrID> Display for Type<ID> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Isa<ID: IrID> {
     thing: ID,
     type_: ID,
@@ -320,6 +332,14 @@ impl<ID: IrID> Isa<ID> {
     {
         function(self.thing, ConstraintIDSide::Left);
         function(self.type_, ConstraintIDSide::Right)
+    }
+
+    pub(crate) fn thing(&self) -> ID {
+        self.thing
+    }
+
+    pub(crate) fn type_(&self) -> ID {
+        self.type_
     }
 }
 
@@ -400,7 +420,6 @@ impl<ID: IrID> Display for RolePlayer<ID> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-
 pub struct Has<ID: IrID> {
     owner: ID,
     attribute: ID,
