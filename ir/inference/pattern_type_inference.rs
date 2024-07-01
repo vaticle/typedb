@@ -601,8 +601,6 @@ pub mod tests {
             root_conj.constraints_mut().add_isa(var_name, var_name_type).unwrap();
             root_conj.constraints_mut().add_has(var_animal, var_name).unwrap();
 
-            println!("{} {} {} {}, {}", var_animal, var_name, var_name_type, b1_var_animal_type, b2_var_animal_type);
-
             let snapshot = storage.clone().open_snapshot_write();
             let mut tig = seed_types(&root_conj, &snapshot, &type_manager);
             tig.run_type_inference();
@@ -630,9 +628,7 @@ pub mod tests {
                 vertices: BTreeMap::from([
                     (var_animal, BTreeSet::from([type_cat.clone(), type_dog.clone()])),
                     (var_name, BTreeSet::from([type_catname.clone(), type_dogname.clone()])),
-                    (var_name_type, BTreeSet::from([type_name.clone()])),
-                    (b1_var_animal_type, BTreeSet::from([type_cat.clone()])),
-                    (b2_var_animal_type, BTreeSet::from([type_dog.clone()]))
+                    (var_name_type, BTreeSet::from([type_name.clone()]))
                 ]),
                 edges: vec![
                     expected_edge(&root_conj.constraints().constraints[1], var_name, var_name_type, vec![(type_catname.clone(), type_name.clone()), (type_dogname.clone(), type_name.clone())]),
@@ -645,6 +641,8 @@ pub mod tests {
                 }],
             };
 
+            assert_eq!(expected_graph.vertices, tig.vertices);
+            assert_eq!(expected_graph.edges, tig.edges);
             assert_eq!(expected_graph.nested_disjunctions, tig.nested_disjunctions);
 
             assert_eq!(expected_graph, tig);
