@@ -49,6 +49,10 @@ impl Conjunction {
         }
     }
 
+    pub(crate) fn scope_id(&self) -> ScopeId {
+        self.scope_id
+    }
+
     pub fn constraints(&self) -> &Constraints {
         &self.constraints
     }

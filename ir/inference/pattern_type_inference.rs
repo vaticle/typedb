@@ -779,7 +779,61 @@ pub mod tests {
 
     #[test]
     fn no_type_constraints() {
-        todo!("Test $x has $y")
+        let storage = setup_storage();
+        let (type_manager, thing_manager) = managers();
+
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), _) =
+            setup_types(storage.clone().open_snapshot_write(), &type_manager);
+
+        let all_animals = BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()]);
+        let all_names = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+
+        let mut root_conj = Conjunction::new_root();
+        let (var_animal, var_name, var_name_type) = ["animal", "name", "name_type"]
+            .iter()
+            .map(|name| root_conj.get_or_declare_variable(*name).unwrap())
+            .collect_tuple()
+            .unwrap();
+
+        {
+            // Case 1: $a has $n;
+            let snapshot = storage.clone().open_snapshot_write();
+            let mut conjunction = Conjunction::new_root();
+            let (var_animal, var_name) = ["animal", "name"]
+                .iter()
+                .map(|name| conjunction.get_or_declare_variable(*name).unwrap())
+                .collect_tuple()
+                .unwrap();
+
+            conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+
+            let constraints = &conjunction.constraints().constraints;
+            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
+            run_type_inference(&mut tig);
+
+            let expected_tig = TypeInferenceGraph {
+                conjunction: &conjunction,
+                vertices: BTreeMap::from([
+                    (var_animal, BTreeSet::from([type_animal.clone(), type_cat.clone(), type_dog.clone()])),
+                    (var_name, BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()])),
+                ]),
+                edges: vec![expected_edge(
+                    &constraints[0],
+                    var_animal,
+                    var_name,
+                    vec![
+                        (type_animal.clone(), type_name.clone()),
+                        (type_cat, type_catname.clone()),
+                        (type_dog, type_dogname.clone()),
+                    ],
+                )],
+                nested_disjunctions: vec![],
+                nested_negations: vec![],
+                nested_optionals: vec![],
+            };
+
+            assert_eq!(expected_tig, tig);
+        }
     }
 
     #[test]

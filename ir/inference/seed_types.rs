@@ -11,21 +11,28 @@ use std::{
 
 use answer::variable::Variable;
 use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI};
-use encoding::value::label::Label;
+use encoding::{graph::type_::Kind, value::label::Label};
 use itertools::Itertools;
 use storage::snapshot::ReadableSnapshot;
 
 use crate::{
     inference::{
         pattern_type_inference::{NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph},
-        type_inference::{TypeAnnotation, VertexAnnotations},
+        type_inference::{
+            TypeAnnotation,
+            TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity, SchemaTypeRelation, SchemaTypeRole},
+            VertexAnnotations,
+        },
     },
     pattern::{
         conjunction::Conjunction,
         constraint::{Constraint, Has, Isa, RolePlayer, Type},
         pattern::Pattern,
+        variable_category::VariableCategory,
     },
 };
+
+// TODO: I Shouldn't be unwrapping any of the type manager results
 
 pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
     snapshot: &'this Snapshot,
@@ -56,9 +63,13 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         );
 
         self.seed_vertex_annotations_from_type_and_function_return(tig);
-        let mut something_changed = true;
-        while something_changed {
-            something_changed = self.propagate_vertex_annotations(tig);
+        let mut some_vertex_was_directly_annotated = true;
+        while some_vertex_was_directly_annotated {
+            let mut something_changed = true;
+            while something_changed {
+                something_changed = self.propagate_vertex_annotations(tig);
+            }
+            some_vertex_was_directly_annotated = self.annotate_unannotated_vertex(tig);
         }
         self.seed_edges(tig);
 
@@ -72,27 +83,30 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
     }
 
-    fn recursively_allocate<'conj>(&self, conj: &'conj Conjunction) -> TypeInferenceGraph<'conj> {
+    fn recursively_allocate<'conj>(&self, conjunction: &'conj Conjunction) -> TypeInferenceGraph<'conj> {
         let mut disjunctions = Vec::new();
         let mut optionals = Vec::new();
         let mut negations = Vec::new();
-        let conj_variables: HashSet<Variable> =
-            conj.constraints().constraints.iter().flat_map(|constraint| constraint.ids()).collect();
-        for pattern in &conj.patterns().patterns {
+        for pattern in &conjunction.patterns().patterns {
             match pattern {
                 Pattern::Conjunction(_) => {
                     todo!("ban?")
                 }
                 Pattern::Disjunction(disjunction) => {
+                    let nested_tigs = disjunction.conjunctions().iter().map(|c| self.recursively_allocate(c)).collect();
                     let shared_variables: BTreeSet<Variable> = disjunction
                         .conjunctions()
                         .iter()
-                        .flat_map(|conj| conj.constraints().constraints.iter())
-                        .flat_map(|constraint| constraint.ids())
-                        .filter(|x| conj_variables.contains(x))
+                        .flat_map(|nested_conj| {
+                            nested_conj.constraints().constraints.iter().flat_map(|constraint| constraint.ids()).filter(
+                                |variable| {
+                                    conjunction.context().is_variable_available(conjunction.scope_id(), *variable)
+                                },
+                            )
+                        })
                         .collect();
                     disjunctions.push(NestedTypeInferenceGraphDisjunction {
-                        disjunction: disjunction.conjunctions().iter().map(|c| self.recursively_allocate(c)).collect(),
+                        disjunction: nested_tigs,
                         shared_variables,
                         shared_vertex_annotations: BTreeMap::new(),
                     });
@@ -107,7 +121,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         }
 
         TypeInferenceGraph {
-            conjunction: conj,
+            conjunction,
             vertices: BTreeMap::new(),
             edges: Vec::new(),
             nested_disjunctions: disjunctions,
@@ -139,7 +153,102 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                 self.seed_vertex_annotations_from_type_and_function_return(nested_tig)
             }
         }
-        // TODO: nested_negation & nested_optional
+    }
+
+    fn annotate_unannotated_vertex<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> bool {
+        let unannotated_vars: Vec<Variable> = tig
+            .conjunction
+            .constraints()
+            .constraints
+            .iter()
+            .flat_map(|constraint| constraint.ids())
+            .dedup()
+            .filter(|v| !tig.vertices.contains_key(v))
+            .collect();
+        if let Some(v) = unannotated_vars.first() {
+            let annotations = if let Some(variable_category) = tig.conjunction.context().get_variable_category(*v) {
+                match variable_category {
+                    VariableCategory::Type => self.get_unbounded_type_annotations(true, true, true, true),
+                    VariableCategory::Thing => self.get_unbounded_type_annotations(true, true, true, false),
+                    VariableCategory::Object => self.get_unbounded_type_annotations(true, true, false, false),
+                    VariableCategory::Attribute => self.get_unbounded_type_annotations(false, false, true, false),
+                    VariableCategory::RoleImpl => self.get_unbounded_type_annotations(false, false, false, true),
+                    VariableCategory::Value
+                    | VariableCategory::ObjectList
+                    | VariableCategory::AttributeList
+                    | VariableCategory::ValueList
+                    | VariableCategory::RoleImplList => todo!(),
+                }
+            } else {
+                self.get_unbounded_type_annotations(true, true, true, true)
+            };
+            tig.vertices.insert(*v, annotations);
+            true
+        } else {
+            tig.nested_disjunctions
+                .iter_mut()
+                .any(|disj| disj.disjunction.iter_mut().any(|nested_tig| self.annotate_unannotated_vertex(nested_tig)))
+        }
+    }
+
+    fn get_unbounded_type_annotations(
+        &self,
+        include_entities: bool,
+        include_relations: bool,
+        include_attributes: bool,
+        include_roles: bool,
+    ) -> BTreeSet<TypeAnnotation> {
+        let mut annotations = BTreeSet::new();
+
+        if include_entities {
+            annotations.extend(
+                self.type_manager
+                    .get_entity_type(self.snapshot, &Kind::Entity.root_label())
+                    .unwrap()
+                    .unwrap()
+                    .get_subtypes_transitive(self.snapshot, self.type_manager)
+                    .unwrap()
+                    .iter()
+                    .map(|entity| SchemaTypeEntity(entity.clone())),
+            );
+        }
+        if include_relations {
+            annotations.extend(
+                self.type_manager
+                    .get_relation_type(self.snapshot, &Kind::Relation.root_label())
+                    .unwrap()
+                    .unwrap()
+                    .get_subtypes_transitive(self.snapshot, self.type_manager)
+                    .unwrap()
+                    .iter()
+                    .map(|relation| SchemaTypeRelation(relation.clone())),
+            );
+        }
+        if include_attributes {
+            annotations.extend(
+                self.type_manager
+                    .get_attribute_type(self.snapshot, &Kind::Attribute.root_label())
+                    .unwrap()
+                    .unwrap()
+                    .get_subtypes_transitive(self.snapshot, self.type_manager)
+                    .unwrap()
+                    .iter()
+                    .map(|attribute| SchemaTypeAttribute(attribute.clone())),
+            );
+        }
+        if include_roles {
+            annotations.extend(
+                self.type_manager
+                    .get_role_type(self.snapshot, &Kind::Role.root_label())
+                    .unwrap()
+                    .unwrap()
+                    .get_subtypes_transitive(self.snapshot, self.type_manager)
+                    .unwrap()
+                    .iter()
+                    .map(|role| SchemaTypeRole(role.clone())),
+            );
+        }
+        annotations
     }
 
     fn get_annotation_for_type_label(&self, type_: &Type<Variable>) -> TypeAnnotation {
