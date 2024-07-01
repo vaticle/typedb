@@ -337,9 +337,9 @@ impl<ID: IrID> Display for Isa<ID> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RolePlayer<ID: IrID> {
-    relation: ID,
-    player: ID,
-    role_type: Option<ID>,
+    pub(crate) relation: ID,
+    pub(crate) player: ID,
+    pub(crate) role_type: Option<ID>,
 }
 
 impl<ID: IrID> RolePlayer<ID> {

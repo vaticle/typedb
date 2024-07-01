@@ -10,7 +10,7 @@ use std::{
 };
 
 use answer::variable::Variable;
-use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, TypeAPI};
+use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, TypeAPI, PlayerAPI};
 use encoding::value::label::Label;
 use itertools::Itertools;
 use storage::snapshot::ReadableSnapshot;
@@ -192,8 +192,16 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     ) -> bool {
         match constraint {
             Constraint::Isa(isa) => self.try_propagating_vertex_annotation_impl(isa, vertices),
-            Constraint::RolePlayer(rp) => {
-                todo!("self.try_infer_unary_annotations_from_binary_constraints(rp, &mut unary_annotations)")
+            Constraint::RolePlayer(role_player) => {
+                if role_player.role_type.is_some() {
+                    let relation_role = RelationRoleEdge { role_player };
+                    let player_role = PlayerRoleEdge { role_player };
+                    self.try_propagating_vertex_annotation_impl(&relation_role, vertices) ||
+                        self.try_propagating_vertex_annotation_impl(&player_role, vertices)
+                } else {
+                    todo!("Can we always have a role-player variable?")
+                }
+
             }
             Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(has, vertices),
             Constraint::Comparison(cmp) => {
@@ -546,6 +554,101 @@ impl BinaryConstraintWrapper for Isa<Variable> {
             }
         }
         collector.insert(right_type.clone());
+    }
+}
+
+
+struct PlayerRoleEdge<'graph> {
+    role_player: &'graph RolePlayer<Variable>,
+}
+
+struct RelationRoleEdge<'graph> {
+    role_player: &'graph RolePlayer<Variable>,
+}
+
+impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
+    fn left(&self) -> Variable {
+        self.role_player.player
+    }
+
+    fn right(&self) -> Variable {
+        self.role_player.role_type.unwrap()
+    }
+
+    fn annotate_left_to_right_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, left_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+        let player = match left_type {
+            TypeAnnotation::SchemaTypeEntity(entity) => ObjectType::Entity(entity.clone()),
+            TypeAnnotation::SchemaTypeRelation(relation) => ObjectType::Relation(relation.clone()),
+            _ => todo!("Return an error for using an attribute type here"),
+        };
+        player
+            .get_plays_transitive(seeder.snapshot, seeder.type_manager)
+            .unwrap()
+            .iter()
+            .map(|(role_type, _)| TypeAnnotation::SchemaTypeRole(role_type.clone()))
+            .for_each(|type_| {
+                collector.insert(type_);
+            });
+    }
+
+    fn annotate_right_to_left_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+        let role_type = match right_type {
+            TypeAnnotation::SchemaTypeRole(role_type) => role_type,
+            _ => todo!("Return an error for using a non-role where an role was expected"),
+        };
+        role_type
+            .get_players_transitive(seeder.snapshot, seeder.type_manager)
+            .unwrap()
+            .iter()
+            .map(|(player, _)| match player {
+                ObjectType::Entity(entity) => TypeAnnotation::SchemaTypeEntity(entity.clone()),
+                ObjectType::Relation(relation) => TypeAnnotation::SchemaTypeRelation(relation.clone()),
+            })
+            .for_each(|type_| {
+                collector.insert(type_);
+            });
+    }
+}
+
+
+impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
+    fn left(&self) -> Variable {
+        self.role_player.relation
+    }
+
+    fn right(&self) -> Variable {
+        self.role_player.role_type.unwrap()
+    }
+
+    fn annotate_left_to_right_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, left_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+        let relation = match left_type {
+            TypeAnnotation::SchemaTypeRelation(relation) => relation.clone(),
+            _ => todo!("Return an error for using a non-relation type here"),
+        };
+        relation
+            .get_relates_transitive(seeder.snapshot, seeder.type_manager)
+            .unwrap()
+            .iter()
+            .map(|(role_type, _)| TypeAnnotation::SchemaTypeRole(role_type.clone()))
+            .for_each(|type_| {
+                collector.insert(type_);
+            });
+    }
+
+    fn annotate_right_to_left_for_type(&self, seeder: &TypeSeeder<impl ReadableSnapshot>, right_type: &TypeAnnotation, collector: &mut BTreeSet<TypeAnnotation>) {
+        let role_type = match right_type {
+            TypeAnnotation::SchemaTypeRole(role_type) => role_type,
+            _ => todo!("Return an error for using a non-role where an role was expected"),
+        };
+        todo!("Implement role_type.get_relations");
+        // role_type
+        //     .get_relates_transitive(seeder.snapshot, seeder.type_manager)
+        //     .unwrap()
+        //     .iter()
+        //     .map(|(relation, _)| TypeAnnotation::SchemaTypeRelation(relation.clone()))
+        //     .for_each(|type_| {
+        //         collector.insert(type_);
+        //     });
     }
 }
 
