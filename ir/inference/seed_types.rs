@@ -17,9 +17,7 @@ use storage::snapshot::ReadableSnapshot;
 
 use crate::{
     inference::{
-        pattern_type_inference::{
-            NestedTypeInferenceGraph, NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph,
-        },
+        pattern_type_inference::{NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph},
         type_inference::{TypeAnnotation, VertexAnnotations},
     },
     pattern::{
@@ -34,18 +32,12 @@ pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
     type_manager: &'this TypeManager<Snapshot>,
 }
 impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
-
     pub(crate) fn new(snapshot: &'this Snapshot, type_manager: &'this TypeManager<Snapshot>) -> Self {
-        TypeSeeder { snapshot, type_manager}
+        TypeSeeder { snapshot, type_manager }
     }
 
     pub(crate) fn seed_types<'graph>(&'this self, conjunction: &'graph Conjunction) -> TypeInferenceGraph<'graph> {
         let mut tig = self.recursively_allocate(conjunction);
-        println!(
-            "nested: {} , {}",
-            tig.nested_disjunctions[0].nested_graph_disjunction[0].edges.len(),
-            tig.nested_disjunctions[0].nested_graph_disjunction[1].edges.len()
-        );
         self.seed_vertex_annotations_from_type_and_function_return(&mut tig);
         let mut something_changed = true;
         while something_changed {
@@ -216,9 +208,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         for variable in nested.shared_variables.iter() {
             if let Some(parent_annotations) = parent_vertices.get_mut(variable) {
                 for nested_tig in &mut nested.nested_graph_disjunction {
-                    if let Some(nested_annotations) = nested_tig.vertices.get_mut(variable) {
-                        nested_annotations.retain(|x| parent_annotations.contains(x));
-                    }
+                    Self::intersect_unary(&mut nested_tig.vertices, *variable, Cow::Borrowed(parent_annotations));
                 }
             }
         }
@@ -564,13 +554,12 @@ pub mod tests {
 
     use crate::{
         inference::{
-            pattern_type_inference::tests::expected_edge,
+            pattern_type_inference::{tests::expected_edge, TypeInferenceGraph},
             seed_types::TypeSeeder,
             type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity},
         },
         pattern::conjunction::Conjunction,
     };
-    use crate::inference::pattern_type_inference::TypeInferenceGraph;
 
     fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
         init_logging();

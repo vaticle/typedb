@@ -10,7 +10,7 @@ use std::{
 };
 
 use answer::variable::Variable;
-use crate::pattern::{conjunction::Conjunction, context::PatternContext, variable::Variable, Scope, ScopeId};
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]
 pub struct Optional {

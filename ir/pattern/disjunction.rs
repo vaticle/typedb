@@ -11,7 +11,7 @@ use std::{
 
 use answer::variable::Variable;
 use crate::pattern::{
-    conjunction::Conjunction, context::PatternContext, pattern::Pattern, variable::Variable, Scope, ScopeId,
+    conjunction::Conjunction, context::PatternContext, pattern::Pattern, Scope, ScopeId,
 };
 
 #[derive(Debug)]
