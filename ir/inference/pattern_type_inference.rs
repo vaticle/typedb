@@ -29,6 +29,10 @@ fn run_type_inference<'graph>(tig: &mut TypeInferenceGraph<'graph>) {
         tig.prune_constraints_from_vertices();
         is_modified = tig.prune_vertices_from_constraints();
     }
+
+    // Then do it for the nested negations & optionals
+    tig.nested_negations.iter_mut().for_each(|nested| run_type_inference(nested));
+    tig.nested_optionals.iter_mut().for_each(|nested| run_type_inference(nested));
 }
 
 #[derive(Debug)]
