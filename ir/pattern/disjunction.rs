@@ -10,14 +10,15 @@ use std::{
 };
 
 use answer::variable::Variable;
-
-use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
+use crate::pattern::{
+    conjunction::Conjunction, context::PatternContext, pattern::Pattern, variable::Variable, Scope, ScopeId,
+};
 
 #[derive(Debug)]
 pub(crate) struct Disjunction {
     scope_id: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    pub(crate) conjunctions: Vec<Conjunction>
+    pub(crate) conjunctions: Vec<Conjunction>,
 }
 
 impl Disjunction {

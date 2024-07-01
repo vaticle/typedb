@@ -5,24 +5,13 @@
  */
 
 use std::collections::{BTreeMap, BTreeSet};
-use concept::type_::attribute_type::AttributeType;
-use concept::type_::entity_type::EntityType;
-use concept::type_::relation_type::RelationType;
-use concept::type_::role_type::RoleType;
 
-use answer::{variable::Variable};
-use encoding::graph::definition::definition_key::DefinitionKey;
-use encoding::graph::type_::vertex::TypeVertex;
-
-use crate::{
-    pattern::{
-        conjunction::Conjunction,
-        constraint::{Constraint, Type},
-        pattern::Pattern,
-    },
-    program::{program::Program, FunctionalBlock},
+use answer::variable::Variable;
+use concept::type_::{
+    attribute_type::AttributeType, entity_type::EntityType, relation_type::RelationType, role_type::RoleType,
 };
-use crate::inference::pattern_type_inference::TypeInferenceGraph;
+
+use crate::program::{program::Program, FunctionalBlock};
 
 /*
 Design:
@@ -54,4 +43,3 @@ pub fn infer_types(program: &Program) {
     // let mut function_type_annotations: HashMap<DefinitionKey<'static>, TypeAnnotations> = HashMap::new();
     todo!()
 }
-

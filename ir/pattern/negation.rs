@@ -9,8 +9,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use crate::pattern::{context::PatternContext, Scope, ScopeId};
-use crate::pattern::conjunction::Conjunction;
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]
 pub(crate) struct Negation {

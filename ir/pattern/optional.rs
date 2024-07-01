@@ -10,13 +10,12 @@ use std::{
 };
 
 use answer::variable::Variable;
-
-use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, variable::Variable, Scope, ScopeId};
 
 #[derive(Debug)]
 pub struct Optional {
     context: Arc<Mutex<PatternContext>>,
-    pub(crate) conjunction: Conjunction
+    pub(crate) conjunction: Conjunction,
 }
 
 impl Optional {
@@ -37,8 +36,6 @@ impl Optional {
     pub(crate) fn variables(&self) -> Box<dyn Iterator<Item = Variable>> {
         todo!()
     }
-
-
 }
 
 impl Scope for Optional {

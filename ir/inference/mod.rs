@@ -59,6 +59,6 @@ In the order that are connected to the variable.
  */
 
 mod pattern_type_inference;
+mod seed_types;
 mod type_inference;
 mod value_type_inference;
-mod seed_types;
