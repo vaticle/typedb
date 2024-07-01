@@ -5,6 +5,8 @@
  */
 
 use std::collections::HashMap;
+use std::hash::Hash;
+use itertools::Itertools;
 
 use encoding::{
     graph::{
@@ -25,7 +27,7 @@ use crate::{
         thing_manager::ThingManager,
     },
     type_::{
-        annotation::{Annotation, AnnotationAbstract, AnnotationCategory, AnnotationCardinality},
+        annotation::{Annotation, AnnotationAbstract, AnnotationCategory, AnnotationCardinality, AnnotationRegex},
         attribute_type::{AttributeType, AttributeTypeAnnotation},
         entity_type::EntityType,
         object_type::ObjectType,
@@ -294,6 +296,55 @@ impl OperationTimeValidation {
         }
     }
 
+    pub(crate) fn validate_annotation_set_only_for_interface<IMPL, Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        interface: IMPL::InterfaceType,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            IMPL: InterfaceImplementation<'static, ObjectType = ObjectType<'static>> + Hash + Eq,
+    {
+        let implementations = TypeReader::get_implementations_for_interface::<IMPL>(
+            snapshot, interface.clone()
+        ).map_err(SchemaValidationError::ConceptRead)?;
+
+        for (_, implementation) in implementations {
+            let implementation_annotations = TypeReader::get_type_edge_annotations(snapshot, implementation)
+                .map_err(SchemaValidationError::ConceptRead)?;
+            if implementation_annotations.iter()
+                .map(|(annotation, _)| annotation.category())
+                .contains(&annotation_category) {
+                return Err(SchemaValidationError::CannotSetAnnotationToInterfaceBecauseItAlreadyExistsForItsImplementation(
+                    get_label!(snapshot, interface), annotation_category
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_annotation_set_only_for_interface_implementation<IMPL, Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        interface_implementation: IMPL,
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), SchemaValidationError>
+        where
+            IMPL: InterfaceImplementation<'static, ObjectType = ObjectType<'static>> + Hash + Eq,
+    {
+        let interface = interface_implementation.interface();
+        let interface_annotations = TypeReader::get_type_annotations(snapshot, interface.clone())
+            .map_err(SchemaValidationError::ConceptRead)?;
+        if interface_annotations.iter()
+            .map(|(annotation, _)| annotation.clone().into().category())
+            .contains(&annotation_category) {
+            return Err(SchemaValidationError::CannotSetAnnotationToInterfaceImplementationBecauseItAlreadyExistsForItsInterface(
+                get_label!(snapshot, interface), annotation_category
+            ));
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn validate_owns_attribute_type_does_not_have_annotation_category_when_setting_owns_annotation<Snapshot>(
         snapshot: &Snapshot,
         owns: Owns<'_>,
@@ -404,6 +455,52 @@ impl OperationTimeValidation {
         }
     }
 
+    pub(crate) fn validate_type_regex_narrows_annotation<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        supertype: impl KindAPI<'static>,
+        _regex: AnnotationRegex,
+    ) -> Result<(), SchemaValidationError> {
+        if let Some(supertype_annotation) = Self::type_get_annotation_by_category(
+            snapshot, supertype, AnnotationCategory::Regex
+        )? {
+            match supertype_annotation {
+                Annotation::Regex(supertype_regex) => {
+                    Err(SchemaValidationError::RegexCannotBeRedeclaredOrNarrowedOnSubtypes(
+                        supertype_regex.clone()
+                    ))
+                },
+                _ => unreachable!("Should not reach it for Regex-related function")
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_edge_regex_narrows_annotation<EDGE, Snapshot>(
+        snapshot: &Snapshot,
+        supertype_edge: EDGE,
+        _regex: AnnotationRegex,
+    ) -> Result<(), SchemaValidationError>
+        where
+            Snapshot: ReadableSnapshot,
+            EDGE: InterfaceImplementation<'static> + Clone,
+    {
+        if let Some(supertype_annotation) = Self::edge_get_annotation_by_category(
+            snapshot, supertype_edge, AnnotationCategory::Regex
+        )? {
+            match supertype_annotation {
+                Annotation::Regex(supertype_regex) => {
+                    Err(SchemaValidationError::RegexCannotBeRedeclaredOrNarrowedOnSubtypes(
+                        supertype_regex.clone()
+                    ))
+                },
+                _ => unreachable!("Should not reach it for Regex-related function")
+            }
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn validate_type_has_annotation<T, Snapshot>(
         snapshot: &Snapshot,
         type_: T,
@@ -508,13 +605,15 @@ impl OperationTimeValidation {
         snapshot: &Snapshot,
         subtype_role: RoleType<'static>,
         supertype_role: RoleType<'static>,
+        set_subtype_role_ordering: Option<Ordering>,
     ) -> Result<(), SchemaValidationError>
         where
             Snapshot: ReadableSnapshot,
     {
-        let subtype_ordering = TypeReader::get_type_ordering(
-            snapshot, subtype_role.clone()).map_err(SchemaValidationError::ConceptRead
-        )?;
+        let subtype_ordering = set_subtype_role_ordering.unwrap_or(
+            TypeReader::get_type_ordering(snapshot, subtype_role.clone())
+                .map_err(SchemaValidationError::ConceptRead)?
+        );
         let supertype_ordering = TypeReader::get_type_ordering(
             snapshot, supertype_role.clone()).map_err(SchemaValidationError::ConceptRead
         )?;
@@ -532,13 +631,15 @@ impl OperationTimeValidation {
         snapshot: &Snapshot,
         subtype_owns: Owns<'static>,
         supertype_owns: Owns<'static>,
+        set_subtype_owns_ordering: Option<Ordering>,
     ) -> Result<(), SchemaValidationError>
         where
             Snapshot: ReadableSnapshot,
     {
-        let subtype_ordering = TypeReader::get_type_edge_ordering(
-            snapshot, subtype_owns.clone()).map_err(SchemaValidationError::ConceptRead
-        )?;
+        let subtype_ordering = set_subtype_owns_ordering.unwrap_or(
+            TypeReader::get_type_edge_ordering(snapshot, subtype_owns.clone())
+                .map_err(SchemaValidationError::ConceptRead)?
+        );
         let supertype_ordering = TypeReader::get_type_edge_ordering(
             snapshot, supertype_owns.clone()).map_err(SchemaValidationError::ConceptRead
         )?;
@@ -1263,6 +1364,18 @@ impl OperationTimeValidation {
             .iter().map(|(annotation, _)| annotation.clone().into().category())
             .any(|found_category| found_category == annotation_category);
         Ok(has)
+    }
+
+    fn type_get_annotation_by_category<Snapshot: ReadableSnapshot>(
+        snapshot: &Snapshot,
+        type_: impl KindAPI<'static>,
+        annotation_category: AnnotationCategory,
+    ) -> Result<Option<Annotation>, SchemaValidationError> {
+        let annotation = TypeReader::get_type_annotations(snapshot, type_.clone())
+            .map_err(SchemaValidationError::ConceptRead)?
+            .into_iter().map(|(found_annotation, _)| found_annotation)
+            .find(|found_annotation| found_annotation.clone().into().category() == annotation_category);
+        Ok(annotation.map(|val| val.clone().into()))
     }
 
     fn edge_get_annotation_by_category<EDGE, Snapshot>(
