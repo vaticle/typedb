@@ -252,7 +252,7 @@ pub async fn relation_role_get_supertype(
         let superrole = role.get_supertype(&tx.snapshot, &tx.type_manager).unwrap().unwrap();
         assert_eq!(
             expected_superrole_label.into_typedb().scoped_name(),
-            superrole.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name() // TODO: Why is the root role named y:role?
+            superrole.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name()
         )
     });
 }

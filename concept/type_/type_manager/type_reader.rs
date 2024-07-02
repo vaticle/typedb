@@ -223,7 +223,8 @@ impl TypeReader {
                 Self::get_implemented_interfaces_declared::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
             for implementation in declared_implementations.into_iter() {
                 if let Some(overridden) = Self::get_implementation_override(snapshot, implementation.clone())? {
-                    if !overridden_interfaces.contains_key(&overridden.interface()) {
+                    if overridden.interface() != implementation.interface()
+                        && !overridden_interfaces.contains_key(&overridden.interface()) {
                         overridden_interfaces.insert(overridden.interface(), overridden);
                     }
                 }

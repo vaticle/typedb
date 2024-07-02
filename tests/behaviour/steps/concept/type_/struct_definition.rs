@@ -107,7 +107,6 @@ pub async fn struct_get_fields_contains_or_doesnt(
         let struct_definition = &tx.type_manager.get_struct_definition(&tx.snapshot, definition_key.clone()).unwrap();
         let actual_fields: Vec<String> = struct_definition.field_names.keys().cloned().map(|key| key.to_owned()).collect();
         contains_or_doesnt.check(&expected_fields, &actual_fields);
-        println!("CONTAIN: {:?} vs {:?}", &expected_fields, &actual_fields);
     });
 }
 

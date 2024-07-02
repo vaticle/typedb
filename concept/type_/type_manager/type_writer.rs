@@ -209,8 +209,6 @@ impl<Snapshot: WritableSnapshot> TypeWriter<Snapshot> {
         Self::storage_delete_type_edge_property::<EdgeOverride<E>>(snapshot, edge)
     }
 
-    // Modifiers
-    // TODO: Should this just accept owns: Owns<'_> ?
     pub(crate) fn storage_set_owns_ordering(snapshot: &mut Snapshot, owns: Owns<'_>, ordering: Ordering) {
         Self::storage_put_type_edge_property(snapshot, owns, Some(ordering))
     }
