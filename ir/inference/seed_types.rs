@@ -917,132 +917,32 @@ pub mod tests {
         sync::Arc,
     };
 
-    use answer::Type as TypeAnnotation;
-    use concept::{
-        thing::thing_manager::ThingManager,
-        type_::{
-            annotation::AnnotationAbstract, attribute_type::AttributeTypeAnnotation, type_manager::TypeManager,
-            Ordering, OwnerAPI,
-        },
-    };
-    use durability::wal::WAL;
-    use encoding::{
-        graph::{
-            definition::definition_key_generator::DefinitionKeyGenerator,
-            thing::vertex_generator::ThingVertexGenerator, type_::vertex_generator::TypeVertexGenerator,
-        },
-        value::label::Label,
-        EncodingKeyspace,
-    };
-    use storage::{
-        durability_client::WALClient,
-        snapshot::{CommittableSnapshot, ReadableSnapshot, WriteSnapshot},
-        MVCCStorage,
-    };
-    use test_utils::{create_tmp_dir, init_logging};
-
     use crate::{
         inference::{
             pattern_type_inference::{infer_types_for_conjunction, tests::expected_edge, TypeInferenceGraph},
             seed_types::TypeSeeder,
+            tests::{
+                managers,
+                schema_consts::{
+                    setup_types, LABEL_ANIMAL, LABEL_CAT, LABEL_CATNAME, LABEL_DOG, LABEL_DOGNAME, LABEL_FEARS,
+                    LABEL_NAME,
+                },
+                setup_storage,
+            },
         },
         pattern::conjunction::Conjunction,
     };
 
-    fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
-        init_logging();
-        let storage_path = create_tmp_dir();
-        let wal = WAL::create(&storage_path).unwrap();
-        let storage = Arc::new(
-            MVCCStorage::<WALClient>::create::<EncodingKeyspace>("storage", &storage_path, WALClient::new(wal))
-                .unwrap(),
-        );
-
-        let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-        let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-        TypeManager::<WriteSnapshot<WALClient>>::initialise_types(
-            storage.clone(),
-            definition_key_generator.clone(),
-            type_vertex_generator.clone(),
-        )
-        .unwrap();
-        storage
-    }
-
-    fn managers<Snapshot: ReadableSnapshot>(
-        storage: Arc<MVCCStorage<WALClient>>,
-    ) -> (Arc<TypeManager<Snapshot>>, ThingManager<Snapshot>) {
-        let definition_key_generator = Arc::new(DefinitionKeyGenerator::new());
-        let type_vertex_generator = Arc::new(TypeVertexGenerator::new());
-        let thing_vertex_generator = Arc::new(ThingVertexGenerator::new());
-        let type_manager =
-            Arc::new(TypeManager::new(definition_key_generator.clone(), type_vertex_generator.clone(), None));
-        let thing_manager = ThingManager::new(thing_vertex_generator.clone(), type_manager.clone());
-
-        (type_manager, thing_manager)
-    }
-
     #[test]
-    fn test_seeding() {
+    fn test_has() {
         // dog sub animal, owns dog-name; cat sub animal owns cat-name;
         // cat-name sub animal-name; dog-name sub animal-name;
 
         // Some version of `$a isa animal, has name $n;`
-        let label_animal = "animal".to_owned();
-        let label_cat = "cat".to_owned();
-        let label_dog = "dog".to_owned();
-
-        let label_name = "name".to_owned();
-        let label_catname = "cat-name".to_owned();
-        let label_dogname = "dog-name".to_owned();
-
         let storage = setup_storage();
-        let (type_manager, thing_manager) = managers(storage.clone());
-
-        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname)) = {
-            let mut schema_snapshot = storage.clone().open_snapshot_write();
-
-            let name =
-                type_manager.create_attribute_type(&mut schema_snapshot, &Label::build(&label_name), false).unwrap();
-            let catname =
-                type_manager.create_attribute_type(&mut schema_snapshot, &Label::build(&label_catname), false).unwrap();
-            let dogname =
-                type_manager.create_attribute_type(&mut schema_snapshot, &Label::build(&label_dogname), false).unwrap();
-            name.set_annotation(
-                &mut schema_snapshot,
-                &type_manager,
-                AttributeTypeAnnotation::Abstract(AnnotationAbstract),
-            )
-            .unwrap();
-            catname.set_supertype(&mut schema_snapshot, &type_manager, name.clone()).unwrap();
-            dogname.set_supertype(&mut schema_snapshot, &type_manager, name.clone()).unwrap();
-
-            let animal =
-                type_manager.create_entity_type(&mut schema_snapshot, &Label::build(&label_animal), false).unwrap();
-            let cat = type_manager.create_entity_type(&mut schema_snapshot, &Label::build(&label_cat), false).unwrap();
-            let dog = type_manager.create_entity_type(&mut schema_snapshot, &Label::build(&label_dog), false).unwrap();
-            cat.set_supertype(&mut schema_snapshot, &type_manager, animal.clone()).unwrap();
-            dog.set_supertype(&mut schema_snapshot, &type_manager, animal.clone()).unwrap();
-
-            let animal_owns =
-                animal.set_owns(&mut schema_snapshot, &type_manager, name.clone(), Ordering::Unordered).unwrap();
-            let cat_owns =
-                cat.set_owns(&mut schema_snapshot, &type_manager, catname.clone(), Ordering::Unordered).unwrap();
-            let dog_owns =
-                dog.set_owns(&mut schema_snapshot, &type_manager, dogname.clone(), Ordering::Unordered).unwrap();
-            cat_owns.set_override(&mut schema_snapshot, &type_manager, animal_owns.clone()).unwrap();
-            dog_owns.set_override(&mut schema_snapshot, &type_manager, animal_owns.clone()).unwrap();
-            schema_snapshot.commit().unwrap();
-
-            (
-                (TypeAnnotation::Entity(animal), TypeAnnotation::Entity(cat), TypeAnnotation::Entity(dog)),
-                (
-                    TypeAnnotation::Attribute(name),
-                    TypeAnnotation::Attribute(catname),
-                    TypeAnnotation::Attribute(dogname),
-                ),
-            )
-        };
+        let (type_manager, thing_manager) = managers();
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), _) =
+            setup_types(storage.clone().open_snapshot_write(), &type_manager);
 
         {
             // // Case 1: $a isa cat, has animal-name $n;
@@ -1055,9 +955,9 @@ pub mod tests {
             // Try seeding
             {
                 conjunction.constraints_mut().add_isa(var_animal, var_animal_type).unwrap();
-                conjunction.constraints_mut().add_type(var_animal_type, &label_cat).unwrap();
+                conjunction.constraints_mut().add_type(var_animal_type, &LABEL_CAT).unwrap();
                 conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
-                conjunction.constraints_mut().add_type(var_name_type, &label_name).unwrap();
+                conjunction.constraints_mut().add_type(var_name_type, &LABEL_NAME).unwrap();
                 conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             }
 
@@ -1114,7 +1014,8 @@ pub mod tests {
             };
 
             let snapshot = storage.clone().open_snapshot_write();
-            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
+            let seeder = TypeSeeder::new(&snapshot, &type_manager);
+            let tig = seeder.seed_types(&conjunction).unwrap();
             assert_eq!(expected_tig, tig);
         }
     }
