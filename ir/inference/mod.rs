@@ -58,7 +58,15 @@ On error, show the inferred types for variables (in minimal original query forma
 In the order that are connected to the variable.
  */
 
+use concept::error::ConceptReadError;
+
 pub mod pattern_type_inference;
 mod seed_types;
 pub mod type_inference;
 pub mod value_type_inference;
+
+#[derive(Debug)]
+pub enum TypeInferenceError {
+    ConceptRead { source : ConceptReadError },
+    LabelNotResolved(String),
+}

@@ -10,11 +10,15 @@ use answer::{
     variable::Variable,
     Type as TypeAnnotation
 };
+use concept::type_::type_manager::TypeManager;
+use storage::snapshot::ReadableSnapshot;
 
 use crate::{
     inference::type_inference::{VertexAnnotations},
     pattern::{conjunction::Conjunction, constraint::Constraint},
 };
+use crate::inference::seed_types::TypeSeeder;
+use crate::inference::TypeInferenceError;
 
 /*
 The basic algorithm for a single pattern (with nested disjunctions, e.g.) is implemented below.
@@ -23,6 +27,15 @@ It iteratively intersects the type annotations on vertices and with those on eac
 We can model a function as a set of unary (i.e. VertexConstraints) constraints
     determined from the declared types, or by doing type-inference on it in isolation.
 */
+
+
+pub(crate) fn infer_types_for_conjunction<'graph, Snapshot: ReadableSnapshot>(
+    snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>, conjunction: &'graph Conjunction
+) -> Result<TypeInferenceGraph<'graph>, TypeInferenceError>{
+    let mut tig = TypeSeeder::new(snapshot, type_manager).seed_types(conjunction)?;
+    run_type_inference(&mut tig);
+    Ok(tig)
+}
 
 fn run_type_inference<'graph>(tig: &mut TypeInferenceGraph<'graph>) {
     let mut is_modified = tig.prune_vertices_from_constraints();
@@ -246,6 +259,7 @@ impl<'this> NestedTypeInferenceGraphDisjunction<'this> {
 pub mod tests {
 
     use std::{
+        borrow::Borrow,
         collections::{BTreeMap, BTreeSet},
         sync::Arc,
     };
@@ -287,6 +301,7 @@ pub mod tests {
         },
         pattern::{conjunction::Conjunction, constraint::Constraint},
     };
+    use crate::inference::pattern_type_inference::infer_types_for_conjunction;
 
     const LABEL_ANIMAL: &str = "animal";
     const LABEL_CAT: &str = "cat";
@@ -463,8 +478,7 @@ pub mod tests {
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             let constraints = &conjunction.constraints().constraints;
 
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
@@ -518,8 +532,7 @@ pub mod tests {
             conjunction.constraints_mut().add_type(var_name_type, LABEL_CATNAME).unwrap();
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             let constraints = &conjunction.constraints().constraints;
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
@@ -573,8 +586,7 @@ pub mod tests {
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
 
             let constraints = &conjunction.constraints().constraints;
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
@@ -614,8 +626,7 @@ pub mod tests {
             conjunction.constraints_mut().add_type(var_name_type, LABEL_NAME).unwrap();
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             let constraints = &conjunction.constraints().constraints;
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
@@ -706,8 +717,7 @@ pub mod tests {
             root_conj.constraints_mut().add_has(var_animal, var_name).unwrap();
 
             let snapshot = storage.clone().open_snapshot_write();
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&root_conj);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &root_conj).unwrap();
 
             let disj = root_conj.patterns().patterns.get(0).unwrap().as_disjunction().unwrap();
             let b1 = disj.conjunctions().get(0).unwrap();
@@ -812,8 +822,7 @@ pub mod tests {
             conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
 
             let constraints = &conjunction.constraints().constraints;
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_tig = TypeInferenceGraph {
                 conjunction: &conjunction,
@@ -879,8 +888,7 @@ pub mod tests {
 
             let constraints = &conjunction.constraints().constraints;
 
-            let mut tig = TypeSeeder::new(&snapshot, &type_manager).seed_types(&conjunction);
-            run_type_inference(&mut tig);
+            let tig = infer_types_for_conjunction(&snapshot, type_manager.borrow(), &conjunction).unwrap();
 
             let expected_graph = TypeInferenceGraph {
                 conjunction: &conjunction,
