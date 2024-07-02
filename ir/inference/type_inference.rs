@@ -5,6 +5,7 @@
  */
 
 use std::collections::{BTreeMap, BTreeSet};
+use answer::Type;
 
 use answer::variable::Variable;
 use concept::type_::{
@@ -28,15 +29,7 @@ Note: On function call boundaries, can assume the current set of schema types pe
 
  */
 
-pub(crate) type VertexAnnotations = BTreeMap<Variable, BTreeSet<TypeAnnotation>>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) enum TypeAnnotation {
-    SchemaTypeAttribute(AttributeType<'static>),
-    SchemaTypeEntity(EntityType<'static>),
-    SchemaTypeRelation(RelationType<'static>),
-    SchemaTypeRole(RoleType<'static>),
-}
+pub(crate) type VertexAnnotations = BTreeMap<Variable, BTreeSet<Type>>;
 
 pub fn infer_types(program: &Program) {
     // let mut entry_type_annotations = TypeAnnotations::new();

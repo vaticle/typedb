@@ -6,10 +6,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use answer::variable::Variable;
+use answer::{
+    variable::Variable,
+    Type as TypeAnnotation
+};
 
 use crate::{
-    inference::type_inference::{TypeAnnotation, VertexAnnotations},
+    inference::type_inference::{VertexAnnotations},
     pattern::{conjunction::Conjunction, constraint::Constraint},
 };
 
@@ -247,7 +250,10 @@ pub mod tests {
         sync::Arc,
     };
 
-    use answer::variable::Variable;
+    use answer::{
+        variable::Variable,
+        Type as TypeAnnotation
+    };
     use concept::{
         thing::thing_manager::ThingManager,
         type_::{
@@ -278,10 +284,6 @@ pub mod tests {
                 run_type_inference, NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph,
             },
             seed_types::TypeSeeder,
-            type_inference::{
-                TypeAnnotation,
-                TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity, SchemaTypeRelation, SchemaTypeRole},
-            },
         },
         pattern::{conjunction::Conjunction, constraint::Constraint},
     };
@@ -426,9 +428,9 @@ pub mod tests {
         snapshot.commit().unwrap();
 
         (
-            (SchemaTypeEntity(animal), SchemaTypeEntity(cat), SchemaTypeEntity(dog)),
-            (SchemaTypeAttribute(name), SchemaTypeAttribute(catname), SchemaTypeAttribute(dogname)),
-            (SchemaTypeRelation(fears), SchemaTypeRole(has_fear), SchemaTypeRole(is_feared)),
+            (TypeAnnotation::Entity(animal), TypeAnnotation::Entity(cat), TypeAnnotation::Entity(dog)),
+            (TypeAnnotation::Attribute(name), TypeAnnotation::Attribute(catname), TypeAnnotation::Attribute(dogname)),
+            (TypeAnnotation::Relation(fears), TypeAnnotation::RoleType(has_fear), TypeAnnotation::RoleType(is_feared)),
         )
     }
 

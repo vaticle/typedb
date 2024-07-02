@@ -9,7 +9,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
 };
 
-use answer::variable::Variable;
+use answer::{
+    variable::Variable,
+    Type as TypeAnnotation
+};
 use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI};
 use encoding::{graph::type_::Kind, value::label::Label};
 use itertools::Itertools;
@@ -18,11 +21,7 @@ use storage::snapshot::ReadableSnapshot;
 use crate::{
     inference::{
         pattern_type_inference::{NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph},
-        type_inference::{
-            TypeAnnotation,
-            TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity, SchemaTypeRelation, SchemaTypeRole},
-            VertexAnnotations,
-        },
+        type_inference::VertexAnnotations,
     },
     pattern::{
         conjunction::Conjunction,
@@ -169,15 +168,16 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
             let annotations = if let Some(variable_category) = tig.conjunction.context().get_variable_category(*v) {
                 match variable_category {
                     VariableCategory::Type => self.get_unbounded_type_annotations(true, true, true, true),
+                    VariableCategory::ThingType => self.get_unbounded_type_annotations(true, true, true, false),
+                    VariableCategory::RoleType => self.get_unbounded_type_annotations(false, false, false, true),
                     VariableCategory::Thing => self.get_unbounded_type_annotations(true, true, true, false),
                     VariableCategory::Object => self.get_unbounded_type_annotations(true, true, false, false),
                     VariableCategory::Attribute => self.get_unbounded_type_annotations(false, false, true, false),
-                    VariableCategory::RoleType => self.get_unbounded_type_annotations(false, false, false, true),
                     VariableCategory::Value
                     | VariableCategory::ObjectList
                     | VariableCategory::AttributeList
                     | VariableCategory::ValueList => todo!(),
-                    VariableCategory::RoleImpl | VariableCategory::RoleImplList => todo!("Remove on deprecation"),
+
                 }
             } else {
                 self.get_unbounded_type_annotations(true, true, true, true)
@@ -209,7 +209,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     .get_subtypes_transitive(self.snapshot, self.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|entity| SchemaTypeEntity(entity.clone())),
+                    .map(|entity| TypeAnnotation::Entity(entity.clone())),
             );
         }
         if include_relations {
@@ -221,7 +221,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     .get_subtypes_transitive(self.snapshot, self.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|relation| SchemaTypeRelation(relation.clone())),
+                    .map(|relation| TypeAnnotation::Relation(relation.clone())),
             );
         }
         if include_attributes {
@@ -233,7 +233,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     .get_subtypes_transitive(self.snapshot, self.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|attribute| SchemaTypeAttribute(attribute.clone())),
+                    .map(|attribute| TypeAnnotation::Attribute(attribute.clone())),
             );
         }
         if include_roles {
@@ -245,7 +245,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     .get_subtypes_transitive(self.snapshot, self.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|role| SchemaTypeRole(role.clone())),
+                    .map(|role| TypeAnnotation::RoleType(role.clone())),
             );
         }
         annotations
@@ -255,20 +255,20 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         if let Some(attribute) =
             self.type_manager.get_attribute_type(self.snapshot, &Label::build(&type_.type_)).unwrap()
         {
-            TypeAnnotation::SchemaTypeAttribute(attribute)
+            TypeAnnotation::Attribute(attribute)
         } else if let Some(entity) =
             self.type_manager.get_entity_type(self.snapshot, &Label::build(&type_.type_)).unwrap()
         {
-            TypeAnnotation::SchemaTypeEntity(entity)
+            TypeAnnotation::Entity(entity)
         } else if let Some(relation) =
             self.type_manager.get_relation_type(self.snapshot, &Label::build(&type_.type_)).unwrap()
         {
-            TypeAnnotation::SchemaTypeRelation(relation)
+            TypeAnnotation::Relation(relation)
         } else if let Some(role) = self.type_manager.get_role_type(self.snapshot, &Label::build(&type_.type_)).unwrap()
         {
-            TypeAnnotation::SchemaTypeRole(role)
+            TypeAnnotation::RoleType(role)
         } else {
-            todo!("Was not one of the 4 vertex types")
+            todo!("Return error saying type not found.")
         }
     }
 
@@ -517,15 +517,15 @@ impl BinaryConstraintWrapper for Has<Variable> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let owner = match left_type {
-            TypeAnnotation::SchemaTypeEntity(entity) => ObjectType::Entity(entity.clone()),
-            TypeAnnotation::SchemaTypeRelation(relation) => ObjectType::Relation(relation.clone()),
+            TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
+            TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
             _ => todo!("Return an error for using an attribute type here"),
         };
         owner
             .get_owns_transitive(seeder.snapshot, seeder.type_manager)
             .unwrap()
             .iter()
-            .map(|(attribute, _)| TypeAnnotation::SchemaTypeAttribute(attribute.clone()))
+            .map(|(attribute, _)| TypeAnnotation::Attribute(attribute.clone()))
             .for_each(|type_| {
                 collector.insert(type_);
             });
@@ -538,7 +538,7 @@ impl BinaryConstraintWrapper for Has<Variable> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let attribute = match right_type {
-            TypeAnnotation::SchemaTypeAttribute(attribute) => attribute,
+            TypeAnnotation::Attribute(attribute) => attribute,
             _ => todo!("Return an error for using a non-attribute where an attribute was expected"),
         };
         attribute
@@ -546,8 +546,8 @@ impl BinaryConstraintWrapper for Has<Variable> {
             .unwrap()
             .iter()
             .map(|(owner, _)| match owner {
-                ObjectType::Entity(entity) => TypeAnnotation::SchemaTypeEntity(entity.clone()),
-                ObjectType::Relation(relation) => TypeAnnotation::SchemaTypeRelation(relation.clone()),
+                ObjectType::Entity(entity) => TypeAnnotation::Entity(entity.clone()),
+                ObjectType::Relation(relation) => TypeAnnotation::Relation(relation.clone()),
             })
             .for_each(|type_| {
                 collector.insert(type_);
@@ -571,42 +571,42 @@ impl BinaryConstraintWrapper for Isa<Variable> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         match left_type {
-            TypeAnnotation::SchemaTypeAttribute(attribute) => {
+            TypeAnnotation::Attribute(attribute) => {
                 attribute
                     .get_supertypes(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeAttribute(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Attribute(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeEntity(entity) => {
+            TypeAnnotation::Entity(entity) => {
                 entity
                     .get_supertypes(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeEntity(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Entity(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeRelation(relation) => {
+            TypeAnnotation::Relation(relation) => {
                 relation
                     .get_supertypes(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeRelation(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Relation(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeRole(role_type) => {
+            TypeAnnotation::RoleType(role_type) => {
                 role_type
                     .get_supertypes(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeRole(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::RoleType(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
@@ -622,42 +622,42 @@ impl BinaryConstraintWrapper for Isa<Variable> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         match right_type {
-            TypeAnnotation::SchemaTypeAttribute(attribute) => {
+            TypeAnnotation::Attribute(attribute) => {
                 attribute
                     .get_subtypes_transitive(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeAttribute(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Attribute(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeEntity(entity) => {
+            TypeAnnotation::Entity(entity) => {
                 entity
                     .get_subtypes_transitive(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeEntity(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Entity(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeRelation(relation) => {
+            TypeAnnotation::Relation(relation) => {
                 relation
                     .get_subtypes_transitive(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeRelation(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::Relation(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
             }
-            TypeAnnotation::SchemaTypeRole(role_type) => {
+            TypeAnnotation::RoleType(role_type) => {
                 role_type
                     .get_subtypes_transitive(seeder.snapshot, seeder.type_manager)
                     .unwrap()
                     .iter()
-                    .map(|subtype| TypeAnnotation::SchemaTypeRole(subtype.clone().into_owned()))
+                    .map(|subtype| TypeAnnotation::RoleType(subtype.clone().into_owned()))
                     .for_each(|subtype| {
                         collector.insert(subtype);
                     });
@@ -691,15 +691,15 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let player = match left_type {
-            TypeAnnotation::SchemaTypeEntity(entity) => ObjectType::Entity(entity.clone()),
-            TypeAnnotation::SchemaTypeRelation(relation) => ObjectType::Relation(relation.clone()),
+            TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
+            TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
             _ => todo!("Return an error for using an attribute type here"),
         };
         player
             .get_plays_transitive(seeder.snapshot, seeder.type_manager)
             .unwrap()
             .iter()
-            .map(|(role_type, _)| TypeAnnotation::SchemaTypeRole(role_type.clone()))
+            .map(|(role_type, _)| TypeAnnotation::RoleType(role_type.clone()))
             .for_each(|type_| {
                 collector.insert(type_);
             });
@@ -713,7 +713,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let role_type = match right_type {
-            TypeAnnotation::SchemaTypeRole(role_type) => role_type,
+            TypeAnnotation::RoleType(role_type) => role_type,
             _ => todo!("Return an error for using a non-role where an role was expected"),
         };
         role_type
@@ -721,8 +721,8 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
             .unwrap()
             .iter()
             .map(|(player, _)| match player {
-                ObjectType::Entity(entity) => TypeAnnotation::SchemaTypeEntity(entity.clone()),
-                ObjectType::Relation(relation) => TypeAnnotation::SchemaTypeRelation(relation.clone()),
+                ObjectType::Entity(entity) => TypeAnnotation::Entity(entity.clone()),
+                ObjectType::Relation(relation) => TypeAnnotation::Relation(relation.clone()),
             })
             .for_each(|type_| {
                 collector.insert(type_);
@@ -747,14 +747,14 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let relation = match left_type {
-            TypeAnnotation::SchemaTypeRelation(relation) => relation.clone(),
+            TypeAnnotation::Relation(relation) => relation.clone(),
             _ => todo!("Return an error for using a non-relation type here"),
         };
         relation
             .get_relates_transitive(seeder.snapshot, seeder.type_manager)
             .unwrap()
             .iter()
-            .map(|(role_type, _)| TypeAnnotation::SchemaTypeRole(role_type.clone()))
+            .map(|(role_type, _)| TypeAnnotation::RoleType(role_type.clone()))
             .for_each(|type_| {
                 collector.insert(type_);
             });
@@ -768,14 +768,14 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
         collector: &mut BTreeSet<TypeAnnotation>,
     ) {
         let role_type = match right_type {
-            TypeAnnotation::SchemaTypeRole(role_type) => role_type,
+            TypeAnnotation::RoleType(role_type) => role_type,
             _ => todo!("Return an error for using a non-role where an role was expected"),
         };
         role_type
             .get_relations_transitive(seeder.snapshot, seeder.type_manager)
             .unwrap()
             .iter()
-            .map(|relates| TypeAnnotation::SchemaTypeRelation(relates.relation().clone()))
+            .map(|relates| TypeAnnotation::Relation(relates.relation().clone()))
             .for_each(|type_| {
                 collector.insert(type_);
             });
@@ -789,6 +789,7 @@ pub mod tests {
         collections::{BTreeMap, BTreeSet},
         sync::Arc,
     };
+    use answer::Type as TypeAnnotation;
 
     use concept::{
         thing::thing_manager::ThingManager,
@@ -817,7 +818,6 @@ pub mod tests {
         inference::{
             pattern_type_inference::{tests::expected_edge, TypeInferenceGraph},
             seed_types::TypeSeeder,
-            type_inference::TypeAnnotation::{SchemaTypeAttribute, SchemaTypeEntity},
         },
         pattern::conjunction::Conjunction,
     };
@@ -908,8 +908,8 @@ pub mod tests {
             schema_snapshot.commit().unwrap();
 
             (
-                (SchemaTypeEntity(animal), SchemaTypeEntity(cat), SchemaTypeEntity(dog)),
-                (SchemaTypeAttribute(name), SchemaTypeAttribute(catname), SchemaTypeAttribute(dogname)),
+                (TypeAnnotation::Entity(animal), TypeAnnotation::Entity(cat), TypeAnnotation::Entity(dog)),
+                (TypeAnnotation::Attribute(name), TypeAnnotation::Attribute(catname), TypeAnnotation::Attribute(dogname)),
             )
         };
 
