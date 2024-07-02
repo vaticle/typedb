@@ -542,7 +542,7 @@ impl BinaryConstraintWrapper for Has<Variable> {
         let owner = match left_type {
             TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
             TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         owner
             .get_owns_transitive(seeder.snapshot, seeder.type_manager)?
@@ -562,7 +562,7 @@ impl BinaryConstraintWrapper for Has<Variable> {
     ) -> Result<(), ConceptReadError> {
         let attribute = match right_type {
             TypeAnnotation::Attribute(attribute) => attribute,
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         attribute
             .get_owners_transitive(seeder.snapshot, seeder.type_manager)?
@@ -702,7 +702,7 @@ impl BinaryConstraintWrapper for Comparison<Variable> {
     ) -> Result<(), ConceptReadError> {
         let left_value_type = match left_type {
             TypeAnnotation::Attribute(attribute) => attribute.get_value_type(seeder.snapshot, seeder.type_manager)?,
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         if let Some(value_type) = left_value_type {
             let comparable_types = TODO__comparable_value_types(value_type.category());
@@ -786,7 +786,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
         let player = match left_type {
             TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
             TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         player
             .get_plays_transitive(seeder.snapshot, seeder.type_manager)?
@@ -806,7 +806,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let role_type = match right_type {
             TypeAnnotation::RoleType(role_type) => role_type,
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         role_type
             .get_players_transitive(seeder.snapshot, seeder.type_manager)?
@@ -839,7 +839,7 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let relation = match left_type {
             TypeAnnotation::Relation(relation) => relation.clone(),
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         relation
             .get_relates_transitive(seeder.snapshot, seeder.type_manager)?
@@ -859,7 +859,7 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let role_type = match right_type {
             TypeAnnotation::RoleType(role_type) => role_type,
-            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
+            _ => {return Ok(());} // It can't be another type => Do nothing and let type-inference clean it up
         };
         role_type
             .get_relations_transitive(seeder.snapshot, seeder.type_manager)?
