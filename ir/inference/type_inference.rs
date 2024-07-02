@@ -5,9 +5,8 @@
  */
 
 use std::collections::{BTreeMap, BTreeSet};
-use answer::Type;
 
-use answer::variable::Variable;
+use answer::{variable::Variable, Type};
 use concept::type_::{
     attribute_type::AttributeType, entity_type::EntityType, relation_type::RelationType, role_type::RoleType,
 };

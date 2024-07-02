@@ -6,19 +6,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use answer::{
-    variable::Variable,
-    Type as TypeAnnotation
-};
+use answer::{variable::Variable, Type as TypeAnnotation};
 use concept::type_::type_manager::TypeManager;
 use storage::snapshot::ReadableSnapshot;
 
 use crate::{
-    inference::type_inference::{VertexAnnotations},
+    inference::{seed_types::TypeSeeder, type_inference::VertexAnnotations, TypeInferenceError},
     pattern::{conjunction::Conjunction, constraint::Constraint},
 };
-use crate::inference::seed_types::TypeSeeder;
-use crate::inference::TypeInferenceError;
 
 /*
 The basic algorithm for a single pattern (with nested disjunctions, e.g.) is implemented below.
@@ -28,10 +23,11 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
     determined from the declared types, or by doing type-inference on it in isolation.
 */
 
-
 pub(crate) fn infer_types_for_conjunction<'graph, Snapshot: ReadableSnapshot>(
-    snapshot: &Snapshot, type_manager: &TypeManager<Snapshot>, conjunction: &'graph Conjunction
-) -> Result<TypeInferenceGraph<'graph>, TypeInferenceError>{
+    snapshot: &Snapshot,
+    type_manager: &TypeManager<Snapshot>,
+    conjunction: &'graph Conjunction,
+) -> Result<TypeInferenceGraph<'graph>, TypeInferenceError> {
     let mut tig = TypeSeeder::new(snapshot, type_manager).seed_types(conjunction)?;
     run_type_inference(&mut tig);
     Ok(tig)
@@ -264,10 +260,7 @@ pub mod tests {
         sync::Arc,
     };
 
-    use answer::{
-        variable::Variable,
-        Type as TypeAnnotation
-    };
+    use answer::{variable::Variable, Type as TypeAnnotation};
     use concept::{
         thing::thing_manager::ThingManager,
         type_::{
@@ -295,13 +288,13 @@ pub mod tests {
     use crate::{
         inference::{
             pattern_type_inference::{
-                run_type_inference, NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph,
+                infer_types_for_conjunction, run_type_inference, NestedTypeInferenceGraphDisjunction,
+                TypeInferenceEdge, TypeInferenceGraph,
             },
             seed_types::TypeSeeder,
         },
         pattern::{conjunction::Conjunction, constraint::Constraint},
     };
-    use crate::inference::pattern_type_inference::infer_types_for_conjunction;
 
     const LABEL_ANIMAL: &str = "animal";
     const LABEL_CAT: &str = "cat";

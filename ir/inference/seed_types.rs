@@ -9,20 +9,20 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
 };
 
-use answer::{
-    variable::Variable,
-    Type as TypeAnnotation
+use answer::{variable::Variable, Type as TypeAnnotation};
+use concept::{
+    error::ConceptReadError,
+    type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI},
 };
-use concept::type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI};
 use encoding::{graph::type_::Kind, value::label::Label};
 use itertools::Itertools;
-use concept::error::ConceptReadError;
 use storage::snapshot::ReadableSnapshot;
 
 use crate::{
     inference::{
         pattern_type_inference::{NestedTypeInferenceGraphDisjunction, TypeInferenceEdge, TypeInferenceGraph},
         type_inference::VertexAnnotations,
+        TypeInferenceError,
     },
     pattern::{
         conjunction::Conjunction,
@@ -31,7 +31,6 @@ use crate::{
         variable_category::VariableCategory,
     },
 };
-use crate::inference::TypeInferenceError;
 
 pub struct TypeSeeder<'this, Snapshot: ReadableSnapshot> {
     snapshot: &'this Snapshot,
@@ -42,7 +41,10 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         TypeSeeder { snapshot, type_manager }
     }
 
-    pub(crate) fn seed_types<'graph>(&'this self, conjunction: &'graph Conjunction) -> Result<TypeInferenceGraph<'graph>, TypeInferenceError> {
+    pub(crate) fn seed_types<'graph>(
+        &'this self,
+        conjunction: &'graph Conjunction,
+    ) -> Result<TypeInferenceGraph<'graph>, TypeInferenceError> {
         let mut tig = self.recursively_allocate(conjunction);
         self.seed_types_impl(&mut tig, &BTreeMap::new())?;
         Ok(tig)
@@ -66,10 +68,12 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         while some_vertex_was_directly_annotated {
             let mut something_changed = true;
             while something_changed {
-                something_changed = self.propagate_vertex_annotations(tig).map_err(|source| TypeInferenceError::ConceptRead { source })?;
+                something_changed = self
+                    .propagate_vertex_annotations(tig)
+                    .map_err(|source| TypeInferenceError::ConceptRead { source })?;
             }
-            some_vertex_was_directly_annotated = self.annotate_unannotated_vertex(tig)
-                .map_err(|source| TypeInferenceError::ConceptRead { source })?;
+            some_vertex_was_directly_annotated =
+                self.annotate_unannotated_vertex(tig).map_err(|source| TypeInferenceError::ConceptRead { source })?;
         }
         self.seed_edges(tig);
 
@@ -132,12 +136,16 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     }
 
     // Phase 1: Collect all type & function return annotations
-    fn seed_vertex_annotations_from_type_and_function_return<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> Result<(), TypeInferenceError> {
+    fn seed_vertex_annotations_from_type_and_function_return<'graph>(
+        &self,
+        tig: &mut TypeInferenceGraph<'graph>,
+    ) -> Result<(), TypeInferenceError> {
         // Get vertex annotations from Type & Function returns
         for constraint in &tig.conjunction.constraints().constraints {
             match constraint {
                 Constraint::Type(type_constraint) => {
-                    let annotation_opt = self.get_annotation_for_type_label(&type_constraint)
+                    let annotation_opt = self
+                        .get_annotation_for_type_label(&type_constraint)
                         .map_err(|source| TypeInferenceError::ConceptRead { source })?;
                     if let Some(annotation) = annotation_opt {
                         Self::intersect_unary(
@@ -162,7 +170,10 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         Ok(())
     }
 
-    fn annotate_unannotated_vertex<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> Result<bool, ConceptReadError> {
+    fn annotate_unannotated_vertex<'graph>(
+        &self,
+        tig: &mut TypeInferenceGraph<'graph>,
+    ) -> Result<bool, ConceptReadError> {
         let unannotated_vars: Vec<Variable> = tig
             .conjunction
             .constraints()
@@ -185,7 +196,6 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     | VariableCategory::ObjectList
                     | VariableCategory::AttributeList
                     | VariableCategory::ValueList => todo!(),
-
                 }
             } else {
                 self.get_unbounded_type_annotations(true, true, true, true)?
@@ -215,7 +225,8 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         if include_entities {
             annotations.extend(
                 self.type_manager
-                    .get_entity_type(self.snapshot, &Kind::Entity.root_label())?.unwrap()
+                    .get_entity_type(self.snapshot, &Kind::Entity.root_label())?
+                    .unwrap()
                     .get_subtypes_transitive(self.snapshot, self.type_manager)?
                     .iter()
                     .map(|entity| TypeAnnotation::Entity(entity.clone())),
@@ -224,7 +235,8 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         if include_relations {
             annotations.extend(
                 self.type_manager
-                    .get_relation_type(self.snapshot, &Kind::Relation.root_label())?.unwrap()
+                    .get_relation_type(self.snapshot, &Kind::Relation.root_label())?
+                    .unwrap()
                     .get_subtypes_transitive(self.snapshot, self.type_manager)?
                     .iter()
                     .map(|relation| TypeAnnotation::Relation(relation.clone())),
@@ -243,7 +255,8 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         if include_roles {
             annotations.extend(
                 self.type_manager
-                    .get_role_type(self.snapshot, &Kind::Role.root_label())?.unwrap()
+                    .get_role_type(self.snapshot, &Kind::Role.root_label())?
+                    .unwrap()
                     .get_subtypes_transitive(self.snapshot, self.type_manager)?
                     .iter()
                     .map(|role| TypeAnnotation::RoleType(role.clone())),
@@ -252,21 +265,19 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
         Ok(annotations)
     }
 
-    fn get_annotation_for_type_label(&self, type_: &Type<Variable>) -> Result<Option<TypeAnnotation>, ConceptReadError> {
-        if let Some(attribute) =
-            self.type_manager.get_attribute_type(self.snapshot, &Label::build(&type_.type_))?
-        {
+    fn get_annotation_for_type_label(
+        &self,
+        type_: &Type<Variable>,
+    ) -> Result<Option<TypeAnnotation>, ConceptReadError> {
+        if let Some(attribute) = self.type_manager.get_attribute_type(self.snapshot, &Label::build(&type_.type_))? {
             Ok(Some(TypeAnnotation::Attribute(attribute)))
-        } else if let Some(entity) =
-            self.type_manager.get_entity_type(self.snapshot, &Label::build(&type_.type_))?
-        {
+        } else if let Some(entity) = self.type_manager.get_entity_type(self.snapshot, &Label::build(&type_.type_))? {
             Ok(Some(TypeAnnotation::Entity(entity)))
         } else if let Some(relation) =
             self.type_manager.get_relation_type(self.snapshot, &Label::build(&type_.type_))?
         {
             Ok(Some(TypeAnnotation::Relation(relation)))
-        } else if let Some(role) = self.type_manager.get_role_type(self.snapshot, &Label::build(&type_.type_))?
-        {
+        } else if let Some(role) = self.type_manager.get_role_type(self.snapshot, &Label::build(&type_.type_))? {
             Ok(Some(TypeAnnotation::RoleType(role)))
         } else {
             Ok(None)
@@ -274,7 +285,10 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
     }
 
     // Phase 2: Use constraints to infer annotations on other vertices
-    fn propagate_vertex_annotations<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> Result<bool, ConceptReadError> {
+    fn propagate_vertex_annotations<'graph>(
+        &self,
+        tig: &mut TypeInferenceGraph<'graph>,
+    ) -> Result<bool, ConceptReadError> {
         let mut is_modified = false;
         for c in &tig.conjunction.constraints().constraints {
             is_modified = is_modified | self.try_propagating_vertex_annotation(c, &mut tig.vertices)?;
@@ -785,8 +799,8 @@ pub mod tests {
         collections::{BTreeMap, BTreeSet},
         sync::Arc,
     };
-    use answer::Type as TypeAnnotation;
 
+    use answer::Type as TypeAnnotation;
     use concept::{
         thing::thing_manager::ThingManager,
         type_::{
@@ -812,12 +826,11 @@ pub mod tests {
 
     use crate::{
         inference::{
-            pattern_type_inference::{tests::expected_edge, TypeInferenceGraph},
+            pattern_type_inference::{infer_types_for_conjunction, tests::expected_edge, TypeInferenceGraph},
             seed_types::TypeSeeder,
         },
         pattern::conjunction::Conjunction,
     };
-    use crate::inference::pattern_type_inference::infer_types_for_conjunction;
 
     fn setup_storage() -> Arc<MVCCStorage<WALClient>> {
         init_logging();
@@ -906,7 +919,11 @@ pub mod tests {
 
             (
                 (TypeAnnotation::Entity(animal), TypeAnnotation::Entity(cat), TypeAnnotation::Entity(dog)),
-                (TypeAnnotation::Attribute(name), TypeAnnotation::Attribute(catname), TypeAnnotation::Attribute(dogname)),
+                (
+                    TypeAnnotation::Attribute(name),
+                    TypeAnnotation::Attribute(catname),
+                    TypeAnnotation::Attribute(dogname),
+                ),
             )
         };
 

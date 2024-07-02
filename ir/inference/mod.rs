@@ -67,6 +67,6 @@ pub mod value_type_inference;
 
 #[derive(Debug)]
 pub enum TypeInferenceError {
-    ConceptRead { source : ConceptReadError },
+    ConceptRead { source: ConceptReadError },
     LabelNotResolved(String),
 }
