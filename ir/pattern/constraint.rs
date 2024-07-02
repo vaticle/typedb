@@ -148,6 +148,31 @@ impl Constraints {
         Ok(self.constraints.last().unwrap())
     }
 
+    pub fn add_comparison(
+        &mut self,
+        lhs: Variable,
+        rhs: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+        debug_assert!(
+            self.context.lock().unwrap().is_variable_available(self.scope, lhs)
+                && self.context.lock().unwrap().is_variable_available(self.scope, rhs)
+        );
+        let comparison = Comparison::new(lhs, rhs);
+        // TODO: Introduce relation category
+        self.context.lock().unwrap().set_variable_category(
+            lhs,
+            VariableCategory::Value,
+            comparison.clone().into(),
+        )?;
+        self.context.lock().unwrap().set_variable_category(
+            rhs,
+            VariableCategory::Value,
+            comparison.clone().into(),
+        )?;
+        self.add_constraint(comparison);
+        Ok(self.constraints.last().unwrap())
+    }
+
     pub fn add_function_call(
         &mut self,
         assigned: Vec<Variable>,

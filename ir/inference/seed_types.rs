@@ -452,7 +452,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     }
                 }
                 Constraint::Has(has) => edges.push(self.seed_edge(constraint, has, vertices)?),
-                Constraint::Comparison(cmp) => todo!("self.seed_edge(cmp, &tig.vertices)"), // I'm not thrilled about this.
+                Constraint::Comparison(cmp) => edges.push(self.seed_edge(constraint, cmp, vertices)?),
                 Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => {} // Do nothing
             }
         }
@@ -917,6 +917,11 @@ pub mod tests {
         sync::Arc,
     };
 
+    use answer::Type as TypeAnnotation;
+    use encoding::value::label::Label;
+    use encoding::value::value_type::ValueType;
+    use storage::snapshot::CommittableSnapshot;
+
     use crate::{
         inference::{
             pattern_type_inference::{infer_types_for_conjunction, tests::expected_edge, TypeInferenceGraph},
@@ -967,13 +972,6 @@ pub mod tests {
                 let types_tn = BTreeSet::from([type_name.clone()]);
                 let types_n = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
 
-                let left_to_right = BTreeMap::from([(type_cat.clone(), BTreeSet::from([type_catname.clone()]))]);
-                let right_to_left = BTreeMap::from([
-                    (type_name.clone(), BTreeSet::from([type_animal.clone()])),
-                    (type_catname.clone(), BTreeSet::from([type_cat.clone()])),
-                    (type_dogname.clone(), BTreeSet::from([type_dog.clone()])),
-                ]);
-
                 let constraints = &conjunction.constraints().constraints;
                 TypeInferenceGraph {
                     conjunction: &conjunction,
@@ -1016,6 +1014,114 @@ pub mod tests {
             let snapshot = storage.clone().open_snapshot_write();
             let seeder = TypeSeeder::new(&snapshot, &type_manager);
             let tig = seeder.seed_types(&conjunction).unwrap();
+            assert_eq!(expected_tig, tig);
+        }
+    }
+
+    #[test]
+    fn test_no_constraints() {
+        // dog sub animal, owns dog-name; cat sub animal owns cat-name;
+        // cat-name sub animal-name; dog-name sub animal-name;
+        let storage = setup_storage();
+        let (type_manager, thing_manager) = managers();
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), (type_fears, _, _)) =
+            setup_types(storage.clone().open_snapshot_write(), &type_manager);
+
+        {
+            // // Case 1: $a has $n;
+            let mut conjunction = Conjunction::new_root();
+            let var_animal = conjunction.get_or_declare_variable("animal").unwrap();
+            let var_name = conjunction.get_or_declare_variable(&"name").unwrap();
+            // Try seeding
+            {
+                conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
+            }
+
+            let expected_tig = { ;
+                let types_a = BTreeSet::from([type_fears.clone(), type_cat.clone(), type_dog.clone(), type_animal.clone()]);
+                let types_n = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+
+                let constraints = &conjunction.constraints().constraints;
+                TypeInferenceGraph {
+                    conjunction: &conjunction,
+                    vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
+                    edges: vec![
+                        expected_edge(
+                            &constraints[0],
+                            var_animal,
+                            var_name,
+                            vec![(type_cat.clone(), type_catname.clone()), (type_dog.clone(), type_dogname.clone()), (type_animal.clone(), type_name.clone())],
+                        ),
+                    ],
+                    nested_disjunctions: vec![],
+                    nested_negations: vec![],
+                    nested_optionals: vec![],
+                }
+            };
+
+            let snapshot = storage.clone().open_snapshot_write();
+            let seeder = TypeSeeder::new(&snapshot, &type_manager);
+            let tig = seeder.seed_types(&conjunction).unwrap();
+            assert_eq!(expected_tig.vertices, tig.vertices);
+            assert_eq!(expected_tig, tig);
+        }
+    }
+
+
+    #[test]
+    fn test_comparison() {
+        let storage = setup_storage();
+        let (type_manager, thing_manager) = managers();
+        let ((type_animal, type_cat, type_dog), (type_name, type_catname, type_dogname), (type_fears, _, _)) =
+            setup_types(storage.clone().open_snapshot_write(), &type_manager);
+        let type_age = {
+            let mut snapshot = storage.clone().open_snapshot_write();
+            let type_age = type_manager.create_attribute_type(&mut snapshot, &Label::build("age"), false).unwrap();
+            type_age.set_value_type(&mut snapshot, &type_manager, ValueType::Long);
+            snapshot.commit();
+            TypeAnnotation::Attribute(type_age)
+        };
+        {
+            // // Case 1: $a > $b;
+            let mut conjunction = Conjunction::new_root();
+            let var_a = conjunction.get_or_declare_variable("a").unwrap();
+            let var_b = conjunction.get_or_declare_variable(&"b").unwrap();
+            // Try seeding
+            {
+                conjunction.constraints_mut().add_comparison(var_a, var_b).unwrap();
+            }
+
+            let expected_tig = {
+                let types_a = BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+                let types_b = BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+
+                let constraints = &conjunction.constraints().constraints;
+                TypeInferenceGraph {
+                    conjunction: &conjunction,
+                    vertices: BTreeMap::from([(var_a, types_a), (var_b, types_b)]),
+                    edges: vec![
+                        expected_edge(
+                            &constraints[0],
+                            var_a,
+                            var_b,
+                            vec![
+                                (type_age.clone(), type_age.clone()),
+                                (type_catname.clone(), type_catname.clone()), (type_catname.clone(), type_dogname.clone()), (type_catname.clone(), type_name.clone()),
+                                (type_dogname.clone(), type_catname.clone()), (type_dogname.clone(), type_dogname.clone()), (type_dogname.clone(), type_name.clone()),
+                                (type_name.clone(), type_catname.clone()), (type_name.clone(), type_dogname.clone()), (type_name.clone(), type_name.clone()),
+                            ],
+                        ),
+                    ],
+                    nested_disjunctions: vec![],
+                    nested_negations: vec![],
+                    nested_optionals: vec![],
+                }
+            };
+
+            let snapshot = storage.clone().open_snapshot_write();
+            let seeder = TypeSeeder::new(&snapshot, &type_manager);
+            let tig = seeder.seed_types(&conjunction).unwrap();
+            assert_eq!(expected_tig.vertices, tig.vertices);
             assert_eq!(expected_tig, tig);
         }
     }

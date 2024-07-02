@@ -718,11 +718,11 @@ pub mod tests {
                 var_is_feared,
                 var_fears_type,
                 var_fears,
-                var_role_1,
-                var_role_2,
-                var_role_1_type,
-                var_role_2_type,
-            ) = ["has_fear", "is_feared", "fears_type", "fears", "role1", "role2", "role1_type", "role2_type"]
+                var_role_has_fear,
+                var_role_is_feared,
+                var_role_has_fear_type,
+                var_role_is_feared_type,
+            ) = ["has_fear", "is_feared", "fears_type", "fears", "role_has_fear", "role_is_fear", "role_has_fear_type", "role_is_feared_type"]
                 .iter()
                 .map(|name| conjunction.get_or_declare_variable(*name).unwrap())
                 .collect_tuple()
@@ -730,13 +730,13 @@ pub mod tests {
 
             conjunction.constraints_mut().add_isa(var_fears, var_fears_type).unwrap();
             conjunction.constraints_mut().add_type(var_fears_type, LABEL_FEARS).unwrap();
-            conjunction.constraints_mut().add_role_player(var_fears, var_has_fear, Some(var_role_1)).unwrap();
-            conjunction.constraints_mut().add_role_player(var_fears, var_is_feared, Some(var_role_2)).unwrap();
+            conjunction.constraints_mut().add_role_player(var_fears, var_has_fear, Some(var_role_has_fear)).unwrap();
+            conjunction.constraints_mut().add_role_player(var_fears, var_is_feared, Some(var_role_is_feared)).unwrap();
 
-            conjunction.constraints_mut().add_isa(var_role_1, var_role_1_type).unwrap(); // TODO: isa is only for ThingType. This is wrong
-            conjunction.constraints_mut().add_type(var_role_1_type, "fears:has-fear").unwrap();
-            conjunction.constraints_mut().add_isa(var_role_2, var_role_2_type).unwrap(); // TODO: isa is only for ThingType. This is wrong
-            conjunction.constraints_mut().add_type(var_role_2_type, "fears:is-feared").unwrap();
+            conjunction.constraints_mut().add_isa(var_role_has_fear, var_role_has_fear_type).unwrap(); // TODO: isa is only for ThingType. This is wrong
+            conjunction.constraints_mut().add_type(var_role_has_fear_type, "fears:has-fear").unwrap();
+            conjunction.constraints_mut().add_isa(var_role_is_feared, var_role_is_feared_type).unwrap(); // TODO: isa is only for ThingType. This is wrong
+            conjunction.constraints_mut().add_type(var_role_is_feared_type, "fears:is-feared").unwrap();
 
             let constraints = &conjunction.constraints().constraints;
 
@@ -749,10 +749,10 @@ pub mod tests {
                     (var_is_feared, BTreeSet::from([type_dog.clone()])),
                     (var_fears_type, BTreeSet::from([type_fears.clone()])),
                     (var_fears, BTreeSet::from([type_fears.clone()])),
-                    (var_role_1, BTreeSet::from([type_has_fear.clone()])),
-                    (var_role_2, BTreeSet::from([type_is_feared.clone()])),
-                    (var_role_1_type, BTreeSet::from([type_has_fear.clone()])),
-                    (var_role_2_type, BTreeSet::from([type_is_feared.clone()])),
+                    (var_role_has_fear, BTreeSet::from([type_has_fear.clone()])),
+                    (var_role_is_feared, BTreeSet::from([type_is_feared.clone()])),
+                    (var_role_has_fear_type, BTreeSet::from([type_has_fear.clone()])),
+                    (var_role_is_feared_type, BTreeSet::from([type_is_feared.clone()])),
                 ]),
                 edges: vec![
                     // isa
@@ -766,38 +766,38 @@ pub mod tests {
                     expected_edge(
                         &conjunction.constraints().constraints[2],
                         var_fears,
-                        var_role_1,
+                        var_role_has_fear,
                         vec![(type_fears.clone(), type_has_fear.clone())],
                     ),
                     expected_edge(
                         &conjunction.constraints().constraints[2],
                         var_has_fear,
-                        var_role_1,
+                        var_role_has_fear,
                         vec![(type_cat.clone(), type_has_fear.clone())],
                     ),
                     // is-feared edge
                     expected_edge(
                         &conjunction.constraints().constraints[3],
                         var_fears,
-                        var_role_2,
+                        var_role_is_feared,
                         vec![(type_fears.clone(), type_is_feared.clone())],
                     ),
                     expected_edge(
                         &conjunction.constraints().constraints[3],
                         var_is_feared,
-                        var_role_2,
+                        var_role_is_feared,
                         vec![(type_dog.clone(), type_is_feared.clone())],
                     ),
                     expected_edge(
                         &conjunction.constraints().constraints[4],
-                        var_role_1,
-                        var_role_1_type,
+                        var_role_has_fear,
+                        var_role_has_fear_type,
                         vec![(type_has_fear.clone(), type_has_fear.clone())],
                     ),
                     expected_edge(
                         &conjunction.constraints().constraints[6],
-                        var_role_2,
-                        var_role_2_type,
+                        var_role_is_feared,
+                        var_role_is_feared_type,
                         vec![(type_is_feared.clone(), type_is_feared.clone())],
                     ),
                 ],
