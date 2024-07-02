@@ -58,6 +58,7 @@ use crate::{
     },
 };
 use crate::type_::annotation::Annotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
 
 pub mod type_cache;
 pub mod type_reader;
@@ -1323,17 +1324,17 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
         let existing_value_type_with_source = TypeReader::get_value_type(snapshot, attribute.clone())
             .map_err(|source| ConceptWriteError::ConceptRead { source })?;
 
-        OperationTimeValidation::validate_value_type_compatible_with_existing_value_type(
-            snapshot, attribute.clone(), value_type.clone(), existing_value_type_with_source.clone()
+        OperationTimeValidation::validate_value_type_compatible_with_inherited_value_type(
+            snapshot, attribute.clone(), Some(value_type.clone()), existing_value_type_with_source.clone()
+        ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
+
+        OperationTimeValidation::validate_value_type_compatible_to_all_owns_annotations(
+            snapshot, attribute.clone(), Some(value_type.clone())
         ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
 
         // TODO: Maybe it should be schema validation!
         OperationTimeValidation::validate_value_type_compatible_with_subtypes_value_types(
             snapshot, attribute.clone(), value_type.clone()
-        ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
-
-        OperationTimeValidation::validate_value_type_keyable_for_all_owns_annotations(
-            snapshot, attribute.clone(), Some(value_type.clone())
         ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
 
         // TODO: Can't change value type now!
@@ -1481,6 +1482,18 @@ impl<Snapshot: WritableSnapshot> TypeManager<Snapshot> {
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
         OperationTimeValidation::validate_edge_override_annotations_compatibility(snapshot, owns.clone(), overridden.clone())
             .map_err(|source| ConceptWriteError::SchemaValidation { source })?;
+
+        let overridden_value_type_with_source = TypeReader::get_value_type(snapshot, overridden.attribute().clone())
+            .map_err(|source| ConceptWriteError::ConceptRead { source })?;
+        let value_type = TypeReader::get_value_type_without_source(snapshot, owns.attribute().clone())
+            .map_err(|source| ConceptWriteError::ConceptRead { source })?;
+
+        OperationTimeValidation::validate_value_type_compatible_with_inherited_value_type(
+            snapshot, owns.attribute().clone(), value_type.clone(), overridden_value_type_with_source.clone()
+        ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
+        OperationTimeValidation::validate_owns_value_type_compatible_to_annotations(
+            snapshot, overridden.clone(), value_type.clone()
+        ).map_err(|source| ConceptWriteError::SchemaValidation {  source } )?;
 
         TypeWriter::storage_set_type_edge_overridden(snapshot, owns, overridden); 
         Ok(())

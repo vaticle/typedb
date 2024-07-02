@@ -956,24 +956,30 @@ impl OperationTimeValidation {
         }
     }
 
-    pub(crate) fn validate_value_type_compatible_with_existing_value_type<Snapshot: ReadableSnapshot>(
+    pub(crate) fn validate_value_type_compatible_with_inherited_value_type<Snapshot: ReadableSnapshot>(
         snapshot: &Snapshot,
         attribute_type: AttributeType<'static>,
-        value_type: ValueType,
-        existing_value_type_with_source: Option<(ValueType, AttributeType<'static>)>,
+        value_type: Option<ValueType>,
+        inherited_value_type_with_source: Option<(ValueType, AttributeType<'static>)>,
     ) -> Result<(), SchemaValidationError> {
-        if let Some((existing_value_type, existing_value_type_source)) = existing_value_type_with_source {
-            return if existing_value_type == value_type {
-                Ok(())
-            } else {
-                Err(SchemaValidationError::ValueTypeNotCompatibleWithExitingValueTypeOf(
-                    get_label!(snapshot, attribute_type),
-                    get_label!(snapshot, existing_value_type_source),
-                    existing_value_type,
-                ))
+        match value_type {
+            Some(value_type) => {
+                if let Some((inherited_value_type, inherited_value_type_source)) = inherited_value_type_with_source {
+                    if inherited_value_type == value_type {
+                        Ok(())
+                    } else {
+                        Err(SchemaValidationError::ValueTypeNotCompatibleWithInheritedValueTypeOf(
+                            get_label!(snapshot, attribute_type),
+                            get_label!(snapshot, inherited_value_type_source),
+                            inherited_value_type,
+                        ))
+                    }
+                } else {
+                    Ok(())
+                }
             }
+            None => Ok(()),
         }
-        Ok(())
     }
 
     pub(crate) fn validate_value_type_compatible_with_subtypes_value_types<Snapshot: ReadableSnapshot>(
@@ -1050,11 +1056,13 @@ impl OperationTimeValidation {
 
         for (annotation, _) in annotations {
             match annotation {
-                AttributeTypeAnnotation::Regex(_) => return Err(
-                    SchemaValidationError::AnnotationRegexOnAttributeRequiresStringValueType(
-                        get_label!(snapshot, attribute_type)
-                    )
-                ),
+                AttributeTypeAnnotation::Regex(_) => {
+                    let res =
+                        Self::validate_annotation_regex_compatible_value_type(snapshot, attribute_type.clone(), None);
+                    if res.is_err() {
+                        return res;
+                    }
+                }
                 | AttributeTypeAnnotation::Abstract(_)
                 | AttributeTypeAnnotation::Independent(_) => {}
             }
@@ -1068,13 +1076,15 @@ impl OperationTimeValidation {
                 .map_err(SchemaValidationError::ConceptRead)?;
             for (annotation, _) in owns_annotations {
                 match annotation {
-                    Annotation::Regex(_) => return Err(
-                        SchemaValidationError::AnnotationRegexOnOwnsRequiresStringValueType(
-                            get_label!(snapshot, attribute_type), get_label!(snapshot, owner)
-                        )
-                    ),
+                    Annotation::Regex(_) => {
+                        let res =
+                            Self::validate_annotation_regex_compatible_value_type(snapshot, attribute_type.clone(), None);
+                        if res.is_err() {
+                            return res;
+                        }
+                    },
                     Annotation::Unique(_) => {
-                        if Self::is_owns_value_type_keyable(None) {
+                        if !Self::is_owns_value_type_keyable(None) {
                             return Err(
                                 SchemaValidationError::AnnotationUniqueOnOwnsRequiresKeyableValueType(
                                     get_label!(snapshot, attribute_type), get_label!(snapshot, owner)
@@ -1083,7 +1093,7 @@ impl OperationTimeValidation {
                         }
                     },
                     Annotation::Key(_) => {
-                        if Self::is_owns_value_type_keyable(None) {
+                        if !Self::is_owns_value_type_keyable(None) {
                             return Err(
                                 SchemaValidationError::AnnotationKeyOnOwnsRequiresKeyableValueType(
                                     get_label!(snapshot, attribute_type), get_label!(snapshot, owner)
@@ -1366,7 +1376,7 @@ impl OperationTimeValidation {
         }
     }
 
-    pub fn validate_value_type_keyable_for_all_owns_annotations<Snapshot>(
+    pub fn validate_value_type_compatible_to_all_owns_annotations<Snapshot>(
         snapshot: &Snapshot,
         attribute_type: AttributeType<'static>,
         value_type: Option<ValueType>,
@@ -1378,12 +1388,12 @@ impl OperationTimeValidation {
             .map_err(SchemaValidationError::ConceptRead)?;
 
         for (_, owns) in all_owns {
-            Self::validate_owns_value_type_keyable_for_annotations(snapshot, owns, value_type.clone())?
+            Self::validate_owns_value_type_compatible_to_annotations(snapshot, owns, value_type.clone())?
         }
         Ok(())
     }
 
-    fn validate_owns_value_type_keyable_for_annotations<Snapshot>(
+    pub(crate) fn validate_owns_value_type_compatible_to_annotations<Snapshot>(
         snapshot: &Snapshot,
         owns: Owns<'static>,
         value_type: Option<ValueType>
@@ -1395,29 +1405,31 @@ impl OperationTimeValidation {
             .map_err(SchemaValidationError::ConceptRead)?;
         for (annotation, _) in annotations {
             match annotation {
-                Annotation::Unique(_) => {
+                Annotation::Unique(_) => { // TODO: Maybe we can call another validation here?
                     if !Self::is_owns_value_type_keyable(value_type.clone()) {
                         let owner = owns.owner();
                         let attribute_type = owns.attribute();
                         return Err(SchemaValidationError::ValueTypeIsNotKeyableForUniqueAnnotation(
-                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type
+                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type.clone()
                         ))
                     }
-                }
+                },
                 Annotation::Key(_) => {
                     if !Self::is_owns_value_type_keyable(value_type.clone()) {
                         let owner = owns.owner();
                         let attribute_type = owns.attribute();
                         return Err(SchemaValidationError::ValueTypeIsNotKeyableForKeyAnnotation(
-                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type
+                            get_label!(snapshot, owner), get_label!(snapshot, attribute_type), value_type.clone()
                         ))
                     }
-                }
+                },
+                Annotation::Regex(_) => Self::validate_annotation_regex_compatible_value_type(
+                    snapshot, owns.attribute().clone(), value_type.clone()
+                )?,
                 | Annotation::Abstract(_)
                 | Annotation::Distinct(_)
                 | Annotation::Independent(_)
                 | Annotation::Cardinality(_)
-                | Annotation::Regex(_)
                 | Annotation::Cascade(_) => {}
             }
         }
