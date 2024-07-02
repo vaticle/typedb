@@ -14,7 +14,13 @@ use concept::{
     error::ConceptReadError,
     type_::{object_type::ObjectType, type_manager::TypeManager, OwnerAPI, PlayerAPI, TypeAPI},
 };
-use encoding::{graph::type_::Kind, value::label::Label};
+use encoding::{
+    graph::type_::Kind,
+    value::{
+        label::Label,
+        value_type::{ValueType, ValueTypeCategory},
+    },
+};
 use itertools::Itertools;
 use storage::snapshot::ReadableSnapshot;
 
@@ -26,7 +32,7 @@ use crate::{
     },
     pattern::{
         conjunction::Conjunction,
-        constraint::{Constraint, Has, Isa, RolePlayer, Type},
+        constraint::{Comparison, Constraint, Has, Isa, RolePlayer, Type},
         pattern::Pattern,
         variable_category::VariableCategory,
     },
@@ -320,9 +326,7 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                 }
             }
             Constraint::Has(has) => self.try_propagating_vertex_annotation_impl(has, vertices)?,
-            Constraint::Comparison(cmp) => {
-                todo!("self.try_infer_unary_annotations_from_binary_constraints(cmp, &mut unary_annotations)")
-            } // I'm not thrilled about this.
+            Constraint::Comparison(cmp) => self.try_propagating_vertex_annotation_impl(cmp, vertices)?,
             Constraint::ExpressionBinding(_) | Constraint::FunctionCallBinding(_) | Constraint::Type(_) => false,
         };
         Ok(any_modified)
@@ -680,6 +684,82 @@ impl BinaryConstraintWrapper for Isa<Variable> {
     }
 }
 
+// TODO: This is very inefficient. If needed, We can replace uses by a specialised implementation which pre-computes attributes by value-type.
+impl BinaryConstraintWrapper for Comparison<Variable> {
+    fn left(&self) -> Variable {
+        self.lhs()
+    }
+
+    fn right(&self) -> Variable {
+        self.rhs()
+    }
+
+    fn annotate_left_to_right_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        left_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) -> Result<(), ConceptReadError> {
+        let left_value_type = match left_type {
+            TypeAnnotation::Attribute(attribute) => attribute.get_value_type(seeder.snapshot, seeder.type_manager)?,
+            _ => todo!("Error for expected attribute type"),
+        };
+        if let Some(value_type) = left_value_type {
+            let comparable_types = TODO__comparable_value_types(value_type.category());
+            let root_attribute =
+                seeder.type_manager.get_attribute_type(seeder.snapshot, &Kind::Attribute.root_label())?.unwrap();
+            for subattr in root_attribute.get_subtypes_transitive(seeder.snapshot, seeder.type_manager)?.iter() {
+                if let Some(subvaluetype) = subattr.get_value_type(seeder.snapshot, seeder.type_manager)? {
+                    if comparable_types.contains(&subvaluetype.category()) {
+                        collector.insert(TypeAnnotation::Attribute(subattr.clone()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn annotate_right_to_left_for_type(
+        &self,
+        seeder: &TypeSeeder<impl ReadableSnapshot>,
+        right_type: &TypeAnnotation,
+        collector: &mut BTreeSet<TypeAnnotation>,
+    ) -> Result<(), ConceptReadError> {
+        let right_value_type = match right_type {
+            TypeAnnotation::Attribute(attribute) => attribute.get_value_type(seeder.snapshot, seeder.type_manager)?,
+            _ => todo!("Error for expected attribute type"),
+        };
+        if let Some(value_type) = right_value_type {
+            let comparable_types = TODO__comparable_value_types(value_type.category());
+            let root_attribute =
+                seeder.type_manager.get_attribute_type(seeder.snapshot, &Kind::Attribute.root_label())?.unwrap();
+            for subattr in root_attribute.get_subtypes_transitive(seeder.snapshot, seeder.type_manager)?.iter() {
+                if let Some(subvaluetype) = subattr.get_value_type(seeder.snapshot, seeder.type_manager)? {
+                    if comparable_types.contains(&subvaluetype.category()) {
+                        collector.insert(TypeAnnotation::Attribute(subattr.clone()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn TODO__collect_value_types(
+    seeder: &TypeSeeder<impl ReadableSnapshot>,
+    types: &BTreeSet<TypeAnnotation>,
+) -> Result<HashSet<ValueTypeCategory>, ConceptReadError> {
+    let mut value_types = HashSet::new();
+    for type_ in types {
+        if let TypeAnnotation::Attribute(attr) = type_ {
+            if let Some(value_type) = attr.get_value_type(seeder.snapshot, seeder.type_manager)? {
+                value_types.insert(value_type.category());
+            }
+        }
+    }
+    Ok(value_types)
+}
+
 struct PlayerRoleEdge<'graph> {
     role_player: &'graph RolePlayer<Variable>,
 }
@@ -790,6 +870,43 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
             });
         Ok(())
     }
+}
+
+fn TODO__all_value_type_categories() -> [ValueTypeCategory; 9] {
+    [
+        ValueTypeCategory::Boolean,
+        ValueTypeCategory::Long,
+        ValueTypeCategory::Double,
+        ValueTypeCategory::Decimal,
+        ValueTypeCategory::DateTime,
+        ValueTypeCategory::DateTimeTZ,
+        ValueTypeCategory::Duration,
+        ValueTypeCategory::String,
+        ValueTypeCategory::Struct,
+    ]
+}
+
+fn TODO__is_comparable(left: ValueTypeCategory, right: ValueTypeCategory) -> bool {
+    match (left, right) {
+        (ValueTypeCategory::Boolean, ValueTypeCategory::Boolean) => true,
+        (ValueTypeCategory::Long, ValueTypeCategory::Long) => true,
+        (ValueTypeCategory::Double, ValueTypeCategory::Double) => true,
+        (ValueTypeCategory::Decimal, ValueTypeCategory::Decimal) => false,
+        (ValueTypeCategory::String, ValueTypeCategory::String) => true,
+        (ValueTypeCategory::DateTime, ValueTypeCategory::DateTime) => true,
+        (ValueTypeCategory::DateTimeTZ, ValueTypeCategory::DateTimeTZ) => true,
+        (ValueTypeCategory::Duration, ValueTypeCategory::Duration) => todo!(),
+        (ValueTypeCategory::Struct, ValueTypeCategory::Struct) => false,
+
+        (ValueTypeCategory::Double, ValueTypeCategory::Long) => true,
+        (ValueTypeCategory::Long, ValueTypeCategory::Double) => true,
+
+        (_, _) => false,
+    }
+}
+
+fn TODO__comparable_value_types(with: ValueTypeCategory) -> HashSet<ValueTypeCategory> {
+    TODO__all_value_type_categories().into_iter().filter(|other| TODO__is_comparable(with, *other)).collect()
 }
 
 #[cfg(test)]
