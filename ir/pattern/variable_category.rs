@@ -9,18 +9,21 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum VariableCategory {
     Type,
+    // TODO: Introduce:
+    // ThingType,
+    RoleType,
     Thing,
 
     Object,
     // TODO: if we introduce Entity and Relation, we will also have to introduce Entity/RelationRoleImpl
     Attribute,
-    RoleImpl,
+    RoleImpl, // TODO: deprecate. It's redundant given Object
     Value,
 
     ObjectList,
     AttributeList,
     ValueList,
-    RoleImplList,
+    RoleImplList, // TODO: deprecate. It's redundant given Object
 }
 
 impl VariableCategory {

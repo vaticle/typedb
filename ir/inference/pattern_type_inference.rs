@@ -13,7 +13,6 @@ use crate::{
     pattern::{conjunction::Conjunction, constraint::Constraint},
 };
 
-// TODO: Resolve questions in the comment below & delete
 /*
 The basic algorithm for a single pattern (with nested disjunctions, e.g.) is implemented below.
 It iteratively intersects the type annotations on vertices and with those on each constraint, and vice-versa.
@@ -23,8 +22,7 @@ We can model a function as a set of unary (i.e. VertexConstraints) constraints
 */
 
 fn run_type_inference<'graph>(tig: &mut TypeInferenceGraph<'graph>) {
-    // TODO: This doesn't recurse, so we terminate too prematurely. Can we move run_type_inference outside and make prune_* recurse to the corresponding prune_* in nested graphs?
-    let mut is_modified = tig.prune_vertices_from_constraints(); // We may need this as pre-condition
+    let mut is_modified = tig.prune_vertices_from_constraints();
     while is_modified {
         tig.prune_constraints_from_vertices();
         is_modified = tig.prune_vertices_from_constraints();

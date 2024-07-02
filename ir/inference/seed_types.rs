@@ -172,12 +172,12 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
                     VariableCategory::Thing => self.get_unbounded_type_annotations(true, true, true, false),
                     VariableCategory::Object => self.get_unbounded_type_annotations(true, true, false, false),
                     VariableCategory::Attribute => self.get_unbounded_type_annotations(false, false, true, false),
-                    VariableCategory::RoleImpl => self.get_unbounded_type_annotations(false, false, false, true),
+                    VariableCategory::RoleType => self.get_unbounded_type_annotations(false, false, false, true),
                     VariableCategory::Value
                     | VariableCategory::ObjectList
                     | VariableCategory::AttributeList
-                    | VariableCategory::ValueList
-                    | VariableCategory::RoleImplList => todo!(),
+                    | VariableCategory::ValueList => todo!(),
+                    VariableCategory::RoleImpl | VariableCategory::RoleImplList => todo!("Remove on deprecation"),
                 }
             } else {
                 self.get_unbounded_type_annotations(true, true, true, true)
@@ -274,8 +274,6 @@ impl<'this, Snapshot: ReadableSnapshot> TypeSeeder<'this, Snapshot> {
 
     // Phase 2: Use constraints to infer annotations on other vertices
     fn propagate_vertex_annotations<'graph>(&self, tig: &mut TypeInferenceGraph<'graph>) -> bool {
-        // TODO: This is a naive implementation and likely has great scope for simple optimisations
-        // Prefer annotations from the parent where available
         let mut is_modified = false;
         for c in &tig.conjunction.constraints().constraints {
             is_modified = is_modified | self.try_propagating_vertex_annotation(c, &mut tig.vertices);

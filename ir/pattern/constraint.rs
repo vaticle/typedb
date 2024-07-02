@@ -140,7 +140,7 @@ impl Constraints {
         if let Some(role_type) = role {
             self.context.lock().unwrap().set_variable_category(
                 role_type,
-                VariableCategory::RoleImpl,
+                VariableCategory::RoleType,
                 role_player.clone().into(),
             )?;
         }
