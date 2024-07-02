@@ -379,6 +379,31 @@ pub async fn get_owns_overridden_exists(
 }
 
 #[apply(generic_step)]
+#[step(expr = "{root_label}\\({type_label}\\) get owns\\({type_label}\\) get label: {type_label}")]
+pub async fn get_owns_get_label(
+    context: &mut Context,
+    root_label: params::RootLabel,
+    type_label: params::Label,
+    attr_type_label: params::Label,
+    expected_label: params::Label,
+) {
+    let owner = get_as_object_type(context, root_label.into_typedb(), &type_label);
+    with_read_tx!(context, |tx| {
+        let attr_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &attr_type_label.into_typedb()).unwrap().unwrap();
+        let owns = owner.get_owns_attribute_transitive(&tx.snapshot, &tx.type_manager, attr_type).unwrap().unwrap();
+        let actual_type_label = owns
+            .attribute()
+            .get_label(&tx.snapshot, &tx.type_manager)
+            .unwrap()
+            .scoped_name()
+            .as_str()
+            .to_owned();
+        assert_eq!(expected_label.into_typedb().scoped_name().as_str().to_owned(), actual_type_label);
+    });
+}
+
+#[apply(generic_step)]
 #[step(expr = "{root_label}\\({type_label}\\) get owns overridden\\({type_label}\\) get label: {type_label}")]
 pub async fn get_owns_overridden_get_label(
     context: &mut Context,

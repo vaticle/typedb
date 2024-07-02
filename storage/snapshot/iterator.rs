@@ -93,7 +93,7 @@ impl SnapshotRangeIterator {
                         self.buffered_iterator.next();
                     } else {
                         #[cfg(debug_assertions)]
-                        if let Write::Put {value, ..} = buffered_write {
+                        if let Write::Put{value, ..} = buffered_write {
                             debug_assert_eq!(storage_value.bytes(), value.bytes());
                         }
                         // ACCEPT both
