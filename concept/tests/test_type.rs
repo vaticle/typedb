@@ -108,7 +108,7 @@ fn entity_usage() {
         assert!(person_type
             .get_annotations(&snapshot, &type_manager)
             .unwrap()
-            .contains(&EntityTypeAnnotation::Abstract(AnnotationAbstract)));
+            .contains_key(&EntityTypeAnnotation::Abstract(AnnotationAbstract)));
         assert_eq!(*person_type.get_label(&snapshot, &type_manager).unwrap(), person_label);
 
         let supertype = person_type.get_supertype(&snapshot, &type_manager).unwrap().unwrap();
@@ -133,7 +133,7 @@ fn entity_usage() {
             child_type.get_owns_attribute(&snapshot, &type_manager, age_type.clone().into_owned()).unwrap().unwrap();
         // TODO: test 'owns' structure directly
 
-        let all_owns = child_type.get_owns(&snapshot, &type_manager).unwrap();
+        let all_owns = child_type.get_owns_declared(&snapshot, &type_manager).unwrap();
         assert_eq!(all_owns.len(), 1);
         assert!(all_owns.contains(&owns));
         assert_eq!(child_type.get_owns_attribute(&snapshot, &type_manager, age_type.clone()).unwrap(), Some(owns));
@@ -188,7 +188,7 @@ fn entity_usage() {
         assert!(person_type
             .get_annotations(&snapshot, &type_manager)
             .unwrap()
-            .contains(&EntityTypeAnnotation::Abstract(AnnotationAbstract)));
+            .contains_key(&EntityTypeAnnotation::Abstract(AnnotationAbstract)));
         assert_eq!(*person_type.get_label(&snapshot, &type_manager).unwrap(), person_label);
 
         let supertype = person_type.get_supertype(&snapshot, &type_manager).unwrap().unwrap();
@@ -207,7 +207,7 @@ fn entity_usage() {
         assert_eq!(supertypes.len(), 2);
 
         // --- child owns age ---
-        let all_owns = child_type.get_owns(&snapshot, &type_manager).unwrap();
+        let all_owns = child_type.get_owns_declared(&snapshot, &type_manager).unwrap();
         assert_eq!(all_owns.len(), 1);
         let expected_owns = Owns::new(ObjectType::Entity(child_type.clone()), age_type.clone());
         assert!(all_owns.contains(&expected_owns));
@@ -255,7 +255,7 @@ fn role_usage() {
         assert!(root_relation
             .get_annotations(&snapshot, &type_manager)
             .unwrap()
-            .contains(&RelationTypeAnnotation::Abstract(AnnotationAbstract)));
+            .contains_key(&RelationTypeAnnotation::Abstract(AnnotationAbstract)));
 
         let root_role = type_manager.get_role_type(&snapshot, &Kind::Role.root_label()).unwrap().unwrap();
         assert_eq!(*root_role.get_label(&snapshot, &type_manager).unwrap(), Kind::Role.root_label());
@@ -265,12 +265,12 @@ fn role_usage() {
         assert!(root_role
             .get_annotations(&snapshot, &type_manager)
             .unwrap()
-            .contains(&RoleTypeAnnotation::Abstract(AnnotationAbstract)));
+            .contains_key(&RoleTypeAnnotation::Abstract(AnnotationAbstract)));
 
         // --- friendship sub relation, relates friend ---
         let friendship_type = type_manager.create_relation_type(&mut snapshot, &friendship_label, false).unwrap();
         friendship_type.create_relates(&mut snapshot, &type_manager, friend_name, Ordering::Unordered).unwrap();
-        let relates = friendship_type.get_relates_role(&snapshot, &type_manager, friend_name).unwrap().unwrap();
+        let relates = friendship_type.get_relates_of_role(&snapshot, &type_manager, friend_name).unwrap().unwrap();
         let role_type =
             type_manager.resolve_relates(&snapshot, friendship_type.clone(), friend_name).unwrap().unwrap().role();
         debug_assert_eq!(relates.relation(), friendship_type.clone());
@@ -294,7 +294,7 @@ fn role_usage() {
 
         // --- friendship sub relation, relates friend ---
         let friendship_type = type_manager.get_relation_type(&snapshot, &friendship_label).unwrap().unwrap();
-        let relates = friendship_type.get_relates_role(&snapshot, &type_manager, friend_name).unwrap();
+        let relates = friendship_type.get_relates_of_role(&snapshot, &type_manager, friend_name).unwrap();
         debug_assert!(relates.is_some());
         let relates = relates.unwrap();
         let role_type =
@@ -416,7 +416,7 @@ fn define_struct<Snapshot: WritableSnapshot>(
 ) -> DefinitionKey<'static> {
     let struct_key = type_manager.create_struct(snapshot, name).unwrap();
     for (name, (value_type, optional)) in definitions {
-        type_manager.add_struct_field(snapshot, struct_key.clone(), name, value_type, optional).unwrap();
+        type_manager.create_struct_field(snapshot, struct_key.clone(), name, value_type, optional).unwrap();
     }
     struct_key
 }
@@ -437,7 +437,7 @@ fn test_struct_definition_updates() {
         let struct_key = type_manager.create_struct(&mut snapshot, struct_name.clone()).unwrap();
 
         let (field, (value_type, is_optional)) = f_long.clone();
-        type_manager.add_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
+        type_manager.create_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
         assert_eq!(
             HashMap::from([f_long.clone()]),
             remap_struct_fields(&type_manager.get_struct_definition(&snapshot, struct_key.clone()).unwrap())
@@ -450,7 +450,7 @@ fn test_struct_definition_updates() {
     {
         let mut snapshot = storage.clone().open_snapshot_write();
         let (field, (value_type, is_optional)) = f_string.clone();
-        type_manager.add_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
+        type_manager.create_struct_field(&mut snapshot, struct_key.clone(), field, value_type, is_optional).unwrap();
         assert_eq!(
             HashMap::from([f_long.clone(), f_string.clone()]),
             remap_struct_fields(&type_manager.get_struct_definition(&snapshot, struct_key.clone()).unwrap())

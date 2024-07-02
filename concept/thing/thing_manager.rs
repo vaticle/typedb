@@ -806,7 +806,7 @@ impl<'txn, Snapshot: WritableSnapshot> ThingManager<Snapshot> {
         {
             let owner = Object::new(ObjectVertex::new(Bytes::reference(key.bytes())));
             let owner_type = owner.type_();
-            for owns in &owner_type.get_owns(snapshot, self.type_manager())? {
+            for owns in &owner_type.get_owns_declared(snapshot, self.type_manager())? {
                 if owns.is_key(snapshot, &*self.type_manager)? {
                     self.validate_owner(owner.as_reference(), owns.attribute(), snapshot, errors)?;
                 }
@@ -946,7 +946,7 @@ impl<'txn, Snapshot: WritableSnapshot> ThingManager<Snapshot> {
                 Value::String(string) => {
                     let annotations =
                         self.type_manager.get_attribute_type_annotations(snapshot, attribute_type.clone())?;
-                    for annotation in annotations.iter() {
+                    for (annotation, _) in annotations.iter() {
                         match annotation {
                             AttributeTypeAnnotation::Abstract(_) => todo!("create abstract attribute"),
                             AttributeTypeAnnotation::Independent(_) => (),

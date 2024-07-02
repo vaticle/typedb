@@ -25,14 +25,14 @@ use crate::type_::{
     entity_type::EntityType,
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
-    plays::Plays,
-    relates::Relates,
+    plays::{Plays, PlaysAnnotation},
+    relates::{Relates, RelatesAnnotation},
     relation_type::RelationType,
     role_type::RoleType,
     type_manager::type_cache::{
         kind_cache::{
             AttributeTypeCache, CommonTypeCache, EntityTypeCache, OwnerPlayerCache, OwnsCache, PlaysCache,
-            RelationTypeCache, RoleTypeCache,
+            RelationTypeCache, RoleTypeCache, RelatesCache
         },
         selection,
         selection::{CacheGetter, HasCommonTypeCache, HasOwnerPlayerCache},
@@ -53,6 +53,7 @@ pub struct TypeCache {
 
     owns: HashMap<Owns<'static>, OwnsCache>,
     plays: HashMap<Plays<'static>, PlaysCache>,
+    relates: HashMap<Relates<'static>, RelatesCache>,
 
     struct_definitions: Box<[Option<StructDefinitionCache>]>,
 
@@ -110,6 +111,7 @@ impl TypeCache {
             attribute_types: attribute_type_caches,
             owns: OwnsCache::create(&snapshot),
             plays: PlaysCache::create(&snapshot),
+            relates: RelatesCache::create(&snapshot),
             struct_definitions: struct_definition_caches,
 
             entity_types_index_label,
@@ -180,12 +182,13 @@ impl TypeCache {
     {
         &T::get_cache(self, type_).common_type_cache().supertypes
     }
+
     pub(crate) fn get_subtypes<'a, 'this, T, CACHE>(&'this self, type_: T) -> &'this Vec<T::SelfStatic>
     where
         T: KindAPI<'a> + CacheGetter<CacheType = CACHE>,
         CACHE: HasCommonTypeCache<T::SelfStatic> + 'this,
     {
-        &T::get_cache(self, type_).common_type_cache().subtypes_declared
+        &T::get_cache(self, type_).common_type_cache().subtypes
     }
 
     pub(crate) fn get_subtypes_transitive<'a, 'this, T, CACHE>(&'this self, type_: T) -> &'this Vec<T::SelfStatic>
@@ -212,7 +215,7 @@ impl TypeCache {
         T::get_cache(self, type_).common_type_cache().is_root
     }
 
-    pub(crate) fn get_annotations<'a, 'this, T, CACHE>(
+    pub(crate) fn get_annotations_declared<'a, 'this, T, CACHE>(
         &'this self,
         type_: T,
     ) -> &HashSet<<<T as TypeAPI<'a>>::SelfStatic as KindAPI<'static>>::AnnotationType>
@@ -223,18 +226,32 @@ impl TypeCache {
         &T::get_cache(self, type_).common_type_cache().annotations_declared
     }
 
-    pub(crate) fn get_owns_for_attribute_type<'a>(&self, attribute_type: AttributeType<'a>) -> &HashSet<Owns<'static>> {
-        &AttributeType::get_cache(self, attribute_type).owns
+    pub(crate) fn get_annotations<'a, 'this, T, CACHE>(
+        &'this self,
+        type_: T,
+    ) -> &HashMap<<<T as TypeAPI<'a>>::SelfStatic as KindAPI<'static>>::AnnotationType, <T as TypeAPI<'a>>::SelfStatic>
+        where
+            T: KindAPI<'a> + CacheGetter<CacheType = CACHE>,
+            CACHE: HasCommonTypeCache<T::SelfStatic> + 'this,
+    {
+        &T::get_cache(self, type_).common_type_cache().annotations
     }
 
-    pub(crate) fn get_owns_for_attribute_type_transitive<'a>(
+    pub(crate) fn get_owns_for_attribute_type_declared<'a>(
+        &self,
+        attribute_type: AttributeType<'a>
+    ) -> &HashSet<Owns<'static>> {
+        &AttributeType::get_cache(self, attribute_type).owns_declared
+    }
+
+    pub(crate) fn get_owns_for_attribute_type<'a>(
         &self,
         attribute_type: AttributeType<'a>,
     ) -> &HashMap<ObjectType<'static>, Owns<'static>> {
-        &AttributeType::get_cache(self, attribute_type).owns_transitive
+        &AttributeType::get_cache(self, attribute_type).owns
     }
 
-    pub(crate) fn get_owns<'a, 'this, T, CACHE>(&'this self, type_: T) -> &HashSet<Owns<'static>>
+    pub(crate) fn get_owns_declared<'a, 'this, T, CACHE>(&'this self, type_: T) -> &HashSet<Owns<'static>>
     where
         T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
         CACHE: HasOwnerPlayerCache + 'this,
@@ -242,7 +259,7 @@ impl TypeCache {
         &T::get_cache(self, type_).owner_player_cache().owns_declared
     }
 
-    pub(crate) fn get_owns_transitive<'a, 'this, T, CACHE>(
+    pub(crate) fn get_owns<'a, 'this, T, CACHE>(
         &'this self,
         type_: T,
     ) -> &HashMap<AttributeType<'static>, Owns<'static>>
@@ -250,36 +267,75 @@ impl TypeCache {
         T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
         CACHE: HasOwnerPlayerCache + 'this,
     {
-        &T::get_cache(self, type_).owner_player_cache().owns_transitive
+        &T::get_cache(self, type_).owner_player_cache().owns
+    }
+
+    pub(crate) fn get_overridden_owns<'a, 'this, T, CACHE>(
+        &'this self,
+        type_: T,
+    ) -> &HashMap<AttributeType<'static>, Owns<'static>>
+        where
+            T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
+            CACHE: HasOwnerPlayerCache + 'this,
+    {
+        &T::get_cache(self, type_).owner_player_cache().owns_overridden
     }
 
     pub(crate) fn get_role_type_ordering<'a>(&self, role_type: RoleType<'a>) -> Ordering {
         RoleType::get_cache(&self, role_type).ordering
     }
 
-    pub(crate) fn get_relation_type_relates<'a>(&self, relation_type: RelationType<'a>) -> &HashSet<Relates<'static>> {
+    pub(crate) fn get_role_type_relates<'a>(&self, role_type: RoleType<'a>) -> &Relates<'static> {
+        &RoleType::get_cache(&self, role_type).relates
+    }
+
+    pub(crate) fn get_relation_type_relates_declared<'a>(
+        &self,
+        relation_type: RelationType<'a>
+    ) -> &HashSet<Relates<'static>> {
         &RelationType::get_cache(self, relation_type).relates_declared
     }
 
-    pub(crate) fn get_relation_type_relates_transitive<'a>(
+    pub(crate) fn get_relation_type_relates<'a>(
         &self,
         relation_type: RelationType<'a>,
     ) -> &HashMap<RoleType<'static>, Relates<'static>> {
-        &RelationType::get_cache(self, relation_type).relates_transitive
+        &RelationType::get_cache(self, relation_type).relates
     }
 
-    pub(crate) fn get_plays_for_role_type<'a>(&self, role_type: RoleType<'a>) -> &HashSet<Plays<'static>> {
-        &RoleType::get_cache(self, role_type).plays
+    pub(crate) fn get_relates_annotations_declared<'c>(
+        &'c self,
+        relates: Relates<'c>,
+    ) -> &'c HashSet<RelatesAnnotation> {
+        &self.relates.get(&relates).unwrap().annotations_declared
     }
 
-    pub(crate) fn get_plays_for_role_type_transitive<'a>(
+    pub(crate) fn get_relates_annotations<'c>(
+        &'c self,
+        relates: Relates<'c>,
+    ) -> &'c HashMap<RelatesAnnotation, Relates<'static>> {
+        &self.relates.get(&relates).unwrap().annotations
+    }
+
+    pub(crate) fn get_relates_override<'c>(
+        &'c self,
+        relates: Relates<'c>
+    ) -> &'c Option<Relates<'static>> {
+        &self.relates.get(&relates).unwrap().overrides
+    }
+
+    pub(crate) fn get_plays_for_role_type_declared<'a>(&self, role_type: RoleType<'a>) -> &HashSet<Plays<'static>> {
+        &RoleType::get_cache(self, role_type).plays_declared
+    }
+
+    pub(crate) fn get_plays_for_role_type<'a>(
         &self,
         role_type: RoleType<'a>,
     ) -> &HashMap<ObjectType<'static>, Plays<'static>> {
-        &RoleType::get_cache(self, role_type).plays_transitive
+        &RoleType::get_cache(self, role_type).plays
     }
 
-    pub(crate) fn get_plays<'a, 'this, T, CACHE>(&'this self, type_: T) -> &HashSet<Plays<'static>>
+    pub(crate) fn get_plays_declared<'a, 'this, T, CACHE>(&'this self, type_: T) -> &HashSet<Plays<'static>>
     where
         T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
         CACHE: HasOwnerPlayerCache + 'this,
@@ -287,7 +343,7 @@ impl TypeCache {
         &T::get_cache(self, type_).owner_player_cache().plays_declared
     }
 
-    pub(crate) fn get_plays_transitive<'a, 'this, T, CACHE>(
+    pub(crate) fn get_plays<'a, 'this, T, CACHE>(
         &'this self,
         type_: T,
     ) -> &'this HashMap<RoleType<'static>, Plays<'static>>
@@ -295,18 +351,57 @@ impl TypeCache {
         T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
         CACHE: HasOwnerPlayerCache + 'this,
     {
-        &T::get_cache(self, type_).owner_player_cache().plays_transitive
+        &T::get_cache(self, type_).owner_player_cache().plays
     }
 
-    pub(crate) fn get_attribute_type_value_type<'a>(&self, attribute_type: AttributeType<'a>) -> &Option<ValueType> {
+    pub(crate) fn get_overridden_plays<'a, 'this, T, CACHE>(
+        &'this self,
+        type_: T,
+    ) -> &'this HashMap<RoleType<'static>, Plays<'static>>
+        where
+            T: OwnerAPI<'a> + PlayerAPI<'a> + CacheGetter<CacheType = CACHE>,
+            CACHE: HasOwnerPlayerCache + 'this,
+    {
+        &T::get_cache(self, type_).owner_player_cache().plays_overridden
+    }
+
+    pub(crate) fn get_plays_override<'c>(&'c self, plays: Plays<'c>) -> &'c Option<Plays<'static>> {
+        &self.plays.get(&plays).unwrap().overrides
+    }
+
+    pub(crate) fn get_plays_annotations_declared<'c>(
+        &'c self,
+        plays: Plays<'c>,
+    ) -> &'c HashSet<PlaysAnnotation> {
+        &self.plays.get(&plays).unwrap().annotations_declared
+    }
+
+    pub(crate) fn get_plays_annotations<'c>(
+        &'c self,
+        plays: Plays<'c>,
+    ) -> &'c HashMap<PlaysAnnotation, Plays<'static>> {
+        &self.plays.get(&plays).unwrap().annotations
+    }
+
+    pub(crate) fn get_attribute_type_value_type<'a>(
+        &self,
+        attribute_type: AttributeType<'a>
+    ) -> &Option<(ValueType, AttributeType<'static>)> {
         &AttributeType::get_cache(&self, attribute_type).value_type
     }
 
-    pub(crate) fn get_owns_effective_annotations<'c>(
+    pub(crate) fn get_owns_annotations_declared<'c>(
+        &'c self,
+        owns: Owns<'c>,
+    ) -> &'c HashSet<OwnsAnnotation> {
+        &self.owns.get(&owns).unwrap().annotations_declared
+    }
+
+    pub(crate) fn get_owns_annotations<'c>(
         &'c self,
         owns: Owns<'c>,
     ) -> &'c HashMap<OwnsAnnotation, Owns<'static>> {
-        &self.owns.get(&owns).unwrap().effective_annotations
+        &self.owns.get(&owns).unwrap().annotations
     }
 
     pub(crate) fn get_owns_ordering<'c>(&'c self, owns: Owns<'c>) -> Ordering {
@@ -315,10 +410,6 @@ impl TypeCache {
 
     pub(crate) fn get_owns_override<'c>(&'c self, owns: Owns<'c>) -> &'c Option<Owns<'static>> {
         &self.owns.get(&owns).unwrap().overrides
-    }
-
-    pub(crate) fn get_plays_override<'c>(&'c self, plays: Plays<'c>) -> &'c Option<Plays<'static>> {
-        &self.plays.get(&plays).unwrap().overrides
     }
 
     pub(crate) fn get_struct_definition_key(&self, label: &str) -> Option<DefinitionKey<'static>> {

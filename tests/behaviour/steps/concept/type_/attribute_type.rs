@@ -11,22 +11,39 @@ use macro_rules_attribute::apply;
 
 use crate::{
     generic_step, params,
-    params::ContainsOrDoesnt,
     transaction_context::{with_read_tx, with_schema_tx},
     util, Context,
 };
 
 #[apply(generic_step)]
-#[step(expr = "attribute\\({type_label}\\) set value-type: {value_type}")]
+#[step(expr = "attribute\\({type_label}\\) set value type: {value_type}{may_error}")]
 pub async fn attribute_type_set_value_type(
     context: &mut Context,
     type_label: params::Label,
     value_type: params::ValueType,
+    may_error: params::MayError,
 ) {
     with_schema_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
-        attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, value_type.to_typedb()).unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        let parsed_value_type = value_type.into_typedb(&tx.type_manager, &tx.snapshot);
+        let res = attribute_type.set_value_type(&mut tx.snapshot, &tx.type_manager, parsed_value_type);
+        may_error.check(&res);
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "attribute\\({type_label}\\) unset value type{may_error}")]
+pub async fn attribute_type_unset_value_type(
+    context: &mut Context,
+    type_label: params::Label,
+    may_error: params::MayError,
+) {
+    with_schema_tx!(context, |tx| {
+        let attribute_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        let res = attribute_type.unset_value_type(&mut tx.snapshot, &tx.type_manager);
+        may_error.check(&res);
     });
 }
 
@@ -39,10 +56,26 @@ pub async fn attribute_type_get_value_type(
 ) {
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
         assert_eq!(
-            value_type.to_typedb(),
+            value_type.into_typedb(&tx.type_manager, &tx.snapshot),
             attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap().unwrap()
+        );
+    });
+}
+
+#[apply(generic_step)]
+#[step(expr = "attribute\\({type_label}\\) get value type is none")]
+pub async fn attribute_type_get_value_type_is_null(
+    context: &mut Context,
+    type_label: params::Label,
+) {
+    with_read_tx!(context, |tx| {
+        let attribute_type =
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
+        assert_eq!(
+            None,
+            attribute_type.get_value_type(&tx.snapshot, &tx.type_manager).unwrap()
         );
     });
 }
@@ -52,16 +85,16 @@ pub async fn attribute_type_get_value_type(
 pub async fn get_owners_contain(
     context: &mut Context,
     type_label: params::Label,
-    contains: ContainsOrDoesnt,
+    contains: params::ContainsOrDoesnt,
     step: &Step,
 ) {
     let expected_labels = util::iter_table(step).map(|str| str.to_owned()).collect_vec();
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
-        attribute_type.get_owners_transitive(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(
+        attribute_type.get_owns(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(
             |(owner, _owns)| {
                 let owner_label = match owner {
                     ObjectType::Entity(owner) => {
@@ -83,16 +116,16 @@ pub async fn get_owners_contain(
 pub async fn get_declaring_owners_contain(
     context: &mut Context,
     type_label: params::Label,
-    contains: ContainsOrDoesnt,
+    contains: params::ContainsOrDoesnt,
     step: &Step,
 ) {
     let expected_labels = util::iter_table(step).map(|str| str.to_owned()).collect_vec();
     with_read_tx!(context, |tx| {
         let attribute_type =
-            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.to_typedb()).unwrap().unwrap();
+            tx.type_manager.get_attribute_type(&tx.snapshot, &type_label.into_typedb()).unwrap().unwrap();
 
         let mut actual_labels = Vec::new();
-        attribute_type.get_owner_owns(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(|owns| {
+        attribute_type.get_owns_declared(&tx.snapshot, &tx.type_manager).unwrap().iter().for_each(|owns| {
             let owner_label = match owns.owner() {
                 ObjectType::Entity(owner) => {
                     owner.get_label(&tx.snapshot, &tx.type_manager).unwrap().scoped_name().as_str().to_owned()

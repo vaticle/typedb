@@ -11,7 +11,7 @@ use encoding::{
     graph::{
         type_::{
             edge::TypeEdge,
-            vertex::{PrefixedTypeVertexEncoding, TypeVertex, TypeVertexEncoding},
+            vertex::{PrefixedTypeVertexEncoding, TypeVertex},
         },
         Typed,
     },
@@ -26,8 +26,8 @@ use crate::type_::{
     entity_type::EntityType,
     object_type::ObjectType,
     owns::{Owns, OwnsAnnotation},
-    plays::Plays,
-    relates::Relates,
+    plays::{Plays, PlaysAnnotation},
+    relates::{Relates, RelatesAnnotation},
     relation_type::RelationType,
     role_type::RoleType,
     type_manager::type_reader::TypeReader,
@@ -38,14 +38,13 @@ use crate::type_::{
 pub(crate) struct EntityTypeCache {
     pub(super) common_type_cache: CommonTypeCache<EntityType<'static>>,
     pub(super) owner_player_cache: OwnerPlayerCache,
-    // ...
 }
 
 #[derive(Debug)]
 pub(crate) struct RelationTypeCache {
     pub(super) common_type_cache: CommonTypeCache<RelationType<'static>>,
     pub(super) relates_declared: HashSet<Relates<'static>>,
-    pub(super) relates_transitive: HashMap<RoleType<'static>, Relates<'static>>,
+    pub(super) relates: HashMap<RoleType<'static>, Relates<'static>>,
     pub(super) owner_player_cache: OwnerPlayerCache,
 }
 
@@ -54,28 +53,38 @@ pub(crate) struct RoleTypeCache {
     pub(super) common_type_cache: CommonTypeCache<RoleType<'static>>,
     pub(super) ordering: Ordering,
     pub(super) relates: Relates<'static>,
-    pub(super) plays: HashSet<Plays<'static>>,
-    pub(super) plays_transitive: HashMap<ObjectType<'static>, Plays<'static>>,
+    pub(super) plays_declared: HashSet<Plays<'static>>,
+    pub(super) plays: HashMap<ObjectType<'static>, Plays<'static>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct AttributeTypeCache {
     pub(super) common_type_cache: CommonTypeCache<AttributeType<'static>>,
-    pub(super) value_type: Option<ValueType>,
-    pub(super) owns: HashSet<Owns<'static>>,
-    pub(super) owns_transitive: HashMap<ObjectType<'static>, Owns<'static>>,
+    pub(super) value_type: Option<(ValueType, AttributeType<'static>)>,
+    pub(super) owns_declared: HashSet<Owns<'static>>,
+    pub(super) owns: HashMap<ObjectType<'static>, Owns<'static>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct OwnsCache {
     pub(super) ordering: Ordering,
     pub(super) overrides: Option<Owns<'static>>,
-    pub(super) effective_annotations: HashMap<OwnsAnnotation, Owns<'static>>,
+    pub(super) annotations_declared: HashSet<OwnsAnnotation>,
+    pub(super) annotations: HashMap<OwnsAnnotation, Owns<'static>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct PlaysCache {
     pub(super) overrides: Option<Plays<'static>>,
+    pub(super) annotations_declared: HashSet<PlaysAnnotation>,
+    pub(super) annotations: HashMap<PlaysAnnotation, Plays<'static>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RelatesCache {
+    pub(super) overrides: Option<Relates<'static>>,
+    pub(super) annotations_declared: HashSet<RelatesAnnotation>,
+    pub(super) annotations: HashMap<RelatesAnnotation, Relates<'static>>,
 }
 
 #[derive(Debug)]
@@ -84,19 +93,22 @@ pub(crate) struct CommonTypeCache<T: KindAPI<'static>> {
     pub(super) label: Label<'static>,
     pub(super) is_root: bool,
     pub(super) annotations_declared: HashSet<T::AnnotationType>,
+    pub(super) annotations: HashMap<T::AnnotationType, T>,
     // TODO: Should these all be sets instead of vec?
     pub(super) supertype: Option<T>, // TODO: use smallvec if we want to have some inline - benchmark.
     pub(super) supertypes: Vec<T>,   // TODO: use smallvec if we want to have some inline - benchmark.
-    pub(super) subtypes_declared: Vec<T>, // TODO: benchmark smallvec.
+    pub(super) subtypes: Vec<T>, // TODO: benchmark smallvec.
     pub(super) subtypes_transitive: Vec<T>, // TODO: benchmark smallvec
 }
 
 #[derive(Debug)]
 pub struct OwnerPlayerCache {
     pub(super) owns_declared: HashSet<Owns<'static>>,
-    pub(super) owns_transitive: HashMap<AttributeType<'static>, Owns<'static>>,
+    pub(super) owns: HashMap<AttributeType<'static>, Owns<'static>>,
+    pub(super) owns_overridden: HashMap<AttributeType<'static>, Owns<'static>>,
     pub(super) plays_declared: HashSet<Plays<'static>>,
-    pub(super) plays_transitive: HashMap<RoleType<'static>, Plays<'static>>,
+    pub(super) plays: HashMap<RoleType<'static>, Plays<'static>>,
+    pub(super) plays_overridden: HashMap<RoleType<'static>, Plays<'static>>,
 }
 
 impl EntityTypeCache {
@@ -134,8 +146,8 @@ impl RelationTypeCache {
             let cache = RelationTypeCache {
                 common_type_cache: CommonTypeCache::create(snapshot, relation.clone()),
                 owner_player_cache: OwnerPlayerCache::create(snapshot, relation.clone()),
-                relates_declared: TypeReader::get_relates(snapshot, relation.clone()).unwrap(),
-                relates_transitive: TypeReader::get_relates_transitive(snapshot, relation.clone()).unwrap(),
+                relates_declared: TypeReader::get_relates_declared(snapshot, relation.clone()).unwrap(),
+                relates: TypeReader::get_relates(snapshot, relation.clone()).unwrap(),
             };
             caches[relation.vertex().type_id_().as_u16() as usize] = Some(cache);
         }
@@ -155,9 +167,9 @@ impl AttributeTypeCache {
             let cache = AttributeTypeCache {
                 common_type_cache: CommonTypeCache::create(snapshot, attribute.clone()),
                 value_type: TypeReader::get_value_type(snapshot, attribute.clone()).unwrap(),
-                owns: TypeReader::get_implementations_for_interface::<Owns<'static>>(snapshot, attribute.clone())
+                owns_declared: TypeReader::get_implementations_for_interface_declared::<Owns<'static>>(snapshot, attribute.clone())
                     .unwrap(),
-                owns_transitive: TypeReader::get_implementations_for_interface_transitive::<Owns<'static>>(
+                owns: TypeReader::get_implementations_for_interface::<Owns<'static>>(
                     snapshot,
                     attribute.clone(),
                 )
@@ -182,9 +194,9 @@ impl RoleTypeCache {
             let cache = RoleTypeCache {
                 common_type_cache: CommonTypeCache::create(snapshot, role.clone()),
                 ordering,
-                relates: TypeReader::get_relation(snapshot, role.clone()).unwrap(),
-                plays: TypeReader::get_implementations_for_interface::<Plays<'static>>(snapshot, role.clone()).unwrap(),
-                plays_transitive: TypeReader::get_implementations_for_interface_transitive::<Plays<'static>>(
+                relates: TypeReader::get_role_type_relates(snapshot, role.clone()).unwrap(),
+                plays_declared: TypeReader::get_implementations_for_interface_declared::<Plays<'static>>(snapshot, role.clone()).unwrap(),
+                plays: TypeReader::get_implementations_for_interface::<Plays<'static>>(
                     snapshot,
                     role.clone(),
                 )
@@ -211,7 +223,12 @@ impl OwnsCache {
             let cache = OwnsCache {
                 ordering: TypeReader::get_type_edge_ordering(snapshot, owns.clone()).unwrap(),
                 overrides: TypeReader::get_implementation_override(snapshot, owns.clone()).unwrap(),
-                effective_annotations: TypeReader::get_effective_type_edge_annotations(snapshot, owns.clone())
+                annotations_declared: TypeReader::get_type_edge_annotations_declared(snapshot, owns.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|annotation| OwnsAnnotation::from(annotation))
+                    .collect(),
+                annotations: TypeReader::get_type_edge_annotations(snapshot, owns.clone())
                     .unwrap()
                     .into_iter()
                     .map(|(annotation, owns)| (OwnsAnnotation::from(annotation), owns))
@@ -236,10 +253,52 @@ impl PlaysCache {
             let player = ObjectType::new(edge.from().into_owned());
             let role = RoleType::new(edge.to().into_owned());
             let plays = Plays::new(player, role);
-            map.insert(
-                plays.clone(),
-                PlaysCache { overrides: TypeReader::get_implementation_override(snapshot, plays.clone()).unwrap() },
-            );
+            let cache = PlaysCache {
+                overrides: TypeReader::get_implementation_override(snapshot, plays.clone()).unwrap(),
+                annotations_declared: TypeReader::get_type_edge_annotations_declared(snapshot, plays.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|annotation| PlaysAnnotation::from(annotation))
+                    .collect(),
+                annotations: TypeReader::get_type_edge_annotations(snapshot, plays.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|(annotation, plays)| (PlaysAnnotation::from(annotation), plays))
+                    .collect(),
+            };
+            map.insert(plays.clone(), cache);
+        }
+        map
+    }
+}
+
+impl RelatesCache {
+    pub(super) fn create(snapshot: &impl ReadableSnapshot) -> HashMap<Relates<'static>, RelatesCache> {
+        let mut map = HashMap::new();
+        let mut it = snapshot.iterate_range(KeyRange::new_within(
+            TypeEdge::build_prefix(Prefix::EdgePlays),
+            TypeEdge::FIXED_WIDTH_ENCODING,
+        ));
+
+        while let Some((key, _)) = it.next().transpose().unwrap() {
+            let edge = TypeEdge::new(Bytes::reference(key.bytes()));
+            let relation = RelationType::new(edge.from().into_owned());
+            let role = RoleType::new(edge.to().into_owned());
+            let relates = Relates::new(relation, role);
+            let cache = RelatesCache {
+                overrides: TypeReader::get_implementation_override(snapshot, relates.clone()).unwrap(),
+                annotations_declared: TypeReader::get_type_edge_annotations_declared(snapshot, relates.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|annotation| RelatesAnnotation::from(annotation))
+                    .collect(),
+                annotations: TypeReader::get_type_edge_annotations(snapshot, relates.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|(annotation, relates)| (RelatesAnnotation::from(annotation), relates))
+                    .collect(),
+            };
+            map.insert(relates.clone(), cache);
         }
         map
     }
@@ -252,19 +311,21 @@ impl<T: KindAPI<'static, SelfStatic = T>> CommonTypeCache<T> {
     {
         let label = TypeReader::get_label(snapshot, type_.clone()).unwrap().unwrap();
         let is_root = TypeReader::check_type_is_root(&label, T::ROOT_KIND);
-        let annotations_declared = TypeReader::get_type_annotations(snapshot, type_.clone()).unwrap();
+        let annotations_declared = TypeReader::get_type_annotations_declared(snapshot, type_.clone()).unwrap();
+        let annotations = TypeReader::get_type_annotations(snapshot, type_.clone()).unwrap();
         let supertype = TypeReader::get_supertype(snapshot, type_.clone()).unwrap();
-        let supertypes = TypeReader::get_supertypes_transitive(snapshot, type_.clone()).unwrap();
-        let subtypes_declared = TypeReader::get_subtypes(snapshot, type_.clone()).unwrap();
+        let supertypes = TypeReader::get_supertypes(snapshot, type_.clone()).unwrap();
+        let subtypes = TypeReader::get_subtypes(snapshot, type_.clone()).unwrap();
         let subtypes_transitive = TypeReader::get_subtypes_transitive(snapshot, type_.clone()).unwrap();
         CommonTypeCache {
             type_,
             label,
             is_root,
             annotations_declared,
+            annotations,
             supertype,
             supertypes,
-            subtypes_declared,
+            subtypes,
             subtypes_transitive,
         }
     }
@@ -276,18 +337,24 @@ impl OwnerPlayerCache {
         T: KindAPI<'static> + OwnerAPI<'static> + PlayerAPI<'static>,
     {
         OwnerPlayerCache {
-            owns_declared: TypeReader::get_implemented_interfaces::<Owns<'static>>(snapshot, type_.clone()).unwrap(),
-            owns_transitive: TypeReader::get_implemented_interfaces_transitive::<Owns<'static>, T>(
+            owns_declared: TypeReader::get_implemented_interfaces_declared::<Owns<'static>>(snapshot, type_.clone()).unwrap(),
+            owns: TypeReader::get_implemented_interfaces::<Owns<'static>, T>(
                 snapshot,
                 type_.clone(),
-            )
-            .unwrap(),
-            plays_declared: TypeReader::get_implemented_interfaces::<Plays<'static>>(snapshot, type_.clone()).unwrap(),
-            plays_transitive: TypeReader::get_implemented_interfaces_transitive::<Plays<'static>, T>(
+            ).unwrap(),
+            owns_overridden: TypeReader::get_overridden_interfaces::<Owns<'static>, T>(
                 snapshot,
                 type_.clone(),
-            )
-            .unwrap(),
+            ).unwrap(),
+            plays_declared: TypeReader::get_implemented_interfaces_declared::<Plays<'static>>(snapshot, type_.clone()).unwrap(),
+            plays: TypeReader::get_implemented_interfaces::<Plays<'static>, T>(
+                snapshot,
+                type_.clone(),
+            ).unwrap(),
+            plays_overridden: TypeReader::get_overridden_interfaces::<Plays<'static>, T>(
+                snapshot,
+                type_.clone(),
+            ).unwrap(),
         }
     }
 }

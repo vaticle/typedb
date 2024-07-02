@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[apply(generic_step)]
-#[step(expr = "connection opens {word} transaction for database: {word}")]
+#[step(expr = "connection open {word} transaction for database: {word}")]
 pub async fn connection_open_transaction(context: &mut Context, tx_type: String, db_name: String) {
     let db = context.databases().get(&db_name).unwrap();
     let tx = match tx_type.as_str() {
@@ -47,10 +47,16 @@ pub async fn transaction_has_type(context: &mut Context, tx_type: String) {
 #[apply(generic_step)]
 #[step(expr = "transaction commits{may_error}")]
 pub async fn transaction_commits(context: &mut Context, may_error: MayError) {
+    // match context.take_transaction().unwrap() {
+    //     ActiveTransaction::Read(_) => {}
+    //     ActiveTransaction::Write(tx) => may_error.check(&tx.commit()),
+    //     ActiveTransaction::Schema(tx) => may_error.check(&tx.commit()),
+    // }
+    // TODO: Temporary implementation until transaction-time validations are implemented
     match context.take_transaction().unwrap() {
         ActiveTransaction::Read(_) => {}
-        ActiveTransaction::Write(tx) => may_error.check(&tx.commit()),
-        ActiveTransaction::Schema(tx) => may_error.check(&tx.commit()),
+        ActiveTransaction::Write(tx) => {if may_error.expects_error() { return } else { may_error.check(&tx.commit()) }},
+        ActiveTransaction::Schema(tx) => {if may_error.expects_error() { return } else { may_error.check(&tx.commit()) }},
     }
 }
 

@@ -4,6 +4,7 @@
 
 load("@vaticle_dependencies//tool/checkstyle:rules.bzl", "checkstyle_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
+# TODO: Add test_ prefix to target names
 
 rust_test(
     name = "database-test",

@@ -19,7 +19,7 @@ use encoding::{
 use primitive::maybe_owns::MaybeOwns;
 use storage::snapshot::{ReadableSnapshot, WritableSnapshot};
 
-use super::annotation::AnnotationRegex;
+use super::annotation::{AnnotationCategory, AnnotationRegex};
 use crate::{
     error::{ConceptReadError, ConceptWriteError},
     type_::{
@@ -31,6 +31,10 @@ use crate::{
     },
     ConceptAPI,
 };
+use crate::type_::relation_type::RelationTypeAnnotation;
+use crate::type_::role_type::RoleTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct AttributeType<'a> {
@@ -87,7 +91,7 @@ impl<'a> TypeAPI<'a> for AttributeType<'a> {
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
-        Ok(annotations.contains(&AttributeTypeAnnotation::Abstract(AnnotationAbstract)))
+        Ok(annotations.contains_key(&AttributeTypeAnnotation::Abstract(AnnotationAbstract)))
     }
 
     fn delete<Snapshot: WritableSnapshot>(
@@ -122,6 +126,17 @@ impl<'a> AttributeType<'a> {
         type_manager.get_attribute_type_is_root(snapshot, self.clone().into_owned())
     }
 
+    pub fn get_value_type<Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &TypeManager<Snapshot>,
+    ) -> Result<Option<ValueType>, ConceptReadError> {
+        type_manager
+            .get_attribute_type_value_type(snapshot, self.clone().into_owned())
+            .map(|value_type_opt| value_type_opt
+                .map(|(value_type, source)| value_type))
+    }
+
     pub fn set_value_type<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
@@ -131,12 +146,12 @@ impl<'a> AttributeType<'a> {
         type_manager.set_value_type(snapshot, self.clone().into_owned(), value_type)
     }
 
-    pub fn get_value_type<Snapshot: ReadableSnapshot>(
+    pub fn unset_value_type<Snapshot: WritableSnapshot>(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-    ) -> Result<Option<ValueType>, ConceptReadError> {
-        type_manager.get_attribute_type_value_type(snapshot, self.clone().into_owned())
+    ) -> Result<(), ConceptWriteError> {
+        type_manager.unset_value_type(snapshot, self.clone().into_owned())
     }
 
     pub fn set_label<Snapshot: WritableSnapshot>(
@@ -200,14 +215,22 @@ impl<'a> AttributeType<'a> {
     ) -> Result<bool, ConceptReadError> {
         Ok(self
             .get_annotations(snapshot, type_manager)?
-            .contains(&AttributeTypeAnnotation::Independent(AnnotationIndependent)))
+            .contains_key(&AttributeTypeAnnotation::Independent(AnnotationIndependent)))
+    }
+
+    pub fn get_annotations_declared<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashSet<AttributeTypeAnnotation>>, ConceptReadError> {
+        type_manager.get_attribute_type_annotations_declared(snapshot, self.clone().into_owned())
     }
 
     pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashSet<AttributeTypeAnnotation>>, ConceptReadError> {
+    ) -> Result<MaybeOwns<'m, HashMap<AttributeTypeAnnotation, AttributeType<'static>>>, ConceptReadError> {
         type_manager.get_attribute_type_annotations(snapshot, self.clone().into_owned())
     }
 
@@ -219,35 +242,38 @@ impl<'a> AttributeType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             AttributeTypeAnnotation::Abstract(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Independent(_) => {
-                type_manager.set_annotation_independent(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_independent(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Regex(regex) => {
-                type_manager.set_annotation_regex(snapshot, self.clone().into_owned(), regex)
+                type_manager.set_annotation_regex(snapshot, self.clone().into_owned(), regex)?
             }
         };
         Ok(())
     }
 
-    fn delete_annotation<Snapshot: WritableSnapshot>(
+    pub fn unset_annotation<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: AttributeTypeAnnotation,
-    ) {
-        match annotation {
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), ConceptWriteError> {
+        let relation_type_annotation = AttributeTypeAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match relation_type_annotation {
             AttributeTypeAnnotation::Abstract(_) => {
-                type_manager.delete_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_attribute_type_annotation_abstract(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Independent(_) => {
-                type_manager.delete_annotation_independent(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_independent(snapshot, self.clone().into_owned())?
             }
             AttributeTypeAnnotation::Regex(_) => {
-                type_manager.delete_annotation_regex(snapshot, self.clone().into_owned())
+                type_manager.unset_annotation_regex(snapshot, self.clone().into_owned())?
             }
         }
+        Ok(()) // TODO
     }
 
     pub fn into_owned(self) -> AttributeType<'static> {
@@ -257,20 +283,20 @@ impl<'a> AttributeType<'a> {
 
 // --- Owned API ---
 impl<'a> AttributeType<'a> {
-    pub fn get_owner_owns<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_owns_declared<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
-        type_manager.get_owns_for_attribute(snapshot, self.clone().into_owned())
+        type_manager.get_owns_for_attribute_declared(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_owners_transitive<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_owns<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashMap<ObjectType<'static>, Owns<'static>>>, ConceptReadError> {
-        type_manager.get_owners_for_attribute_transitive(snapshot, self.clone().into_owned())
+        type_manager.get_owns_for_attribute(snapshot, self.clone().into_owned())
     }
 
     fn get_owns_owners<Snapshot: ReadableSnapshot>(&self) {
@@ -286,17 +312,44 @@ pub enum AttributeTypeAnnotation {
     Regex(AnnotationRegex),
 }
 
+impl AttributeTypeAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<AttributeTypeAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<AttributeTypeAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<AttributeTypeAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Abstract(annotation) => Ok(AttributeTypeAnnotation::Abstract(annotation)),
+            Annotation::Independent(annotation) => Ok(AttributeTypeAnnotation::Independent(annotation)),
+            Annotation::Regex(annotation) => Ok(AttributeTypeAnnotation::Regex(annotation)),
+
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cardinality(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for AttributeTypeAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Abstract(annotation) => AttributeTypeAnnotation::Abstract(annotation),
-            Annotation::Independent(annotation) => AttributeTypeAnnotation::Independent(annotation),
-            Annotation::Regex(annotation) => AttributeTypeAnnotation::Regex(annotation),
+        let into_annotation: Result<AttributeTypeAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
+        }
+    }
+}
 
-            Annotation::Distinct(_) => unreachable!("Distinct annotation not available for Attribute type."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Attribute type."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Attribute type."),
-            Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Attribute type."),
+impl Into<Annotation> for AttributeTypeAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            AttributeTypeAnnotation::Abstract(annotation)=> Annotation::Abstract(annotation),
+            AttributeTypeAnnotation::Independent(annotation)=> Annotation::Independent(annotation),
+            AttributeTypeAnnotation::Regex(annotation)=> Annotation::Regex(annotation),
         }
     }
 }

@@ -4,13 +4,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::{borrow::Cow, convert::Infallible, fmt, str::FromStr};
+use std::{borrow::Cow, convert::Infallible, fmt, str::FromStr, sync::Arc};
 
 use chrono::NaiveDateTime;
 use concept::type_::{
     annotation::{
         Annotation as TypeDBAnnotation, AnnotationAbstract, AnnotationCardinality, AnnotationIndependent,
-        AnnotationKey, AnnotationRegex,
+        AnnotationKey, AnnotationRegex, AnnotationCascade, AnnotationCategory as TypeDBAnnotationCategory
     },
     object_type::ObjectType,
 };
@@ -54,7 +54,7 @@ impl FromStr for MayError {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "fails" => Self::True,
+            "; fails" => Self::True,
             "" => Self::False,
             invalid => return Err(format!("Invalid `MayError`: {invalid}")),
         })
@@ -77,6 +77,12 @@ macro_rules! check_boolean {
     };
 }
 pub(crate) use check_boolean;
+use concept::type_::annotation::{AnnotationDistinct, AnnotationUnique};
+use concept::type_::type_manager::TypeManager;
+use database::transaction::TransactionRead;
+use encoding::graph::definition::definition_key::DefinitionKey;
+use storage::durability_client::WALClient;
+use storage::snapshot::{ReadableSnapshot, ReadSnapshot};
 
 impl FromStr for Boolean {
     type Err = String;
@@ -104,6 +110,14 @@ impl ExistsOrDoesnt {
             (Self::DoesNotExist, Some(value)) => panic!("{message} exists: {value:?}"),
         }
     }
+
+    pub fn check_result<T: fmt::Debug, E>(&self, scrutinee: &Result<T, E>, message: &str) {
+        let option = match scrutinee {
+            Ok(result) => Some(result),
+            Err(_) => None
+        };
+        self.check(&option, message)
+    }
 }
 
 impl FromStr for ExistsOrDoesnt {
@@ -113,6 +127,37 @@ impl FromStr for ExistsOrDoesnt {
             "exists" => Self::Exists,
             "does not exist" => Self::DoesNotExist,
             invalid => return Err(format!("Invalid `ExistsOrDoesnt`: {invalid}")),
+        })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "is_empty_or_not", regex = "(is empty|is not empty)")]
+pub(crate) enum IsEmptyOrNot {
+    IsEmpty,
+    IsNotEmpty,
+}
+
+impl IsEmptyOrNot {
+    pub fn check(&self, real_is_empty: bool) {
+        match self {
+            Self::IsEmpty => {
+                debug_assert!(real_is_empty)
+            }
+            Self::IsNotEmpty => {
+                debug_assert!(!real_is_empty)
+            }
+        };
+    }
+}
+
+impl FromStr for IsEmptyOrNot {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "is empty" => Self::IsEmpty,
+            "is not empty" => Self::IsNotEmpty,
+            invalid => return Err(format!("Invalid `IsEmptyOrNot`: {invalid}")),
         })
     }
 }
@@ -171,7 +216,7 @@ impl Default for Label {
 }
 
 impl Label {
-    pub fn to_typedb(&self) -> TypeDBLabel<'static> {
+    pub fn into_typedb(&self) -> TypeDBLabel<'static> {
         TypeDBLabel::build(&self.label_string)
     }
 }
@@ -190,7 +235,7 @@ pub(crate) struct RootLabel {
 }
 
 impl RootLabel {
-    pub fn to_typedb(&self) -> TypeDBTypeKind {
+    pub fn into_typedb(&self) -> TypeDBTypeKind {
         self.kind
     }
 }
@@ -215,7 +260,7 @@ pub(crate) struct ObjectRootLabel {
 }
 
 impl ObjectRootLabel {
-    pub fn to_typedb(&self) -> TypeDBTypeKind {
+    pub fn into_typedb(&self) -> TypeDBTypeKind {
         self.kind
     }
 
@@ -241,7 +286,10 @@ impl FromStr for ObjectRootLabel {
 }
 
 #[derive(Debug, Parameter)]
-#[param(name = "value_type", regex = "(boolean|long|double|datetime(?:tz)?|duration|string)")]
+#[param(
+    name = "value_type",
+    regex = "(boolean|long|double|decimal|datetime(?:tz)?|duration|string|[A-Za-z0-9_:-]+)"
+)]
 pub(crate) enum ValueType {
     Boolean,
     Long,
@@ -251,10 +299,11 @@ pub(crate) enum ValueType {
     DateTimeTZ,
     Duration,
     String,
+    Struct(Label),
 }
 
 impl ValueType {
-    pub fn to_typedb(&self) -> TypeDBValueType {
+    pub fn into_typedb<Snapshot: ReadableSnapshot>(&self, type_manager: &Arc<TypeManager<Snapshot>>, snapshot: &Snapshot) -> TypeDBValueType {
         match self {
             ValueType::Boolean => TypeDBValueType::Boolean,
             ValueType::Long => TypeDBValueType::Long,
@@ -264,6 +313,11 @@ impl ValueType {
             ValueType::DateTimeTZ => TypeDBValueType::DateTimeTZ,
             ValueType::Duration => TypeDBValueType::Duration,
             ValueType::String => TypeDBValueType::String,
+            ValueType::Struct(label) => TypeDBValueType::Struct(
+                type_manager.get_struct_definition_key(
+                    &snapshot, label.into_typedb().scoped_name().as_str(),
+                ).unwrap().unwrap())
+            ,
         }
     }
 }
@@ -280,7 +334,7 @@ impl FromStr for ValueType {
             "datetimetz" => Self::DateTimeTZ,
             "duration" => Self::Duration,
             "string" => Self::String,
-            _ => panic!("Unrecognised value type"),
+            _ => Self::Struct(Label { label_string: s.to_string() }),
         })
     }
 }
@@ -322,7 +376,7 @@ impl FromStr for Value {
 }
 
 #[derive(Debug, Parameter)]
-#[param(name = "annotation", regex = r"@[a-z]+(?:\([^)]+\))?")]
+#[param(name = "annotation", regex = r"@[a-z]+(?:\(.+\))?")]
 pub(crate) struct Annotation {
     typedb_annotation: TypeDBAnnotation,
 }
@@ -341,6 +395,44 @@ impl FromStr for Annotation {
             "@abstract" => TypeDBAnnotation::Abstract(AnnotationAbstract),
             "@independent" => TypeDBAnnotation::Independent(AnnotationIndependent),
             "@key" => TypeDBAnnotation::Key(AnnotationKey),
+            "@unique" => TypeDBAnnotation::Unique(AnnotationUnique),
+            "@distinct" => TypeDBAnnotation::Distinct(AnnotationDistinct),
+            "@cascade" => TypeDBAnnotation::Cascade(AnnotationCascade),
+            "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotation::Replace(AnnotationReplace),
+            subkey if subkey.starts_with("@subkey") => {
+                return Err("Not implemented!".to_owned());
+                // assert!(
+                //     subkey.starts_with(r#"@subkey("#) && subkey.ends_with(r#")"#),
+                //     r#"Invalid @subkey format: {subkey:?}. Expected "@subkey(LABEL)""#
+                // );
+                // let label = &subkey[r#"@subkey("#.len()..subkey.len() - r#")"#.len()];
+                // TypeDBAnnotation::Subkey(AnnotationSubkey::new(label.to_owned()))
+            }
+            values if values.starts_with("@values") => {
+                return Err("Not implemented!".to_owned());
+                // assert!(
+                //     values.starts_with("@values(") && values.ends_with(')'),
+                //     r#"Invalid @values format: {values:?}. Expected "@values(val1, val2, ..., valN)""#
+                // );
+                // let values = values["@card(".len()..values.len() - ")".len()].trim();
+                // let values =
+                //     values.split(',');
+                // TypeDBAnnotation::Values(AnnotationValues::new(values))
+            }
+            range if range.starts_with("@range") => {
+                return Err("Not implemented!".to_owned());
+                // assert!(
+                //     range.starts_with("@range(") && range.ends_with(')'),
+                //     r#"Invalid @range format: {range:?}. Expected "@range(min, max)""#
+                // );
+                // let range = range["@range(".len()..range.len() - ")".len()].trim();
+                // let (min, max) =
+                //     range.split_once(',').map(|(min, max)| (min.trim(), Some(max.trim()))).unwrap_or((range, None));
+                // TypeDBAnnotation::Range(AnnotationRange::new(
+                //     min.parse().unwrap(),
+                //     max.map(str::parse).transpose().unwrap(),
+                // ))
+            }
             regex if regex.starts_with("@regex") => {
                 assert!(
                     regex.starts_with(r#"@regex(""#) && regex.ends_with(r#"")"#),
@@ -357,14 +449,55 @@ impl FromStr for Annotation {
                 let card = card["@card(".len()..card.len() - ")".len()].trim();
                 let (min, max) =
                     card.split_once(',').map(|(min, max)| (min.trim(), Some(max.trim()))).unwrap_or((card, None));
+
                 TypeDBAnnotation::Cardinality(AnnotationCardinality::new(
                     min.parse().unwrap(),
-                    max.map(str::parse).transpose().unwrap(),
+                    max.map(|val| {
+                        match val {
+                            "*" => { Ok(None) }
+                            _ => val.parse().map(Some).map_err(|_| "Failed to parse max")
+                        }
+                    }).unwrap().unwrap(),
                 ))
             }
             _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
         };
         Ok(Self { typedb_annotation })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "annotation_category", regex = r"@[a-z]+")]
+pub(crate) struct AnnotationCategory {
+    typedb_annotation_category: TypeDBAnnotationCategory,
+}
+
+impl AnnotationCategory {
+    pub fn into_typedb(self) -> TypeDBAnnotationCategory {
+        self.typedb_annotation_category
+    }
+}
+
+impl FromStr for AnnotationCategory {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // This will have to be smarter to parse annotations out.
+        let typedb_annotation_category = match s {
+            "@abstract" => TypeDBAnnotationCategory::Abstract,
+            "@independent" => TypeDBAnnotationCategory::Independent,
+            "@key" => TypeDBAnnotationCategory::Key,
+            "@unique" => TypeDBAnnotationCategory::Unique,
+            "@distinct" => TypeDBAnnotationCategory::Distinct,
+            "@cascade" => TypeDBAnnotationCategory::Cascade,
+            "@regex" => TypeDBAnnotationCategory::Regex,
+            "@card" => TypeDBAnnotationCategory::Cardinality,
+            "@subkey" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Subkey,
+            "@values" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Values,
+            "@range" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Range,
+            "@replace" => return Err("Not implemented!".to_owned()), //TypeDBAnnotationCategory::Replace,
+            _ => panic!("Unrecognised (or unimplemented) annotation: {s}"),
+        };
+        Ok(Self { typedb_annotation_category })
     }
 }
 
@@ -395,7 +528,7 @@ impl FromStr for Annotations {
                 Some(anno.parse::<Annotation>().map(|anno| anno.typedb_annotation))
             }
         })
-        .try_collect()?;
+            .try_collect()?;
 
         Ok(Self { typedb_annotations })
     }
@@ -426,5 +559,59 @@ impl FromStr for Vars {
 
     fn from_str(str: &str) -> Result<Self, Self::Err> {
         Ok(Self { names: str.split(',').map(|name| name.trim().to_owned()).collect() })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "ordering", regex = "(unordered|ordered)")]
+pub(crate) enum Ordering {
+    Unordered,
+    Ordered,
+}
+
+impl Ordering {
+    pub fn into_typedb(&self) -> concept::type_::Ordering {
+        match self {
+            Ordering::Unordered => concept::type_::Ordering::Unordered,
+            Ordering::Ordered => concept::type_::Ordering::Ordered,
+        }
+    }
+}
+
+impl FromStr for Ordering {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "unordered" => Self::Unordered,
+            "ordered" => Self::Ordered,
+            _ => panic!("Unrecognised ordering"),
+        })
+    }
+}
+
+#[derive(Debug, Parameter)]
+#[param(name = "optional", regex = "(|\\?)")]
+pub(crate) enum Optional {
+    False,
+    True,
+}
+
+impl Optional {
+    pub fn into_typedb(&self) -> bool {
+        match &self {
+            Optional::False => false,
+            Optional::True => true,
+        }
+    }
+}
+
+impl FromStr for Optional {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "?" => Self::True,
+            "" => Self::False,
+            invalid => return Err(format!("Invalid `Optional`: {invalid}")),
+        })
     }
 }

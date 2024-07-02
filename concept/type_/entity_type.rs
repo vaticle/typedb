@@ -5,6 +5,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
+use itertools::Itertools;
 
 use encoding::{
     error::{EncodingError, EncodingError::UnexpectedPrefix},
@@ -27,7 +28,7 @@ use crate::{
     concept_iterator,
     error::{ConceptReadError, ConceptWriteError},
     type_::{
-        annotation::{Annotation, AnnotationAbstract},
+        annotation::{Annotation, AnnotationCategory, AnnotationAbstract},
         attribute_type::AttributeType,
         object_type::ObjectType,
         owns::Owns,
@@ -38,6 +39,10 @@ use crate::{
     },
     ConceptAPI,
 };
+use crate::type_::attribute_type::AttributeTypeAnnotation;
+use crate::type_::role_type::RoleTypeAnnotation;
+use crate::type_::type_manager::validation::SchemaValidationError;
+use crate::type_::type_manager::validation::SchemaValidationError::UnsupportedAnnotationForType;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EntityType<'a> {
@@ -82,7 +87,7 @@ impl<'a> TypeAPI<'a> for EntityType<'a> {
         type_manager: &TypeManager<Snapshot>,
     ) -> Result<bool, ConceptReadError> {
         let annotations = self.get_annotations(snapshot, type_manager)?;
-        Ok(annotations.contains(&EntityTypeAnnotation::Abstract(AnnotationAbstract)))
+        Ok(annotations.contains_key(&EntityTypeAnnotation::Abstract(AnnotationAbstract)))
     }
 
     fn delete<Snapshot: WritableSnapshot>(
@@ -177,13 +182,41 @@ impl<'a> EntityType<'a> {
         type_manager.get_entity_type_subtypes_transitive(snapshot, self.clone().into_owned())
     }
 
-    pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
+    pub fn get_annotations_declared<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
     ) -> Result<MaybeOwns<'m, HashSet<EntityTypeAnnotation>>, ConceptReadError> {
+        type_manager.get_entity_type_annotations_declared(snapshot, self.clone().into_owned())
+    }
+
+    pub fn get_annotations<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashMap<EntityTypeAnnotation, EntityType<'static>>>, ConceptReadError> {
         type_manager.get_entity_type_annotations(snapshot, self.clone().into_owned())
     }
+
+    // pub fn get_annotation_categories<'m, Snapshot: ReadableSnapshot>(
+    //     &self,
+    //     snapshot: &Snapshot,
+    //     type_manager: &'m TypeManager<Snapshot>,
+    // ) -> Result<MaybeOwns<'m, HashMap<AnnotationCategory, EntityType<'static>>>, ConceptReadError> {
+    //     type_manager.get_entity_type_annotation_categories(snapshot, self.clone().into_owned())
+    // }
+    //
+    // pub fn get_annotation_of_category_if_exists<'m, Snapshot: ReadableSnapshot>(
+    //     &self,
+    //     snapshot: &Snapshot,
+    //     type_manager: &'m TypeManager<Snapshot>,
+    //     annotation_category: AnnotationCategory,
+    // ) -> Result<EntityTypeAnnotation, ConceptReadError> {
+    //     self.get_annotations(snapshot, type_manager).map(|annotations| {
+    //         annotations.into_iter().filter(|(annotation, _)| annotation.).next
+    //     })
+    //
+    // }
 
     pub fn set_annotation<Snapshot: WritableSnapshot>(
         &self,
@@ -193,23 +226,27 @@ impl<'a> EntityType<'a> {
     ) -> Result<(), ConceptWriteError> {
         match annotation {
             EntityTypeAnnotation::Abstract(_) => {
-                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.set_annotation_abstract(snapshot, self.clone().into_owned())?
             }
         };
         Ok(())
     }
 
-    fn delete_annotation<Snapshot: WritableSnapshot>(
+    pub fn unset_annotation<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
-        annotation: EntityTypeAnnotation,
-    ) {
-        match annotation {
+        annotation_category: AnnotationCategory,
+    ) -> Result<(), ConceptWriteError> {
+        let entity_annotation = EntityTypeAnnotation::try_getting_default(annotation_category)
+            .map_err(|source| ConceptWriteError::Operation {source})?;
+        match entity_annotation {
             EntityTypeAnnotation::Abstract(_) => {
-                type_manager.delete_annotation_abstract(snapshot, self.clone().into_owned())
+                type_manager.unset_owner_annotation_abstract(snapshot, self.clone().into_owned())?
             }
         }
+
+        Ok(())
     }
 
     pub fn into_owned(self) -> EntityType<'static> {
@@ -225,26 +262,33 @@ impl<'a> OwnerAPI<'a> for EntityType<'a> {
         attribute_type: AttributeType<'static>,
         ordering: Ordering,
     ) -> Result<Owns<'static>, ConceptWriteError> {
-        type_manager.set_owns(snapshot, self.clone().into_owned(), attribute_type.clone(), ordering);
+        type_manager.set_owns(snapshot, self.clone().into_owned(), attribute_type.clone(), ordering)?;
         Ok(Owns::new(ObjectType::Entity(self.clone().into_owned()), attribute_type))
     }
 
-    fn delete_owns<Snapshot: WritableSnapshot>(
+    fn unset_owns<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         attribute_type: AttributeType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: error if not owned?
-        type_manager.delete_owns(snapshot, self.clone().into_owned(), attribute_type);
+        type_manager.unset_owns(snapshot, self.clone().into_owned_object_type(), attribute_type)?;
         Ok(())
+    }
+
+    fn get_owns_declared<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
+        type_manager.get_entity_type_owns_declared(snapshot, self.clone().into_owned())
     }
 
     fn get_owns<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashSet<Owns<'static>>>, ConceptReadError> {
+    ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
         type_manager.get_entity_type_owns(snapshot, self.clone().into_owned())
     }
 
@@ -254,16 +298,12 @@ impl<'a> OwnerAPI<'a> for EntityType<'a> {
         type_manager: &TypeManager<Snapshot>,
         attribute_type: AttributeType<'static>,
     ) -> Result<Option<Owns<'static>>, ConceptReadError> {
-        let expected_owns = Owns::new(ObjectType::Entity(self.clone().into_owned()), attribute_type);
-        Ok(self.get_owns(snapshot, type_manager)?.contains(&expected_owns).then_some(expected_owns))
-    }
-
-    fn get_owns_transitive<'m, Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashMap<AttributeType<'static>, Owns<'static>>>, ConceptReadError> {
-        type_manager.get_entity_type_owns_transitive(snapshot, self.clone().into_owned())
+        Ok(self.get_owns(snapshot, type_manager)?
+            .iter()
+            .map(|(_, owns)| owns)
+            .find(|owns| owns.attribute() == attribute_type)
+            .cloned()
+        )
     }
 }
 
@@ -274,26 +314,31 @@ impl<'a> PlayerAPI<'a> for EntityType<'a> {
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<Plays<'static>, ConceptWriteError> {
-        // TODO: decide behaviour (ok or error) if already playing
-        let plays = type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())?;
-        Ok(Plays::new(ObjectType::Entity(self.clone().into_owned()), role_type))
+        type_manager.set_plays(snapshot, self.clone().into_owned(), role_type.clone())
     }
 
-    fn delete_plays<Snapshot: WritableSnapshot>(
+    fn unset_plays<Snapshot: WritableSnapshot>(
         &self,
         snapshot: &mut Snapshot,
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<(), ConceptWriteError> {
-        // TODO: error if not playing
-        type_manager.delete_plays(snapshot, self.clone().into_owned(), role_type)
+        type_manager.unset_plays(snapshot, self.clone().into_owned_object_type(), role_type)
+    }
+
+    fn get_plays_declared<'m, Snapshot: ReadableSnapshot>(
+        &self,
+        snapshot: &Snapshot,
+        type_manager: &'m TypeManager<Snapshot>,
+    ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
+        type_manager.get_entity_type_plays_declared(snapshot, self.clone().into_owned())
     }
 
     fn get_plays<'m, Snapshot: ReadableSnapshot>(
         &self,
         snapshot: &Snapshot,
         type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashSet<Plays<'static>>>, ConceptReadError> {
+    ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
         type_manager.get_entity_type_plays(snapshot, self.clone().into_owned())
     }
 
@@ -303,16 +348,12 @@ impl<'a> PlayerAPI<'a> for EntityType<'a> {
         type_manager: &TypeManager<Snapshot>,
         role_type: RoleType<'static>,
     ) -> Result<Option<Plays<'static>>, ConceptReadError> {
-        let expected_plays = Plays::new(ObjectType::Entity(self.clone().into_owned()), role_type);
-        Ok(self.get_plays(snapshot, type_manager)?.contains(&expected_plays).then_some(expected_plays))
-    }
-
-    fn get_plays_transitive<'m, Snapshot: ReadableSnapshot>(
-        &self,
-        snapshot: &Snapshot,
-        type_manager: &'m TypeManager<Snapshot>,
-    ) -> Result<MaybeOwns<'m, HashMap<RoleType<'static>, Plays<'static>>>, ConceptReadError> {
-        type_manager.get_entity_type_plays_transitive(snapshot, self.clone().into_owned())
+        Ok(self.get_plays(snapshot, type_manager)?
+            .iter()
+            .map(|(_, plays)| plays)
+            .find(|plays| plays.role() == role_type)
+            .cloned()
+        )
     }
 }
 
@@ -321,17 +362,42 @@ pub enum EntityTypeAnnotation {
     Abstract(AnnotationAbstract),
 }
 
+impl EntityTypeAnnotation {
+    pub fn try_getting_default(annotation_category: AnnotationCategory) -> Result<EntityTypeAnnotation, SchemaValidationError> {
+        annotation_category.to_default_annotation().into()
+    }
+}
+
+impl From<Annotation> for Result<EntityTypeAnnotation, SchemaValidationError> {
+    fn from(annotation: Annotation) -> Result<EntityTypeAnnotation, SchemaValidationError> {
+        match annotation {
+            Annotation::Abstract(annotation) => Ok(EntityTypeAnnotation::Abstract(annotation)),
+
+            Annotation::Distinct(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Independent(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Unique(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Key(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cardinality(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Regex(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+            Annotation::Cascade(_) => Err(UnsupportedAnnotationForType(annotation.category())),
+        }
+    }
+}
+
 impl From<Annotation> for EntityTypeAnnotation {
     fn from(annotation: Annotation) -> Self {
-        match annotation {
-            Annotation::Abstract(annotation) => EntityTypeAnnotation::Abstract(annotation),
+        let into_annotation: Result<EntityTypeAnnotation, SchemaValidationError> = annotation.into();
+        match into_annotation {
+            Ok(into_annotation) => into_annotation,
+            Err(_) => unreachable!("Do not call this conversion from user-exposed code!"),
+        }
+    }
+}
 
-            Annotation::Distinct(_) => unreachable!("Distinct annotation not available for Entity type."),
-            Annotation::Independent(_) => unreachable!("Independent annotation not available for Entity type."),
-            Annotation::Unique(_) => unreachable!("Unique annotation not available for Entity type."),
-            Annotation::Key(_) => unreachable!("Key annotation not available for Entity type."),
-            Annotation::Cardinality(_) => unreachable!("Cardinality annotation not available for Entity type."),
-            Annotation::Regex(_) => unreachable!("Regex annotation not available for Entity type."),
+impl Into<Annotation> for EntityTypeAnnotation {
+    fn into(self) -> Annotation {
+        match self {
+            EntityTypeAnnotation::Abstract(annotation) => Annotation::Abstract(annotation),
         }
     }
 }

@@ -19,6 +19,7 @@ use crate::{
         type_manager::validation::SchemaValidationError,
     },
 };
+use crate::type_::type_manager::validation::operation_time_validation::OperationTimeValidation;
 
 #[derive(Debug)]
 pub struct ConceptError {
@@ -107,6 +108,8 @@ pub enum ConceptWriteError {
 
     SetHasOrderedOwnsUnordered {},
     SetHasUnorderedOwnsOrdered {},
+
+    Operation { source: SchemaValidationError }, // TODO: Find a better place for it... It is used for annotations now
 }
 
 impl fmt::Display for ConceptWriteError {
@@ -135,6 +138,7 @@ impl Error for ConceptWriteError {
             Self::CardinalityViolation { .. } => None,
             Self::SetHasOrderedOwnsUnordered { .. } => None,
             Self::SetHasUnorderedOwnsOrdered { .. } => None,
+            Self::Operation { .. } => None,
         }
     }
 }

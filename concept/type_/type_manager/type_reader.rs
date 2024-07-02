@@ -35,7 +35,7 @@ use crate::{
     type_::{
         annotation::{
             Annotation, AnnotationAbstract, AnnotationCardinality, AnnotationDistinct, AnnotationIndependent,
-            AnnotationKey, AnnotationRegex, AnnotationUnique,
+            AnnotationKey, AnnotationRegex, AnnotationUnique, AnnotationCascade
         },
         attribute_type::AttributeType,
         object_type::ObjectType,
@@ -44,7 +44,7 @@ use crate::{
         relation_type::RelationType,
         role_type::RoleType,
         sub::Sub,
-        type_manager::validation::annotation_compatibility::is_edge_annotation_inherited,
+        type_manager::validation::annotation_compatibility::is_annotation_inheritable,
         EdgeOverride, InterfaceImplementation, KindAPI, Ordering, TypeAPI,
     },
 };
@@ -110,7 +110,7 @@ impl TypeReader {
             .map(|(key, _)| Sub::<T>::decode_canonical_edge(Bytes::Array(key.into_byte_array())).supertype()))
     }
 
-    pub fn get_supertypes_transitive<T>(
+    pub fn get_supertypes<T>(
         snapshot: &impl ReadableSnapshot,
         subtype: T,
     ) -> Result<Vec<T>, ConceptReadError>
@@ -159,12 +159,12 @@ impl TypeReader {
 
     pub(crate) fn get_label<'a>(
         snapshot: &impl ReadableSnapshot,
-        type_: impl KindAPI<'a>,
+        type_: impl TypeAPI<'a>,
     ) -> Result<Option<Label<'static>>, ConceptReadError> {
-        Self::get_type_property::<Label<'static>>(snapshot, type_)
+        Self::get_type_property_declared::<Label<'static>>(snapshot, type_)
     }
 
-    pub(crate) fn get_implemented_interfaces<IMPL>(
+    pub(crate) fn get_implemented_interfaces_declared<IMPL>(
         snapshot: &impl ReadableSnapshot,
         owner: impl TypeAPI<'static>,
     ) -> Result<HashSet<IMPL>, ConceptReadError>
@@ -178,7 +178,7 @@ impl TypeReader {
             .map_err(|error| ConceptReadError::SnapshotIterate { source: error })
     }
 
-    pub(crate) fn get_implemented_interfaces_transitive<IMPL, T>(
+    pub(crate) fn get_implemented_interfaces<IMPL, T>(
         snapshot: &impl ReadableSnapshot,
         object_type: T,
     ) -> Result<HashMap<IMPL::InterfaceType, IMPL>, ConceptReadError>
@@ -191,14 +191,14 @@ impl TypeReader {
         let mut current_type = Some(object_type);
         while current_type.is_some() {
             let declared_implementations =
-                Self::get_implemented_interfaces::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
+                Self::get_implemented_interfaces_declared::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
             for implementation in declared_implementations.into_iter() {
                 let interface = implementation.interface();
-                if !overridden_interfaces.contains(&interface) {
-                    debug_assert!(!transitive_implementations.contains_key(&interface)); // TODO: This fails in the case of implicit overrides, such as redeclaring an ownership with a stronger annotation.
+                // We may encounter transitive implementations multiple times (relaxed schema validation
+                // or self-override for annotations narrowing)
+                if !overridden_interfaces.contains(&interface) && !transitive_implementations.contains_key(&interface) {
                     transitive_implementations.insert(implementation.interface(), implementation.clone());
                 }
-                // Has to be outside so we ignore transitively overridden ones too
                 if let Some(overridden) = Self::get_implementation_override(snapshot, implementation.clone())? {
                     overridden_interfaces.add(overridden.interface());
                 }
@@ -208,12 +208,38 @@ impl TypeReader {
         Ok(transitive_implementations)
     }
 
+    pub(crate) fn get_overridden_interfaces<IMPL, T>(
+        snapshot: &impl ReadableSnapshot,
+        object_type: T,
+    ) -> Result<HashMap<IMPL::InterfaceType, IMPL>, ConceptReadError>
+        where
+            T: TypeAPI<'static>,
+            IMPL: InterfaceImplementation<'static> + Hash + Eq,
+    {
+        let mut overridden_interfaces: HashMap<IMPL::InterfaceType, IMPL> = HashMap::new();
+        let mut current_type = Some(object_type);
+        while current_type.is_some() {
+            let declared_implementations =
+                Self::get_implemented_interfaces_declared::<IMPL>(snapshot, current_type.as_ref().unwrap().clone())?;
+            for implementation in declared_implementations.into_iter() {
+                if let Some(overridden) = Self::get_implementation_override(snapshot, implementation.clone())? {
+                    if overridden.interface() != implementation.interface()
+                        && !overridden_interfaces.contains_key(&overridden.interface()) {
+                        overridden_interfaces.insert(overridden.interface(), overridden);
+                    }
+                }
+            }
+            current_type = Self::get_supertype(snapshot, current_type.unwrap())?;
+        }
+        Ok(overridden_interfaces)
+    }
+
     pub(crate) fn get_implementation_override<IMPL>(
         snapshot: &impl ReadableSnapshot,
         implementation: IMPL,
     ) -> Result<Option<IMPL>, ConceptReadError>
     where
-        IMPL: TypeEdgeEncoding<'static> + Hash + Eq,
+        IMPL: TypeEdgeEncoding<'static> + InterfaceImplementation<'static> + Hash + Eq,
     {
         let override_property_key = EdgeOverride::<IMPL>::build_key(implementation);
         snapshot
@@ -223,7 +249,7 @@ impl TypeReader {
             .map_err(|error| ConceptReadError::SnapshotGet { source: error })
     }
 
-    pub(crate) fn get_implementations_for_interface<IMPL>(
+    pub(crate) fn get_implementations_for_interface_declared<IMPL>(
         snapshot: &impl ReadableSnapshot,
         interface_type: IMPL::InterfaceType,
     ) -> Result<HashSet<IMPL>, ConceptReadError>
@@ -237,7 +263,7 @@ impl TypeReader {
             .map_err(|error| ConceptReadError::SnapshotIterate { source: error })
     }
 
-    pub(crate) fn get_implementations_for_interface_transitive<IMPL>(
+    pub(crate) fn get_implementations_for_interface<IMPL>(
         snapshot: &impl ReadableSnapshot,
         interface_type: IMPL::InterfaceType,
     ) -> Result<HashMap<ObjectType<'static>, IMPL>, ConceptReadError>
@@ -246,14 +272,14 @@ impl TypeReader {
     {
         let mut impl_transitive: HashMap<ObjectType<'static>, IMPL> = HashMap::new();
         let declared_impl_set: HashSet<IMPL> =
-            Self::get_implementations_for_interface(snapshot, interface_type.clone())?;
+            Self::get_implementations_for_interface_declared(snapshot, interface_type.clone())?;
 
         for declared_impl in declared_impl_set {
             let mut stack = Vec::new();
             stack.push(declared_impl.object());
             while let Some(sub_object) = stack.pop() {
                 let mut declared_impl_was_overridden = false;
-                for sub_owner_owns in Self::get_implemented_interfaces::<IMPL>(snapshot, sub_object.clone())? {
+                for sub_owner_owns in Self::get_implemented_interfaces_declared::<IMPL>(snapshot, sub_object.clone())? {
                     if let Some(overridden_impl) = Self::get_implementation_override(snapshot, sub_owner_owns.clone())?
                     {
                         declared_impl_was_overridden =
@@ -277,7 +303,7 @@ impl TypeReader {
         Ok(impl_transitive)
     }
 
-    pub(crate) fn get_relates(
+    pub(crate) fn get_relates_declared(
         snapshot: &impl ReadableSnapshot,
         relation: RelationType<'static>,
     ) -> Result<HashSet<Relates<'static>>, ConceptReadError> {
@@ -290,7 +316,7 @@ impl TypeReader {
             .map_err(|error| ConceptReadError::SnapshotIterate { source: error })
     }
 
-    pub(crate) fn get_relates_transitive(
+    pub(crate) fn get_relates(
         snapshot: &impl ReadableSnapshot,
         relation: RelationType<'static>,
     ) -> Result<HashMap<RoleType<'static>, Relates<'static>>, ConceptReadError> {
@@ -298,7 +324,7 @@ impl TypeReader {
         let mut overridden_relates: HashSet<RoleType<'static>> = HashSet::new();
         let mut current_relation = Some(relation);
         while current_relation.is_some() {
-            let declared_relates = Self::get_relates(snapshot, current_relation.as_ref().unwrap().clone())?;
+            let declared_relates = Self::get_relates_declared(snapshot, current_relation.as_ref().unwrap().clone())?;
             for relates in declared_relates.into_iter() {
                 let role = relates.role();
                 if !overridden_relates.contains(&role) {
@@ -314,7 +340,7 @@ impl TypeReader {
         Ok(transitive_relates)
     }
 
-    pub(crate) fn get_relation(
+    pub(crate) fn get_role_type_relates(
         snapshot: &impl ReadableSnapshot,
         role: RoleType<'static>,
     ) -> Result<Relates<'static>, ConceptReadError> {
@@ -326,14 +352,29 @@ impl TypeReader {
             .map(|v| v.first().unwrap().clone())
     }
 
-    pub(crate) fn get_value_type(
+    pub(crate) fn get_value_type_declared(
         snapshot: &impl ReadableSnapshot,
         type_: AttributeType<'_>,
     ) -> Result<Option<ValueType>, ConceptReadError> {
-        Self::get_type_property::<ValueType>(snapshot, type_)
+        Self::get_type_property_declared::<ValueType>(snapshot, type_)
     }
 
-    pub(crate) fn get_type_property<'a, PROPERTY>(
+    pub(crate) fn get_value_type(
+        snapshot: &impl ReadableSnapshot,
+        type_: AttributeType<'static>,
+    ) -> Result<Option<(ValueType, AttributeType<'static>)>, ConceptReadError> {
+        Self::get_type_property::<ValueType, AttributeType<'static>>(snapshot, type_)
+    }
+
+    pub(crate) fn get_value_type_without_source(
+        snapshot: &impl ReadableSnapshot,
+        type_: AttributeType<'static>,
+    ) -> Result<Option<ValueType>, ConceptReadError> {
+        Self::get_value_type(snapshot, type_)
+            .map(|result| result.map(|(value_type, _)| value_type))
+    }
+
+    pub(crate) fn get_type_property_declared<'a, PROPERTY>(
         snapshot: &impl ReadableSnapshot,
         type_: impl TypeVertexEncoding<'a>,
     ) -> Result<Option<PROPERTY>, ConceptReadError>
@@ -348,14 +389,32 @@ impl TypeReader {
         Ok(property)
     }
 
+    pub(crate) fn get_type_property<'a, PROPERTY, SOURCE>(
+        snapshot: &impl ReadableSnapshot,
+        type_: SOURCE,
+    ) -> Result<Option<(PROPERTY, SOURCE)>, ConceptReadError>
+        where
+            PROPERTY: TypeVertexPropertyEncoding<'static>,
+            SOURCE: TypeAPI<'static> + Clone,
+    {
+        let mut type_opt = Some(type_);
+        while let Some(curr_type) = type_opt {
+            if let Some(property) = Self::get_type_property_declared::<PROPERTY>(snapshot, curr_type.clone())? {
+                return Ok(Some((property, curr_type.clone())));
+            }
+            type_opt = Self::get_supertype(snapshot, curr_type)?;
+        }
+        Ok(None)
+    }
+
     pub(crate) fn get_type_ordering(
         snapshot: &impl ReadableSnapshot,
         role_type: RoleType<'_>,
     ) -> Result<Ordering, ConceptReadError> {
-        Ok(Self::get_type_property(snapshot, role_type)?.unwrap())
+        Ok(Self::get_type_property_declared(snapshot, role_type)?.unwrap())
     }
 
-    pub(crate) fn get_type_annotations<T: KindAPI<'static>>(
+    pub(crate) fn get_type_annotations_declared<T: KindAPI<'static>>(
         snapshot: &impl ReadableSnapshot,
         type_: T,
     ) -> Result<HashSet<T::AnnotationType>, ConceptReadError> {
@@ -373,7 +432,10 @@ impl TypeReader {
                     Infix::PropertyAnnotationCardinality => Annotation::Cardinality(
                         <AnnotationCardinality as TypeVertexPropertyEncoding>::from_value_bytes(value),
                     ),
-                    Infix::PropertyAnnotationRegex => Annotation::Regex(AnnotationRegex::from_value_bytes(value)),
+                    Infix::PropertyAnnotationRegex => Annotation::Regex(
+                        <AnnotationRegex as TypeVertexPropertyEncoding>::from_value_bytes(value),
+                    ),
+                    Infix::PropertyAnnotationCascade => Annotation::Cascade(AnnotationCascade),
                     | Infix::_PropertyAnnotationLast
                     | Infix::PropertyAnnotationUnique
                     | Infix::PropertyAnnotationKey
@@ -391,13 +453,33 @@ impl TypeReader {
             .map_err(|err| ConceptReadError::SnapshotIterate { source: err.clone() })
     }
 
+    pub(crate) fn get_type_annotations<T: KindAPI<'static>>(
+        snapshot: &impl ReadableSnapshot,
+        type_: T,
+    ) -> Result<HashMap<T::AnnotationType, T>, ConceptReadError> {
+        let mut annotations: HashMap<T::AnnotationType, T> = HashMap::new();
+        let mut type_opt = Some(type_);
+        let mut declared = true;
+        while let Some(curr_type) = type_opt {
+            let declared_annotations = Self::get_type_annotations_declared(snapshot, curr_type.clone())?;
+            for annotation in declared_annotations {
+                if declared || is_annotation_inheritable(&annotation, &annotations) {
+                    annotations.insert(annotation, curr_type.clone());
+                }
+            }
+            type_opt = Self::get_supertype(snapshot, curr_type.clone())?;
+            declared = false;
+        }
+        Ok(annotations)
+    }
+
     // TODO: this is currently breaking our architectural pattern that none of the Manager methods should operate graphs
-    pub(crate) fn get_type_edge_annotations<EDGE>(
+    pub(crate) fn get_type_edge_annotations_declared<'b, EDGE>(
         snapshot: &impl ReadableSnapshot,
         edge: EDGE,
     ) -> Result<HashSet<Annotation>, ConceptReadError>
     where
-        EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static>,
+        EDGE: InterfaceImplementation<'b>,
     {
         let type_edge = edge.to_canonical_type_edge();
         snapshot
@@ -415,9 +497,12 @@ impl TypeReader {
                     Infix::PropertyAnnotationCardinality => Annotation::Cardinality(
                         <AnnotationCardinality as TypeEdgePropertyEncoding>::from_value_bytes(value),
                     ),
-                    Infix::PropertyAnnotationRegex => Annotation::Regex(AnnotationRegex::from_value_bytes(value)),
+                    Infix::PropertyAnnotationRegex => Annotation::Regex(
+                        <AnnotationRegex as TypeEdgePropertyEncoding>::from_value_bytes(value),
+                    ),
                     | Infix::_PropertyAnnotationLast
                     | Infix::PropertyAnnotationAbstract
+                    | Infix::PropertyAnnotationCascade
                     | Infix::PropertyLabel
                     | Infix::PropertyValueType
                     | Infix::PropertyOrdering
@@ -431,25 +516,27 @@ impl TypeReader {
             .map_err(|err| ConceptReadError::SnapshotIterate { source: err.clone() })
     }
 
-    pub(crate) fn get_effective_type_edge_annotations<EDGE>(
+    pub(crate) fn get_type_edge_annotations<EDGE>(
         snapshot: &impl ReadableSnapshot,
         edge: EDGE,
     ) -> Result<HashMap<Annotation, EDGE>, ConceptReadError>
     where
-        EDGE: TypeEdgeEncoding<'static> + InterfaceImplementation<'static>,
+        EDGE: InterfaceImplementation<'static>,
     {
-        let mut effective_annotations: HashMap<Annotation, EDGE> = HashMap::new();
+        let mut annotations: HashMap<Annotation, EDGE> = HashMap::new();
         let mut edge_opt = Some(edge);
+        let mut declared = true;
         while let Some(edge) = edge_opt {
-            let declared_edge_annotations = Self::get_type_edge_annotations(snapshot, edge.clone())?;
+            let declared_edge_annotations = Self::get_type_edge_annotations_declared(snapshot, edge.clone())?;
             for annotation in declared_edge_annotations {
-                if is_edge_annotation_inherited(&annotation, &effective_annotations) {
-                    effective_annotations.insert(annotation, edge.clone());
+                if declared || is_annotation_inheritable(&annotation, &annotations) {
+                    annotations.insert(annotation, edge.clone());
                 }
             }
             edge_opt = Self::get_implementation_override(snapshot, edge.clone())?;
+            declared = false;
         }
-        Ok(effective_annotations)
+        Ok(annotations)
     }
 
     pub(crate) fn get_type_edge_ordering(

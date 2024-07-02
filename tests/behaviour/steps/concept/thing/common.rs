@@ -17,7 +17,7 @@ async fn object_exists(
     var: params::Var,
     exists_or_doesnt: params::ExistsOrDoesnt,
 ) {
-    match root_label.to_typedb() {
+    match root_label.into_typedb() {
         Kind::Attribute => {
             let attribute = context.attributes.get(&var.name).expect("no variable {} in context.");
             exists_or_doesnt.check(attribute, &format!("variable {}", var.name));
