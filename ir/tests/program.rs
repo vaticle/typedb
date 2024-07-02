@@ -30,11 +30,11 @@ fn build_program_modifiers() {
     let var_person_type = conjunction.get_or_declare_variable(&"person_type").unwrap();
     let var_name_type = conjunction.get_or_declare_variable(&"name_type").unwrap();
 
-    conjunction.constraints().add_isa(var_person, var_person_type).unwrap();
-    conjunction.constraints().add_has(var_person, var_name).unwrap();
-    conjunction.constraints().add_isa(var_name, var_name_type).unwrap();
-    conjunction.constraints().add_type(var_person_type, "person").unwrap();
-    conjunction.constraints().add_type(var_name_type, "name").unwrap();
+    conjunction.constraints_mut().add_isa(var_person, var_person_type).unwrap();
+    conjunction.constraints_mut().add_has(var_person, var_name).unwrap();
+    conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+    conjunction.constraints_mut().add_type(var_person_type, "person").unwrap();
+    conjunction.constraints_mut().add_type(var_name_type, "name").unwrap();
 
     let mut program = Program::new(Pattern::Conjunction(conjunction), HashMap::new());
     program.add_limit(10);
@@ -51,11 +51,11 @@ fn build_invalid_program_modifiers() {
     let var_person_type = conjunction.get_or_declare_variable(&"person_type").unwrap();
     let var_name_type = conjunction.get_or_declare_variable(&"name_type").unwrap();
 
-    conjunction.constraints().add_isa(var_person, var_person_type).unwrap();
-    conjunction.constraints().add_has(var_person, var_name).unwrap();
-    conjunction.constraints().add_isa(var_name, var_name_type).unwrap();
-    conjunction.constraints().add_type(var_person_type, "person").unwrap();
-    conjunction.constraints().add_type(var_name_type, "name").unwrap();
+    conjunction.constraints_mut().add_isa(var_person, var_person_type).unwrap();
+    conjunction.constraints_mut().add_has(var_person, var_name).unwrap();
+    conjunction.constraints_mut().add_isa(var_name, var_name_type).unwrap();
+    conjunction.constraints_mut().add_type(var_person_type, "person").unwrap();
+    conjunction.constraints_mut().add_type(var_name_type, "name").unwrap();
 
     let mut program = Program::new(Pattern::Conjunction(conjunction), HashMap::new());
     let result = program.add_sort(vec![("bob", true), ("jane", false)]);
@@ -72,7 +72,7 @@ fn build_program_with_functions() {
     let var_count = conjunction.get_or_declare_variable(&"count").unwrap();
     let var_mean = conjunction.get_or_declare_variable(&"sum").unwrap();
 
-    conjunction.constraints().add_isa(var_person, var_person_type).unwrap();
+    conjunction.constraints_mut().add_isa(var_person, var_person_type).unwrap();
 
     let mut function_call_var_mapping = HashMap::new();
     function_call_var_mapping.insert(var_person, Variable::new(1000));
@@ -88,7 +88,7 @@ fn build_program_with_functions() {
         ],
         false,
     );
-    conjunction.constraints().add_function_call(vec![var_count, var_mean], function_call).unwrap();
+    conjunction.constraints_mut().add_function_call(vec![var_count, var_mean], function_call).unwrap();
 
     println!("{}", &conjunction);
 

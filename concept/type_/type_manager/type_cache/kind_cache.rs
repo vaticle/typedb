@@ -54,6 +54,7 @@ pub(crate) struct RoleTypeCache {
     pub(super) common_type_cache: CommonTypeCache<RoleType<'static>>,
     pub(super) ordering: Ordering,
     pub(super) relates: Relates<'static>,
+    pub(super) relates_transitive: HashSet<Relates<'static>>,
     pub(super) plays: HashSet<Plays<'static>>,
     pub(super) plays_transitive: HashMap<ObjectType<'static>, Plays<'static>>,
 }
@@ -182,7 +183,8 @@ impl RoleTypeCache {
             let cache = RoleTypeCache {
                 common_type_cache: CommonTypeCache::create(snapshot, role.clone()),
                 ordering,
-                relates: TypeReader::get_relation(snapshot, role.clone()).unwrap(),
+                relates: TypeReader::get_relates_for_role_type(snapshot, role.clone()).unwrap(),
+                relates_transitive: TypeReader::get_relates_for_role_type_transitive(snapshot, role.clone()).unwrap(),
                 plays: TypeReader::get_implementations_for_interface::<Plays<'static>>(snapshot, role.clone()).unwrap(),
                 plays_transitive: TypeReader::get_implementations_for_interface_transitive::<Plays<'static>>(
                     snapshot,

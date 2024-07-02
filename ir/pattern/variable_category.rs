@@ -9,47 +9,49 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum VariableCategory {
     Type,
+    ThingType,
+    RoleType,
     Thing,
 
     Object,
     // TODO: if we introduce Entity and Relation, we will also have to introduce Entity/RelationRoleImpl
     Attribute,
-    RoleImpl,
     Value,
 
     ObjectList,
     AttributeList,
     ValueList,
-    RoleImplList,
 }
 
 impl VariableCategory {
     pub(crate) fn narrowest(&self, other: Self) -> Option<Self> {
         match (self, other) {
+            (Self::RoleType, Self::RoleType) => Some(Self::RoleType),
+            (Self::RoleType, Self::Type) | (Self::Type, Self::RoleType) => Some(Self::RoleType),
+            (Self::RoleType, _) | (_, Self::RoleType) => None,
+
+            (Self::ThingType, Self::ThingType) => Some(Self::ThingType),
+            (Self::ThingType, Self::Type) | (Self::Type, Self::ThingType) => Some(Self::ThingType),
+            (Self::ThingType, _) | (_, Self::ThingType) => None,
+
             (Self::Type, Self::Type) => Some(Self::Type),
             (_, Self::Type) | (Self::Type, _) => None,
 
             (Self::Thing, Self::Thing) => Some(Self::Thing),
             (Self::Thing, Self::Object) | (Self::Object, Self::Thing) => Some(Self::Object),
             (Self::Thing, Self::Attribute) | (Self::Attribute, Self::Thing) => Some(Self::Attribute),
-            (Self::Thing, Self::RoleImpl) | (Self::RoleImpl, Self::Thing) => Some(Self::RoleImpl),
             (_, Self::Thing) | (Self::Thing, _) => None,
 
             (Self::Object, Self::Object) => Some(Self::Object),
-            (Self::Object, Self::RoleImpl) | (Self::RoleImpl, Self::Object) => Some(Self::RoleImpl),
             (_, Self::Object) | (Self::Object, _) => None,
 
             (Self::Attribute, Self::Attribute) => Some(Self::Attribute),
             (_, Self::Attribute) | (Self::Attribute, _) => None,
 
-            (Self::RoleImpl, Self::RoleImpl) => Some(Self::RoleImpl),
-            (_, Self::RoleImpl) | (Self::RoleImpl, _) => None,
-
             (Self::Value, Self::Value) => Some(Self::Value),
             (_, Self::Value) | (Self::Value, _) => None,
 
             (Self::ObjectList, Self::ObjectList) => Some(Self::ObjectList),
-            (Self::ObjectList, Self::RoleImplList) | (Self::RoleImplList, Self::ObjectList) => Some(Self::RoleImplList),
             (_, Self::ObjectList) | (Self::ObjectList, _) => None,
 
             (Self::AttributeList, Self::AttributeList) => Some(Self::AttributeList),
@@ -57,9 +59,6 @@ impl VariableCategory {
 
             (Self::ValueList, Self::ValueList) => Some(Self::ValueList),
             (_, Self::ValueList) | (Self::ValueList, _) => None,
-
-            (Self::RoleImplList, Self::RoleImplList) => Some(Self::RoleImplList),
-            (_, Self::RoleImplList) | (Self::RoleImplList, _) => None,
         }
     }
 }

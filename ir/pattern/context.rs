@@ -96,7 +96,7 @@ impl PatternContext {
         let variable_scope = self.variable_declaration.get(&variable);
         match variable_scope {
             None => false,
-            Some(variable_scope) => return Self::is_equal_or_parent_scope(&self.scope_parents, *variable_scope, scope),
+            Some(variable_scope) => return Self::is_equal_or_parent_scope(&self.scope_parents, scope, *variable_scope),
         }
     }
 

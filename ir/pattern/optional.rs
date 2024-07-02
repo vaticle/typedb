@@ -11,16 +11,25 @@ use std::{
 
 use answer::variable::Variable;
 
-use crate::pattern::{context::PatternContext, Scope, ScopeId};
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]
 pub struct Optional {
     context: Arc<Mutex<PatternContext>>,
+    conjunction: Conjunction,
 }
 
 impl Optional {
+    pub(crate) fn TODO__new(context: Arc<Mutex<PatternContext>>, conjunction: Conjunction) -> Optional {
+        Self { context, conjunction }
+    }
+
     pub(crate) fn context(&self) -> MutexGuard<PatternContext> {
         self.context.lock().unwrap()
+    }
+
+    pub(crate) fn conjunction(&self) -> &Conjunction {
+        &self.conjunction
     }
 }
 

@@ -10,6 +10,7 @@ package(default_visibility = [
     "//durability/tests:__subpackages__",
     "//durability/benches:__subpackages__",
     "//encoding:__subpackages__",
+    "//ir:__subpackages__",
     "//storage:__subpackages__",
     "//tests:__subpackages__",
 ])

@@ -9,16 +9,25 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use crate::pattern::{context::PatternContext, Scope, ScopeId};
+use crate::pattern::{conjunction::Conjunction, context::PatternContext, Scope, ScopeId};
 
 #[derive(Debug)]
 pub(crate) struct Negation {
     context: Arc<Mutex<PatternContext>>,
+    conjunction: Conjunction,
 }
 
 impl Negation {
+    pub(crate) fn TODO__new(context: Arc<Mutex<PatternContext>>, conjunction: Conjunction) -> Negation {
+        Self { context, conjunction }
+    }
+
     pub(crate) fn context(&self) -> MutexGuard<PatternContext> {
         self.context.lock().unwrap()
+    }
+
+    pub(crate) fn conjunction(&self) -> &Conjunction {
+        &self.conjunction
     }
 }
 

@@ -18,7 +18,7 @@ use crate::pattern::{
 pub(crate) struct Patterns {
     scope: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    patterns: Vec<Pattern>,
+    pub(crate) patterns: Vec<Pattern>,
 }
 
 impl Patterns {
@@ -66,28 +66,28 @@ impl Pattern {
         }
     }
 
-    fn as_conjunction(&self) -> Option<&Conjunction> {
+    pub(crate) fn as_conjunction(&self) -> Option<&Conjunction> {
         match self {
             Pattern::Conjunction(conjunction) => Some(conjunction),
             _ => None,
         }
     }
 
-    fn as_conjunction_mut(&mut self) -> Option<&mut Conjunction> {
+    pub(crate) fn as_conjunction_mut(&mut self) -> Option<&mut Conjunction> {
         match self {
             Pattern::Conjunction(conjunction) => Some(conjunction),
             _ => None,
         }
     }
 
-    fn as_disjunction(&self) -> Option<&Disjunction> {
+    pub(crate) fn as_disjunction(&self) -> Option<&Disjunction> {
         match self {
             Pattern::Disjunction(disjunction) => Some(disjunction),
             _ => None,
         }
     }
 
-    fn as_disjunction_mut(&mut self) -> Option<&mut Disjunction> {
+    pub(crate) fn as_disjunction_mut(&mut self) -> Option<&mut Disjunction> {
         match self {
             Pattern::Disjunction(disjunction) => Some(disjunction),
             _ => None,
@@ -101,21 +101,21 @@ impl Pattern {
         }
     }
 
-    fn as_negation_mut(&mut self) -> Option<&mut Negation> {
+    pub(crate) fn as_negation_mut(&mut self) -> Option<&mut Negation> {
         match self {
             Pattern::Negation(negation) => Some(negation),
             _ => None,
         }
     }
 
-    fn as_optional(&self) -> Option<&Optional> {
+    pub(crate) fn as_optional(&self) -> Option<&Optional> {
         match self {
             Pattern::Optional(optional) => Some(optional),
             _ => None,
         }
     }
 
-    fn as_optional_mut(&mut self) -> Option<&mut Optional> {
+    pub(crate) fn as_optional_mut(&mut self) -> Option<&mut Optional> {
         match self {
             Pattern::Optional(optional) => Some(optional),
             _ => None,

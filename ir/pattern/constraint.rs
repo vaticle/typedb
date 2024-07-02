@@ -12,6 +12,7 @@ use std::{
 };
 
 use answer::variable::Variable;
+use encoding::value::label::Label;
 use itertools::Itertools;
 
 use crate::{
@@ -29,7 +30,8 @@ use crate::{
 pub struct Constraints {
     scope: ScopeId,
     context: Arc<Mutex<PatternContext>>,
-    constraints: Vec<Constraint<Variable>>,
+
+    pub(crate) constraints: Vec<Constraint<Variable>>,
 
     // TODO: could also store indexes into the Constraints vec? Depends how expensive Constraints are and if we delete
     left_constrained_index: HashMap<Variable, Vec<Constraint<Variable>>>,
@@ -66,27 +68,37 @@ impl Constraints {
         self.constraints.last().unwrap()
     }
 
-    pub fn add_type(&mut self, variable: Variable, type_: &str) -> Result<&Type<Variable>, PatternDefinitionError> {
+    pub fn add_type(
+        &mut self,
+        variable: Variable,
+        type_: &str,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let type_ = Type::new(variable, type_.to_string());
         self.context.lock().unwrap().set_variable_category(variable, VariableCategory::Type, type_.clone().into())?;
-        let as_ref = self.add_constraint(type_);
-        Ok(as_ref.as_type().unwrap())
+        Ok(self.add_constraint(type_))
     }
 
-    pub fn add_isa(&mut self, thing: Variable, type_: Variable) -> Result<&Isa<Variable>, PatternDefinitionError> {
+    pub fn add_isa(
+        &mut self,
+        thing: Variable,
+        type_: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, thing)
-                && self.context.lock().unwrap().is_variable_available(self.scope, type_)
+                && self.context.lock().unwrap().is_variable_available(self.scope, type_),
         );
         let isa = Isa::new(thing, type_);
         self.context.lock().unwrap().set_variable_category(thing, VariableCategory::Thing, isa.clone().into())?;
         self.context.lock().unwrap().set_variable_category(type_, VariableCategory::Type, isa.clone().into())?;
-        let as_ref = self.add_constraint(isa);
-        Ok(as_ref.as_isa().unwrap())
+        Ok(self.add_constraint(isa))
     }
 
-    pub fn add_has(&mut self, owner: Variable, attribute: Variable) -> Result<&Has<Variable>, PatternDefinitionError> {
+    pub fn add_has(
+        &mut self,
+        owner: Variable,
+        attribute: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(
             self.context.lock().unwrap().is_variable_available(self.scope, owner)
                 && self.context.lock().unwrap().is_variable_available(self.scope, attribute)
@@ -98,15 +110,66 @@ impl Constraints {
             VariableCategory::Attribute,
             has.clone().into(),
         )?;
-        let as_ref = self.add_constraint(has);
-        Ok(as_ref.as_has().unwrap())
+        self.add_constraint(has);
+        Ok(self.constraints.last().unwrap())
+    }
+
+    pub fn add_role_player(
+        &mut self,
+        relation: Variable,
+        player: Variable,
+        role: Option<Variable>,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+        debug_assert!(
+            self.context.lock().unwrap().is_variable_available(self.scope, relation)
+                && self.context.lock().unwrap().is_variable_available(self.scope, player)
+                && (role.is_none() || self.context.lock().unwrap().is_variable_available(self.scope, role.unwrap()))
+        );
+        let role_player = RolePlayer::new(relation, player, role);
+        // TODO: Introduce relation category
+        self.context.lock().unwrap().set_variable_category(
+            relation,
+            VariableCategory::Object,
+            role_player.clone().into(),
+        )?;
+        self.context.lock().unwrap().set_variable_category(
+            player,
+            VariableCategory::Object,
+            role_player.clone().into(),
+        )?;
+        if let Some(role_type) = role {
+            self.context.lock().unwrap().set_variable_category(
+                role_type,
+                VariableCategory::RoleType,
+                role_player.clone().into(),
+            )?;
+        }
+        self.add_constraint(role_player);
+        Ok(self.constraints.last().unwrap())
+    }
+
+    pub fn add_comparison(
+        &mut self,
+        lhs: Variable,
+        rhs: Variable,
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
+        debug_assert!(
+            self.context.lock().unwrap().is_variable_available(self.scope, lhs)
+                && self.context.lock().unwrap().is_variable_available(self.scope, rhs)
+        );
+        let comparison = Comparison::new(lhs, rhs);
+        // TODO: Introduce relation category
+        self.context.lock().unwrap().set_variable_category(lhs, VariableCategory::Value, comparison.clone().into())?;
+        self.context.lock().unwrap().set_variable_category(rhs, VariableCategory::Value, comparison.clone().into())?;
+        self.add_constraint(comparison);
+        Ok(self.constraints.last().unwrap())
     }
 
     pub fn add_function_call(
         &mut self,
         assigned: Vec<Variable>,
         function_call: FunctionCall<Variable>,
-    ) -> Result<&FunctionCallBinding<Variable>, PatternDefinitionError> {
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         use PatternDefinitionError::FunctionCallReturnArgCountMismatch;
         debug_assert!(assigned.iter().all(|var| self.context.lock().unwrap().is_variable_available(self.scope, *var)));
 
@@ -131,15 +194,14 @@ impl Constraints {
             }
         }
 
-        let as_ref = self.add_constraint(binding);
-        Ok(as_ref.as_function_call_binding().unwrap())
+        Ok(self.add_constraint(binding))
     }
 
     pub fn add_expression(
         &mut self,
         variable: Variable,
         expression: Expression<Variable>,
-    ) -> Result<&ExpressionBinding<Variable>, PatternDefinitionError> {
+    ) -> Result<&Constraint<Variable>, PatternDefinitionError> {
         debug_assert!(self.context.lock().unwrap().is_variable_available(self.scope, variable));
         let binding = ExpressionBinding::new(variable, expression);
         self.context.lock().unwrap().set_variable_category(
@@ -147,8 +209,7 @@ impl Constraints {
             VariableCategory::Value,
             binding.clone().into(),
         )?;
-        let as_ref = self.add_constraint(binding);
-        Ok(as_ref.as_expression_binding().unwrap())
+        Ok(self.add_constraint(binding))
     }
 }
 
@@ -182,7 +243,7 @@ impl<ID: IrID> Constraint<ID> {
             Constraint::Has(has) => Box::new(has.ids()),
             Constraint::ExpressionBinding(binding) => todo!(),
             Constraint::FunctionCallBinding(binding) => Box::new(binding.ids()),
-            Constraint::Comparison(comparison) => todo!(),
+            Constraint::Comparison(comparison) => Box::new(comparison.ids()),
         }
     }
 
@@ -197,7 +258,7 @@ impl<ID: IrID> Constraint<ID> {
             Constraint::Has(has) => has.ids_foreach(function),
             Constraint::ExpressionBinding(binding) => todo!(),
             Constraint::FunctionCallBinding(binding) => binding.ids_foreach(function),
-            Constraint::Comparison(comparison) => todo!(),
+            Constraint::Comparison(comparison) => comparison.ids_foreach(function),
         }
     }
 
@@ -266,8 +327,8 @@ enum ConstraintIDSide {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Type<ID: IrID> {
-    left: ID,
-    type_: String,
+    pub(crate) left: ID,
+    pub(crate) type_: String,
 }
 
 impl<ID: IrID> Type<ID> {
@@ -301,7 +362,7 @@ impl<ID: IrID> Display for Type<ID> {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Isa<ID: IrID> {
     thing: ID,
     type_: ID,
@@ -323,6 +384,14 @@ impl<ID: IrID> Isa<ID> {
         function(self.thing, ConstraintIDSide::Left);
         function(self.type_, ConstraintIDSide::Right)
     }
+
+    pub(crate) fn thing(&self) -> ID {
+        self.thing
+    }
+
+    pub(crate) fn type_(&self) -> ID {
+        self.type_
+    }
 }
 
 impl<ID: IrID> Into<Constraint<ID>> for Isa<ID> {
@@ -339,9 +408,9 @@ impl<ID: IrID> Display for Isa<ID> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RolePlayer<ID: IrID> {
-    relation: ID,
-    player: ID,
-    role_type: Option<ID>,
+    pub(crate) relation: ID,
+    pub(crate) player: ID,
+    pub(crate) role_type: Option<ID>,
 }
 
 impl<ID: IrID> RolePlayer<ID> {

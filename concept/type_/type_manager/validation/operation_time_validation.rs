@@ -335,7 +335,7 @@ impl OperationTimeValidation {
         role_type: RoleType<'_>,
     ) -> Result<(), SchemaValidationError> {
         // TODO: See if we can use existing methods from the ThingManager
-        let relation_type = TypeReader::get_relation(snapshot, role_type.clone().into_owned())
+        let relation_type = TypeReader::get_relates_for_role_type(snapshot, role_type.clone().into_owned())
             .map_err(SchemaValidationError::ConceptRead)?
             .relation();
         let prefix =

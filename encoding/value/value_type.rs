@@ -70,7 +70,7 @@ impl ValueType {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ValueTypeCategory {
     Boolean,
     Long,

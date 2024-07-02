@@ -49,11 +49,23 @@ impl Conjunction {
         }
     }
 
-    pub fn constraints(&mut self) -> &mut Constraints {
+    pub(crate) fn scope_id(&self) -> ScopeId {
+        self.scope_id
+    }
+
+    pub fn constraints(&self) -> &Constraints {
+        &self.constraints
+    }
+
+    pub fn patterns(&self) -> &Patterns {
+        &self.patterns
+    }
+
+    pub fn constraints_mut(&mut self) -> &mut Constraints {
         &mut self.constraints
     }
 
-    pub fn patterns(&mut self) -> &mut Patterns {
+    pub fn patterns_mut(&mut self) -> &mut Patterns {
         &mut self.patterns
     }
 
