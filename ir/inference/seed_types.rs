@@ -542,7 +542,7 @@ impl BinaryConstraintWrapper for Has<Variable> {
         let owner = match left_type {
             TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
             TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
-            _ => todo!("Return an error for using an attribute type here"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         owner
             .get_owns_transitive(seeder.snapshot, seeder.type_manager)?
@@ -562,7 +562,7 @@ impl BinaryConstraintWrapper for Has<Variable> {
     ) -> Result<(), ConceptReadError> {
         let attribute = match right_type {
             TypeAnnotation::Attribute(attribute) => attribute,
-            _ => todo!("Return an error for using a non-attribute where an attribute was expected"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         attribute
             .get_owners_transitive(seeder.snapshot, seeder.type_manager)?
@@ -702,7 +702,7 @@ impl BinaryConstraintWrapper for Comparison<Variable> {
     ) -> Result<(), ConceptReadError> {
         let left_value_type = match left_type {
             TypeAnnotation::Attribute(attribute) => attribute.get_value_type(seeder.snapshot, seeder.type_manager)?,
-            _ => todo!("Error for expected attribute type"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         if let Some(value_type) = left_value_type {
             let comparable_types = TODO__comparable_value_types(value_type.category());
@@ -786,7 +786,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
         let player = match left_type {
             TypeAnnotation::Entity(entity) => ObjectType::Entity(entity.clone()),
             TypeAnnotation::Relation(relation) => ObjectType::Relation(relation.clone()),
-            _ => todo!("Return an error for using an attribute type here"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         player
             .get_plays_transitive(seeder.snapshot, seeder.type_manager)?
@@ -806,7 +806,7 @@ impl<'graph> BinaryConstraintWrapper for PlayerRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let role_type = match right_type {
             TypeAnnotation::RoleType(role_type) => role_type,
-            _ => todo!("Return an error for using a non-role where an role was expected"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         role_type
             .get_players_transitive(seeder.snapshot, seeder.type_manager)?
@@ -839,7 +839,7 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let relation = match left_type {
             TypeAnnotation::Relation(relation) => relation.clone(),
-            _ => todo!("Return an error for using a non-relation type here"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         relation
             .get_relates_transitive(seeder.snapshot, seeder.type_manager)?
@@ -859,7 +859,7 @@ impl<'graph> BinaryConstraintWrapper for RelationRoleEdge<'graph> {
     ) -> Result<(), ConceptReadError> {
         let role_type = match right_type {
             TypeAnnotation::RoleType(role_type) => role_type,
-            _ => todo!("Return an error for using a non-role where an role was expected"),
+            _ => {} // It can't be another type => Do nothing and let type-inference clean it up
         };
         role_type
             .get_relations_transitive(seeder.snapshot, seeder.type_manager)?
@@ -918,8 +918,7 @@ pub mod tests {
     };
 
     use answer::Type as TypeAnnotation;
-    use encoding::value::label::Label;
-    use encoding::value::value_type::ValueType;
+    use encoding::value::{label::Label, value_type::ValueType};
     use storage::snapshot::CommittableSnapshot;
 
     use crate::{
@@ -1037,22 +1036,25 @@ pub mod tests {
                 conjunction.constraints_mut().add_has(var_animal, var_name).unwrap();
             }
 
-            let expected_tig = { ;
-                let types_a = BTreeSet::from([type_fears.clone(), type_cat.clone(), type_dog.clone(), type_animal.clone()]);
+            let expected_tig = {
+                let types_a =
+                    BTreeSet::from([type_fears.clone(), type_cat.clone(), type_dog.clone(), type_animal.clone()]);
                 let types_n = BTreeSet::from([type_name.clone(), type_catname.clone(), type_dogname.clone()]);
 
                 let constraints = &conjunction.constraints().constraints;
                 TypeInferenceGraph {
                     conjunction: &conjunction,
                     vertices: BTreeMap::from([(var_animal, types_a), (var_name, types_n)]),
-                    edges: vec![
-                        expected_edge(
-                            &constraints[0],
-                            var_animal,
-                            var_name,
-                            vec![(type_cat.clone(), type_catname.clone()), (type_dog.clone(), type_dogname.clone()), (type_animal.clone(), type_name.clone())],
-                        ),
-                    ],
+                    edges: vec![expected_edge(
+                        &constraints[0],
+                        var_animal,
+                        var_name,
+                        vec![
+                            (type_cat.clone(), type_catname.clone()),
+                            (type_dog.clone(), type_dogname.clone()),
+                            (type_animal.clone(), type_name.clone()),
+                        ],
+                    )],
                     nested_disjunctions: vec![],
                     nested_negations: vec![],
                     nested_optionals: vec![],
@@ -1066,7 +1068,6 @@ pub mod tests {
             assert_eq!(expected_tig, tig);
         }
     }
-
 
     #[test]
     fn test_comparison() {
@@ -1092,26 +1093,32 @@ pub mod tests {
             }
 
             let expected_tig = {
-                let types_a = BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
-                let types_b = BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+                let types_a =
+                    BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
+                let types_b =
+                    BTreeSet::from([type_age.clone(), type_name.clone(), type_catname.clone(), type_dogname.clone()]);
 
                 let constraints = &conjunction.constraints().constraints;
                 TypeInferenceGraph {
                     conjunction: &conjunction,
                     vertices: BTreeMap::from([(var_a, types_a), (var_b, types_b)]),
-                    edges: vec![
-                        expected_edge(
-                            &constraints[0],
-                            var_a,
-                            var_b,
-                            vec![
-                                (type_age.clone(), type_age.clone()),
-                                (type_catname.clone(), type_catname.clone()), (type_catname.clone(), type_dogname.clone()), (type_catname.clone(), type_name.clone()),
-                                (type_dogname.clone(), type_catname.clone()), (type_dogname.clone(), type_dogname.clone()), (type_dogname.clone(), type_name.clone()),
-                                (type_name.clone(), type_catname.clone()), (type_name.clone(), type_dogname.clone()), (type_name.clone(), type_name.clone()),
-                            ],
-                        ),
-                    ],
+                    edges: vec![expected_edge(
+                        &constraints[0],
+                        var_a,
+                        var_b,
+                        vec![
+                            (type_age.clone(), type_age.clone()),
+                            (type_catname.clone(), type_catname.clone()),
+                            (type_catname.clone(), type_dogname.clone()),
+                            (type_catname.clone(), type_name.clone()),
+                            (type_dogname.clone(), type_catname.clone()),
+                            (type_dogname.clone(), type_dogname.clone()),
+                            (type_dogname.clone(), type_name.clone()),
+                            (type_name.clone(), type_catname.clone()),
+                            (type_name.clone(), type_dogname.clone()),
+                            (type_name.clone(), type_name.clone()),
+                        ],
+                    )],
                     nested_disjunctions: vec![],
                     nested_negations: vec![],
                     nested_optionals: vec![],

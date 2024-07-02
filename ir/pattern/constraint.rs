@@ -159,16 +159,8 @@ impl Constraints {
         );
         let comparison = Comparison::new(lhs, rhs);
         // TODO: Introduce relation category
-        self.context.lock().unwrap().set_variable_category(
-            lhs,
-            VariableCategory::Value,
-            comparison.clone().into(),
-        )?;
-        self.context.lock().unwrap().set_variable_category(
-            rhs,
-            VariableCategory::Value,
-            comparison.clone().into(),
-        )?;
+        self.context.lock().unwrap().set_variable_category(lhs, VariableCategory::Value, comparison.clone().into())?;
+        self.context.lock().unwrap().set_variable_category(rhs, VariableCategory::Value, comparison.clone().into())?;
         self.add_constraint(comparison);
         Ok(self.constraints.last().unwrap())
     }

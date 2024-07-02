@@ -722,11 +722,20 @@ pub mod tests {
                 var_role_is_feared,
                 var_role_has_fear_type,
                 var_role_is_feared_type,
-            ) = ["has_fear", "is_feared", "fears_type", "fears", "role_has_fear", "role_is_fear", "role_has_fear_type", "role_is_feared_type"]
-                .iter()
-                .map(|name| conjunction.get_or_declare_variable(*name).unwrap())
-                .collect_tuple()
-                .unwrap();
+            ) = [
+                "has_fear",
+                "is_feared",
+                "fears_type",
+                "fears",
+                "role_has_fear",
+                "role_is_fear",
+                "role_has_fear_type",
+                "role_is_feared_type",
+            ]
+            .iter()
+            .map(|name| conjunction.get_or_declare_variable(*name).unwrap())
+            .collect_tuple()
+            .unwrap();
 
             conjunction.constraints_mut().add_isa(var_fears, var_fears_type).unwrap();
             conjunction.constraints_mut().add_type(var_fears_type, LABEL_FEARS).unwrap();
