@@ -243,7 +243,7 @@ impl<ID: IrID> Constraint<ID> {
             Constraint::Has(has) => Box::new(has.ids()),
             Constraint::ExpressionBinding(binding) => todo!(),
             Constraint::FunctionCallBinding(binding) => Box::new(binding.ids()),
-            Constraint::Comparison(comparison) => todo!(),
+            Constraint::Comparison(comparison) => Box::new(comparison.ids()),
         }
     }
 
@@ -258,7 +258,7 @@ impl<ID: IrID> Constraint<ID> {
             Constraint::Has(has) => has.ids_foreach(function),
             Constraint::ExpressionBinding(binding) => todo!(),
             Constraint::FunctionCallBinding(binding) => binding.ids_foreach(function),
-            Constraint::Comparison(comparison) => todo!(),
+            Constraint::Comparison(comparison) => comparison.ids_foreach(function),
         }
     }
 

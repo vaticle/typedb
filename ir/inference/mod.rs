@@ -192,7 +192,7 @@ pub mod tests {
                 definition::definition_key_generator::DefinitionKeyGenerator,
                 thing::vertex_generator::ThingVertexGenerator, type_::vertex_generator::TypeVertexGenerator,
             },
-            value::label::Label,
+            value::{label::Label, value_type::ValueType},
             EncodingKeyspace,
         };
         use storage::{
@@ -234,6 +234,10 @@ pub mod tests {
                 .unwrap();
             catname.set_supertype(&mut snapshot, type_manager, name.clone()).unwrap();
             dogname.set_supertype(&mut snapshot, type_manager, name.clone()).unwrap();
+
+            name.set_value_type(&mut snapshot, type_manager, ValueType::String).unwrap();
+            catname.set_value_type(&mut snapshot, type_manager, ValueType::String).unwrap();
+            dogname.set_value_type(&mut snapshot, type_manager, ValueType::String).unwrap();
 
             // Entities
             let animal = type_manager.create_entity_type(&mut snapshot, &Label::build(LABEL_ANIMAL), false).unwrap();
